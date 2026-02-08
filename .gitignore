@@ -1,0 +1,11 @@
+figures/*.png
+__pycache__/
+.venv/
+.DS_Store
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+orig/
