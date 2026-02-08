@@ -30,7 +30,8 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/prng.py` | PRNGs (RANDU, LCG, MT19937, XorShift) | RANDU d=-19.89, glibc LCG d=-15.00. MT19937 passes. | numpy |
 | `1d/ciphers.py` | Cipher modes (ECB, CTR, CBC) | ECB d=19-146, stream/block CTR invisible. | pycryptodome |
 | `1d/reduced_aes.py` | Reduced-round AES (1-10 rounds) | Sharp cliff at R=4: 40 metrics → 0 metrics. | pycryptodome |
-| `1d/stego.py` | LSB steganography via bitplane | Invisible at byte level → d=1166 at bit plane. | numpy |
+| `1d/stego.py` | LSB steganography via bitplane | 1 sig metric (Fisher d=1.06) via LSB correlation. | numpy |
+| `1d/stego_deep.py` | Advanced stego (6 techniques) | PVD: 42 sig raw bytes. Matrix embed: invisible. Bitplane: 0 sig. | numpy, scipy |
 | `1d/chaos.py` | 10 chaotic maps (logistic, Henon, Lorenz, ...) | 10/10 detected, 45/45 pairwise distinguished. | numpy |
 | `1d/dna.py` | DNA sequences (8 organism types) | 291 significant findings. All types distinguishable. | numpy |
 | `1d/nn_weights.py` | Neural network weights | Backdoor detected (d=7.12). Dense vs conv d=11.9. | numpy |

@@ -30,13 +30,11 @@ AES with 1 round: 40 metrics detect weakness. 2 rounds: 38 metrics. 3 rounds: 8 
 
 → `investigations/1d/reduced_aes.py`
 
-### Steganography cracked via bitplane decomposition (d = 1166)
+### Advanced steganography detection
 
-LSB steganography is invisible at the byte level (our original negative result). Extracting the LSB plane and analyzing the bit stream makes it massively detectable. Fisher Information catches stego at just 10% embedding rate.
+Six embedding techniques tested — from naive LSB replacement to Hamming-coded matrix embedding. PVD (pixel value differencing) is the most visible at 42 significant metrics on raw bytes. Spread spectrum: 25 sig. Matrix embedding (syndrome coding) is truly invisible to all geometries. Bitplane extraction does not improve detection — the 8x sample size reduction destroys statistical power. Delay embedding amplifies the signal for detectable techniques.
 
-![Stego Detection](docs/figures/stego.png)
-
-→ `investigations/1d/stego.py`
+→ `investigations/1d/stego.py` · `investigations/1d/stego_deep.py`
 
 ### Chaotic map fingerprinting (45/45 pairwise)
 
@@ -178,7 +176,7 @@ delayed = delay_embed(data, tau=5)  # 52x improvement for lag detection
 spectral = spectral_preprocess(data)  # catches chirp vs sine
 
 # Bitplane: extract single bit plane
-lsb = bitplane_extract(data, plane=0)  # cracks LSB steganography
+lsb = bitplane_extract(data, plane=0)  # isolate bit plane for analysis
 ```
 
 ### Float data
@@ -218,7 +216,8 @@ Full catalog of all 25 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [prng.py](investigations/1d/prng.py) | PRNG weakness | RANDU d=-19.89 |
 | [ciphers.py](investigations/1d/ciphers.py) | Cipher modes | ECB d=19-146 |
 | [reduced_aes.py](investigations/1d/reduced_aes.py) | Reduced-round AES | Cliff at R=4 |
-| [stego.py](investigations/1d/stego.py) | Steganography | Cracked at bitplane (d=1166) |
+| [stego.py](investigations/1d/stego.py) | Steganography | LSB correlation d=1.06 (Fisher) |
+| [stego_deep.py](investigations/1d/stego_deep.py) | Advanced stego | PVD d=42 sig, matrix embed invisible |
 | [chaos.py](investigations/1d/chaos.py) | Chaotic maps | 45/45 pairwise |
 | [dna.py](investigations/1d/dna.py) | DNA sequences | 291 findings |
 | [nn_weights.py](investigations/1d/nn_weights.py) | Neural network weights | Backdoor d=7.12 |
@@ -260,7 +259,8 @@ Equally important: the framework's known limits.
 - **AES-CTR vs random**: Indistinguishable across all 24 geometries, preprocessings, and combination strategies. This is the fundamental limit.
 - **MT19937, XorShift32, MINSTD**: Pass all geometric tests (weaknesses are in higher dimensions than byte-level)
 - **Standard map, Arnold cat map**: Uniformly mixing → look random
-- **LSB steganography at byte level**: Must use bitplane decomposition
+- **Matrix embedding (Hamming syndrome coding)**: Invisible to all geometries at all rates — too few pixel changes
+- **LSB replacement/matching at sub-100% rates**: Detectable only at 100% embedding via raw bytes; bitplane extraction does not help
 
 See [docs/NEGATIVE_RESULTS.md](docs/NEGATIVE_RESULTS.md).
 

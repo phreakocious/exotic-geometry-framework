@@ -98,7 +98,7 @@ Three preprocessing functions extend the framework's reach:
 |----------|-------------|----------|
 | `delay_embed(data, tau)` | Pairs byte[i] with byte[i+tau] | Lag-specific structure (52x improvement for AR processes) |
 | `spectral_preprocess(data)` | FFT magnitude spectrum → uint8 | Spectral structure invisible in raw bytes |
-| `bitplane_extract(data, plane)` | Extract single bit plane (0=LSB, 7=MSB) | Steganography detection (d=1166) |
+| `bitplane_extract(data, plane)` | Extract single bit plane (0=LSB, 7=MSB) | Bit-level structure (Collatz LSB=77 sig) |
 
 ## Usage
 

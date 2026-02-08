@@ -3066,10 +3066,11 @@ def bitplane_extract(data: np.ndarray, plane: int) -> np.ndarray:
     """
     Extract a single bit plane and repack into uint8 bytes.
 
-    This is the key to stego detection: LSB stego invisible at byte level
-    becomes trivially detectable (d=1166) when you isolate plane 0.
-
-    Fisher is the champion for low-rate stego (detects at 10% embedding).
+    Useful for isolating bit-level structure (e.g., Collatz bitplane analysis
+    yields 77 sig metrics at plane 0). Note: for LSB steganography on
+    realistic carriers, raw byte analysis outperforms bitplane extraction —
+    PVD and spread spectrum are detectable at the byte level (d > 20) while
+    bitplane extraction reduces sample size 8x, destroying statistical power.
 
     Parameters
     ----------

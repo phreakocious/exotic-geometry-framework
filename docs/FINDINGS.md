@@ -17,9 +17,12 @@ All validated discoveries and negative results from 30 investigations across 8 r
 | 4 | All ECB block ciphers (AES, DES3, Blowfish) produce identical geometric signatures | E8 = 2 roots for all | `1d/ciphers.py` |
 | 5 | Stream ciphers (AES-CTR, ChaCha20, RC4) look random | d ≈ 0 | `1d/ciphers.py` |
 | 6 | AES becomes indistinguishable from random at exactly 4 rounds | 40 metrics at R=1, 0 at R=4 | `1d/reduced_aes.py` |
-| 7 | LSB steganography cracked via bitplane decomposition | d = 1166 | `1d/stego.py` |
-| 8 | Fisher detects stego at 10% embedding rate | d = 3.33 | `1d/stego.py` |
-| 9 | Bitplane analysis has perfect specificity (no crosstalk between planes) | 0 false positives | `1d/stego.py` |
+| 7 | LSB stego weakly detectable via LSB-correlation extraction | d = 1.06 (Fisher trace), 1 sig metric at 100% rate | `1d/stego.py` |
+| 8 | PVD steganography massively detectable at raw byte level | 42 sig metrics (natural_texture), detectable at 10% rate | `1d/stego_deep.py` |
+| 9 | Spread spectrum stego detectable at raw byte level | 25 sig metrics (natural_texture), detectable at 25% rate | `1d/stego_deep.py` |
+| 9a | Matrix embedding (Hamming syndrome coding) invisible to all geometries | 0 sig at all rates, both carriers | `1d/stego_deep.py` |
+| 9b | Bitplane extraction does NOT improve stego detection (8x sample reduction) | 0 sig across all techniques with bitplane | `1d/stego_deep.py` |
+| 9c | Delay embedding amplifies detectable stego signal | PVD: 16 sig via DE2 at 50% rate | `1d/stego_deep.py` |
 
 ### PRNG Testing
 | # | Finding | Effect Size | Investigation |
@@ -27,7 +30,7 @@ All validated discoveries and negative results from 30 investigations across 8 r
 | 10 | E8 catches RANDU from raw bytes | d = -19.89 | `1d/prng.py` |
 | 11 | E8 catches glibc LCG from raw bytes | d = -15.00 | `1d/prng.py` |
 | 12 | Tropical geometry is the second-best PRNG detector | d = -8 | `1d/prng.py` |
-| 13 | RANDU detectable at ALL bit planes | d > 10 for most planes | `1d/stego.py` |
+| 13 | RANDU detectable at ALL bit planes | d > 10 for most planes | `1d/prng.py` |
 
 ### Chaotic Systems
 | # | Finding | Effect Size | Investigation |
@@ -119,7 +122,9 @@ These are equally important — they define the boundaries of what geometric ana
 | 5 | RC4 stream looks random (even 24-bit key) | Stream cipher output is geometrically indistinguishable |
 | 6 | Standard map ≈ random | Uniformly mixing on torus |
 | 7 | Arnold cat map ≈ random | Uniformly mixing on torus |
-| 8 | LSB steganography invisible at byte level | Must use bitplane decomposition |
+| 8 | LSB steganography nearly invisible (d=1.06, 1 metric at 100% rate only) | Byte-level changes too small for most geometries |
+| 8a | Matrix embedding completely invisible to all geometries | Hamming coding minimizes changes below detection floor |
+| 8b | Bitplane extraction does not improve stego detection | 8x sample reduction destroys statistical power |
 | 9 | GBM indistinguishable from IID normal | Random walk is geometrically random |
 | 10 | Ornstein-Uhlenbeck ≈ IID normal | Mean-reversion too subtle for byte encoding |
 | 11 | Random vs encrypted is the hardest classification boundary | Both designed to look random |
@@ -132,6 +137,6 @@ These are equally important — they define the boundaries of what geometric ana
 
 ## Key Takeaway
 
-The framework detects genuine structure with massive effect sizes (d = 7-1166) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly.
+The framework detects genuine structure with large effect sizes (d = 7-266) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly.
 
 The deep Collatz investigations (collatz_deep, collatz_deep2) demonstrate a particularly striking application: five specific geometry families (Fisher, Heisenberg, Sol, Spherical, Wasserstein) detect convergence-specific structure in 3n+1 that categorically vanishes in divergent variants. The convergence mechanism has a geometric character — information-geometric, nilpotent, solvable — that is absent, not merely attenuated, in divergent maps.

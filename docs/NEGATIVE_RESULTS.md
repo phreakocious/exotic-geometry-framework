@@ -37,11 +37,17 @@ Note: These PRNGs have known weaknesses detectable by other means (e.g., MT19937
 
 These maps are genuinely chaotic but produce uniform distributions in their phase space. Their Lyapunov exponents are positive (they ARE chaotic), but their invariant measure is uniform, so byte-level statistics see them as random. This is mathematically correct.
 
-## Steganography at Byte Level
+## Steganography: What Works and What Doesn't
 
-LSB steganography (flipping the least significant bit to embed messages) is **completely invisible** when analyzing full bytes. Changing the LSB changes a byte value by at most 1 (e.g., 127 → 126 or 128). This ±1 perturbation is far below the noise floor of any geometric metric operating on 0-255 byte values.
+Six embedding techniques tested across two carriers (`stego_deep.py`):
 
-**The fix**: Use `bitplane_extract(data, plane=0)` to isolate the LSB plane, then analyze the resulting bit stream. This transforms stego from undetectable (d ≈ 0) to massively detectable (d = 1166). See `investigations/1d/stego.py`.
+**Detectable at raw byte level:** PVD (42 sig metrics on texture, detectable at 10% rate) and spread spectrum (25 sig, detectable at 25% rate). These techniques modify pixel values aggressively enough to shift geometric signatures. Delay embedding (τ=2) amplifies the signal further.
+
+**Barely detectable:** LSB replacement and LSB matching show 1-6 significant metrics at 100% embedding rate only. LSBMR is similarly weak. The ±1 byte-level perturbations are near the noise floor for most geometries. Fisher Information via LSB-correlation extraction catches LSB replacement at d=1.06, but only at full rate.
+
+**Completely invisible:** Matrix embedding (Hamming(7,3) syndrome coding) produces 0 significant metrics at all rates on both carriers. By flipping at most 1 LSB per 7-pixel block, it stays below the detection floor of every geometry.
+
+**Bitplane extraction does NOT help:** Contrary to initial claims, `bitplane_extract(data, 0)` yields 0 significant detections for ALL techniques including LSB replacement. The 8x sample size reduction (4000→500 bytes) destroys statistical power. The previously reported d=1166 was not reproducible. See `investigations/1d/stego_deep.py`.
 
 ## Financial Models
 
