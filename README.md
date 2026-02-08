@@ -54,6 +54,19 @@ Seven encodings of Collatz (3n+1) dynamics — hailstone values, parity bits, st
 
 → `investigations/1d/collatz.py`
 
+### Deep Collatz: why does 3n+1 converge?
+
+Two follow-up investigations probe the convergence mechanism of 3n+1 from ten angles.
+
+**Phase transition (collatz_deep)** — The (2k+1)n+1 family shows a sharp phase boundary: 3n+1 (k=1) has 86 significant metrics vs random, while 5n+1 (k=2) drops to 35. Tropical odd-step slopes match theory exactly (μ=1.5855 vs log₂(3)=1.5850). Optimal delay embedding is at τ=2 (78 sig, monotonically decreasing). Bitplane signal is U-shaped (LSB=77, MSB=68).
+
+**Convergence anatomy (collatz_deep2)** — Of ~131 metrics, **45 are convergence-specific** (significant for 3n+1, vanish for 5n+1), 41 are universal, and only 3 are divergence-specific. Five geometry families — Fisher Information, Heisenberg, Sol, Spherical, Wasserstein — are 100% convergence-aware: every one of their significant metrics goes dark at k=2. The Syracuse encoding of the v₂ (2-adic valuation) sequence is the richest representation at 105 sig metrics. Transform composition order matters: delay-then-bitplane (86 sig) beats bitplane-then-delay (75 sig), exceeding both individual baselines. 37 metrics track drift rate across the family with |r| > 0.8.
+
+![Deep Collatz I](docs/figures/collatz_deep.png)
+![Deep Collatz II](docs/figures/collatz_deep2.png)
+
+→ `investigations/1d/collatz_deep.py` · `investigations/1d/collatz_deep2.py`
+
 ### 2D spatial analysis: phase transitions and morphologies
 
 Native 2D analysis with 15 spatial metrics (tension, curvature, anisotropy, criticality, basin structure, multiscale coherence). Each metric captures a different aspect of spatial organization.
@@ -211,6 +224,8 @@ Full catalog of all 25 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [nn_weights.py](investigations/1d/nn_weights.py) | Neural network weights | Backdoor d=7.12 |
 | [compression_algos.py](investigations/1d/compression_algos.py) | Compressed data | bz2 vs zlib d=7.75 |
 | [collatz.py](investigations/1d/collatz.py) | Collatz sequences | 7/7 encodings detected, 3n+1 vs 5n+1 d=12.8 |
+| [collatz_deep.py](investigations/1d/collatz_deep.py) | Deep Collatz I | Sharp k=1→2 phase boundary, tropical slopes match theory |
+| [collatz_deep2.py](investigations/1d/collatz_deep2.py) | Deep Collatz II | 45 convergence-specific metrics, 5 geometry families go dark at k=2 |
 
 ### 2D (spatial field analysis)
 
@@ -251,7 +266,7 @@ See [docs/NEGATIVE_RESULTS.md](docs/NEGATIVE_RESULTS.md).
 
 ## Complete Results
 
-All 51 validated findings and 17 negative results from 30 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
+All 62 validated findings and 17 negative results from 32 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
 
 ## Dependencies
 

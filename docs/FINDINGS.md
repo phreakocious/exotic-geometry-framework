@@ -2,7 +2,7 @@
 
 All validated discoveries and negative results from 30 investigations across 8 rounds.
 
-## Validated Positive Findings (51)
+## Validated Positive Findings (62)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -69,31 +69,42 @@ All validated discoveries and negative results from 30 investigations across 8 r
 | 32 | Parity sequence is purely marginal (survives shuffling) | all ratios ≈ 1.0 | `1d/collatz.py` |
 | 33 | 3n+1 vs 5n+1 variant geometrically distinguishable | 71 sig, d = 12.8 | `1d/collatz.py` |
 | 34 | Starting number magnitude affects geometric signature | 90-98 sig metrics across ranges | `1d/collatz.py` |
+| 35a | Sharp phase transition at k=1→2 in (2k+1)n+1 family | 86 sig (k=1) → 35 sig (k=2) | `1d/collatz_deep.py` |
+| 35b | Tropical slopes match theory exactly: log₂(3) for 3n+1 | μ=1.5855 vs theory 1.5850 | `1d/collatz_deep.py` |
+| 35c | Optimal delay embedding at τ=2, monotonic decrease beyond | 78 sig at τ=2, 42 at τ=21 | `1d/collatz_deep.py` |
+| 35d | U-shaped bitplane signal: both LSB and MSB carry structure | LSB=77, MSB=68 sig metrics | `1d/collatz_deep.py` |
+| 35e | Ordering matters most at mod 4 (not mod 2 or higher) | 63 metrics (mod 4) vs 40 (mod 2) | `1d/collatz_deep.py` |
+| 36a | Syracuse encoding of v₂ sequence is the richest Collatz representation | 105 sig metrics | `1d/collatz_deep2.py` |
+| 36b | Mean v₂(3n+1) = 2.001, exactly matching Geometric(1/2) theory | empirical vs theoretical | `1d/collatz_deep2.py` |
+| 36c | 45 metrics are convergence-specific (sig for 3n+1, vanish for 5n+1) | 45 vs 3 divergence-specific | `1d/collatz_deep2.py` |
+| 36d | Fisher, Heisenberg, Sol, Spherical, Wasserstein are 100% convergence-aware | all sig metrics vanish at k=2 | `1d/collatz_deep2.py` |
+| 36e | Composition order matters: DE2→BP0 beats BP0→DE2 (86 vs 75 sig) | exceeds both individual baselines | `1d/collatz_deep2.py` |
+| 36f | 37 metrics track drift rate across (2k+1)n+1 with \|r\| > 0.8 | kurt_mean r=+0.986 | `1d/collatz_deep2.py` |
 
 ### Preprocessing
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 35 | Delay embedding gives 52x improvement for lag detection | d: 0.17 → 9.1 | Delay embedding study |
-| 36 | FFT and raw analysis are complementary (17+20 exclusive pairs) | varies | Spectral study |
-| 37 | kurt_mean (4th order) is independent from all 23 geometries | max r = 0.22 | Higher-order study |
-| 38 | Permutation entropy: 33x better for recurrence detection | d = 250 vs 7.5 | Higher-order study |
+| 37 | Delay embedding gives 52x improvement for lag detection | d: 0.17 → 9.1 | Delay embedding study |
+| 38 | FFT and raw analysis are complementary (17+20 exclusive pairs) | varies | Spectral study |
+| 39 | kurt_mean (4th order) is independent from all 23 geometries | max r = 0.22 | Higher-order study |
+| 40 | Permutation entropy: 33x better for recurrence detection | d = 250 vs 7.5 | Higher-order study |
 
 ### 2D Spatial Field
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 39 | Ising model: all temperatures vs random distinguished | varies | `2d/ising.py` |
-| 40 | Ising: multiscale_coherence_4 peaks near T_c | scale-free structure | `2d/ising.py` |
-| 41 | Reaction-diffusion: 15/15 morphology pairs | d = 97 (tension_std) | `2d/reaction_diffusion.py` |
-| 42 | Percolation: 28/28 probability pairs | d = 261 (n_basins) | `2d/percolation.py` |
-| 43 | Cellular automata: 14/15 rule pairs | d = 78.5 (anisotropy) | `2d/cellular_automata.py` |
-| 44 | ECB penguin detected in 2D, CBC/CTR invisible | d = -283 | `2d/ecb_penguin.py` |
-| 45 | Maze algorithms: 15/15 pairs | d = 108.9 | `2d/mazes.py` |
-| 46 | Wave equation: 15/15 source configs | d = -496 | `2d/wave_equation.py` |
-| 47 | Voronoi tessellations: 10/10 point process pairs | d = -154 | `2d/voronoi.py` |
-| 48 | Growth models: 3/3 (DLA/Eden/random) | d = -178 | `2d/growth_models.py` |
-| 49 | Sandpile SOC: 5/6 pairs, convergence detected | d = 261 | `2d/sandpile.py` |
-| 50 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
-| 51 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
+| 41 | Ising model: all temperatures vs random distinguished | varies | `2d/ising.py` |
+| 42 | Ising: multiscale_coherence_4 peaks near T_c | scale-free structure | `2d/ising.py` |
+| 43 | Reaction-diffusion: 15/15 morphology pairs | d = 97 (tension_std) | `2d/reaction_diffusion.py` |
+| 44 | Percolation: 28/28 probability pairs | d = 261 (n_basins) | `2d/percolation.py` |
+| 45 | Cellular automata: 14/15 rule pairs | d = 78.5 (anisotropy) | `2d/cellular_automata.py` |
+| 46 | ECB penguin detected in 2D, CBC/CTR invisible | d = -283 | `2d/ecb_penguin.py` |
+| 47 | Maze algorithms: 15/15 pairs | d = 108.9 | `2d/mazes.py` |
+| 48 | Wave equation: 15/15 source configs | d = -496 | `2d/wave_equation.py` |
+| 49 | Voronoi tessellations: 10/10 point process pairs | d = -154 | `2d/voronoi.py` |
+| 50 | Growth models: 3/3 (DLA/Eden/random) | d = -178 | `2d/growth_models.py` |
+| 51 | Sandpile SOC: 5/6 pairs, convergence detected | d = 261 | `2d/sandpile.py` |
+| 52 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
+| 53 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
 ## Negative Results (17)
 
@@ -122,3 +133,5 @@ These are equally important — they define the boundaries of what geometric ana
 ## Key Takeaway
 
 The framework detects genuine structure with massive effect sizes (d = 7-1166) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly.
+
+The deep Collatz investigations (collatz_deep, collatz_deep2) demonstrate a particularly striking application: five specific geometry families (Fisher, Heisenberg, Sol, Spherical, Wasserstein) detect convergence-specific structure in 3n+1 that categorically vanishes in divergent variants. The convergence mechanism has a geometric character — information-geometric, nilpotent, solvable — that is absent, not merely attenuated, in divergent maps.

@@ -1,6 +1,6 @@
 # Investigations
 
-21 self-contained investigation scripts demonstrating the framework across diverse domains.
+23 self-contained investigation scripts demonstrating the framework across diverse domains.
 
 ## Running
 
@@ -22,7 +22,7 @@ python investigations/2d/ecb_penguin.py
 
 Figures are saved to `figures/` (gitignored, generated on demand).
 
-## 1D Investigations (10)
+## 1D Investigations (12)
 
 | Script | Domain | Key Result | Dependencies |
 |--------|--------|------------|-------------|
@@ -36,6 +36,8 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/nn_weights.py` | Neural network weights | Backdoor detected (d=7.12). Dense vs conv d=11.9. | numpy |
 | `1d/compression_algos.py` | Compressed data (zlib, bz2, lzma) | bz2 vs zlib d=7.75. Algorithms distinguishable. | zlib, bz2, lzma |
 | `1d/collatz.py` | Collatz (3n+1) sequences | 7/7 encodings detected. 21/21 pairwise. 3n+1 vs 5n+1: 71 sig. | numpy |
+| `1d/collatz_deep.py` | Deep Collatz I: phase transitions | Sharp k=1→2 boundary (86→35 sig). Tropical slopes match theory. | numpy, scipy |
+| `1d/collatz_deep2.py` | Deep Collatz II: convergence anatomy | 45 convergence-specific metrics. Composition order matters. 37 drift detectors. | numpy, scipy |
 
 ## 2D Investigations (11)
 
