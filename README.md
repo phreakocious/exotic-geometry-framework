@@ -46,6 +46,14 @@ LSB steganography is invisible at the byte level (our original negative result).
 
 → `investigations/1d/chaos.py`
 
+### Collatz sequences are massively non-random (7/7 encodings, 21/21 pairwise)
+
+Seven encodings of Collatz (3n+1) dynamics — hailstone values, parity bits, stopping times, residues mod 7, high bits — all detected with 73-103 significant metrics. All 21 encoding pairs distinguished. Shuffle validation reveals hailstone structure is sequential (destroyed by shuffling) while parity is purely distributional. The 3n+1 and 5n+1 variants are geometrically distinguishable (71 metrics, d=12.8).
+
+![Collatz Analysis](docs/figures/collatz.png)
+
+→ `investigations/1d/collatz.py`
+
 ### 2D spatial analysis: phase transitions and morphologies
 
 Native 2D analysis with 15 spatial metrics (tension, curvature, anisotropy, criticality, basin structure, multiscale coherence). Each metric captures a different aspect of spatial organization.
@@ -202,6 +210,7 @@ Full catalog of all 25 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [dna.py](investigations/1d/dna.py) | DNA sequences | 291 findings |
 | [nn_weights.py](investigations/1d/nn_weights.py) | Neural network weights | Backdoor d=7.12 |
 | [compression_algos.py](investigations/1d/compression_algos.py) | Compressed data | bz2 vs zlib d=7.75 |
+| [collatz.py](investigations/1d/collatz.py) | Collatz sequences | 7/7 encodings detected, 3n+1 vs 5n+1 d=12.8 |
 
 ### 2D (spatial field analysis)
 
@@ -242,7 +251,7 @@ See [docs/NEGATIVE_RESULTS.md](docs/NEGATIVE_RESULTS.md).
 
 ## Complete Results
 
-All 45 validated findings and 17 negative results from 29 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
+All 51 validated findings and 17 negative results from 30 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
 
 ## Dependencies
 

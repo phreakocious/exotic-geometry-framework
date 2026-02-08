@@ -1,6 +1,6 @@
 # Investigations
 
-20 self-contained investigation scripts demonstrating the framework across diverse domains.
+21 self-contained investigation scripts demonstrating the framework across diverse domains.
 
 ## Running
 
@@ -22,7 +22,7 @@ python investigations/2d/ecb_penguin.py
 
 Figures are saved to `figures/` (gitignored, generated on demand).
 
-## 1D Investigations (9)
+## 1D Investigations (10)
 
 | Script | Domain | Key Result | Dependencies |
 |--------|--------|------------|-------------|
@@ -35,6 +35,7 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/dna.py` | DNA sequences (8 organism types) | 291 significant findings. All types distinguishable. | numpy |
 | `1d/nn_weights.py` | Neural network weights | Backdoor detected (d=7.12). Dense vs conv d=11.9. | numpy |
 | `1d/compression_algos.py` | Compressed data (zlib, bz2, lzma) | bz2 vs zlib d=7.75. Algorithms distinguishable. | zlib, bz2, lzma |
+| `1d/collatz.py` | Collatz (3n+1) sequences | 7/7 encodings detected. 21/21 pairwise. 3n+1 vs 5n+1: 71 sig. | numpy |
 
 ## 2D Investigations (11)
 

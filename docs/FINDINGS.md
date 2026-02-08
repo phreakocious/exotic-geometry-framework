@@ -1,8 +1,8 @@
 # Complete Findings
 
-All validated discoveries and negative results from 29 investigations across 8 rounds.
+All validated discoveries and negative results from 30 investigations across 8 rounds.
 
-## Validated Positive Findings (45)
+## Validated Positive Findings (51)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -60,30 +60,40 @@ All validated discoveries and negative results from 29 investigations across 8 r
 | 27 | bz2 output distinguishable from zlib/lzma | d = 7.75 | `1d/compression_algos.py` |
 | 28 | Compressed structured data ≠ random | d = 128 (coverage) | `1d/compression_algos.py` |
 
+### Collatz Sequences
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 29 | All 7 Collatz encodings detected as non-random | 73-103 significant metrics | `1d/collatz.py` |
+| 30 | 21/21 pairwise Collatz encoding distinctions | d = 7.4 (hailstone_small vs hailstone_large) | `1d/collatz.py` |
+| 31 | Hailstone sequences carry sequential structure (destroyed by shuffling) | coverage ratio 0.31 | `1d/collatz.py` |
+| 32 | Parity sequence is purely marginal (survives shuffling) | all ratios ≈ 1.0 | `1d/collatz.py` |
+| 33 | 3n+1 vs 5n+1 variant geometrically distinguishable | 71 sig, d = 12.8 | `1d/collatz.py` |
+| 34 | Starting number magnitude affects geometric signature | 90-98 sig metrics across ranges | `1d/collatz.py` |
+
 ### Preprocessing
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 29 | Delay embedding gives 52x improvement for lag detection | d: 0.17 → 9.1 | Delay embedding study |
-| 30 | FFT and raw analysis are complementary (17+20 exclusive pairs) | varies | Spectral study |
-| 31 | kurt_mean (4th order) is independent from all 23 geometries | max r = 0.22 | Higher-order study |
-| 32 | Permutation entropy: 33x better for recurrence detection | d = 250 vs 7.5 | Higher-order study |
+| 35 | Delay embedding gives 52x improvement for lag detection | d: 0.17 → 9.1 | Delay embedding study |
+| 36 | FFT and raw analysis are complementary (17+20 exclusive pairs) | varies | Spectral study |
+| 37 | kurt_mean (4th order) is independent from all 23 geometries | max r = 0.22 | Higher-order study |
+| 38 | Permutation entropy: 33x better for recurrence detection | d = 250 vs 7.5 | Higher-order study |
 
 ### 2D Spatial Field
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 33 | Ising model: all temperatures vs random distinguished | varies | `2d/ising.py` |
-| 34 | Ising: multiscale_coherence_4 peaks near T_c | scale-free structure | `2d/ising.py` |
-| 35 | Reaction-diffusion: 15/15 morphology pairs | d = 97 (tension_std) | `2d/reaction_diffusion.py` |
-| 36 | Percolation: 28/28 probability pairs | d = 261 (n_basins) | `2d/percolation.py` |
-| 37 | Cellular automata: 14/15 rule pairs | d = 78.5 (anisotropy) | `2d/cellular_automata.py` |
-| 38 | ECB penguin detected in 2D, CBC/CTR invisible | d = -283 | `2d/ecb_penguin.py` |
-| 39 | Maze algorithms: 15/15 pairs | d = 108.9 | `2d/mazes.py` |
-| 40 | Wave equation: 15/15 source configs | d = -496 | `2d/wave_equation.py` |
-| 41 | Voronoi tessellations: 10/10 point process pairs | d = -154 | `2d/voronoi.py` |
-| 42 | Growth models: 3/3 (DLA/Eden/random) | d = -178 | `2d/growth_models.py` |
-| 43 | Sandpile SOC: 5/6 pairs, convergence detected | d = 261 | `2d/sandpile.py` |
-| 44 | Lenia continuous CA: 12/15 configs | d = 249 | `2d/lenia.py` |
-| 45 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
+| 39 | Ising model: all temperatures vs random distinguished | varies | `2d/ising.py` |
+| 40 | Ising: multiscale_coherence_4 peaks near T_c | scale-free structure | `2d/ising.py` |
+| 41 | Reaction-diffusion: 15/15 morphology pairs | d = 97 (tension_std) | `2d/reaction_diffusion.py` |
+| 42 | Percolation: 28/28 probability pairs | d = 261 (n_basins) | `2d/percolation.py` |
+| 43 | Cellular automata: 14/15 rule pairs | d = 78.5 (anisotropy) | `2d/cellular_automata.py` |
+| 44 | ECB penguin detected in 2D, CBC/CTR invisible | d = -283 | `2d/ecb_penguin.py` |
+| 45 | Maze algorithms: 15/15 pairs | d = 108.9 | `2d/mazes.py` |
+| 46 | Wave equation: 15/15 source configs | d = -496 | `2d/wave_equation.py` |
+| 47 | Voronoi tessellations: 10/10 point process pairs | d = -154 | `2d/voronoi.py` |
+| 48 | Growth models: 3/3 (DLA/Eden/random) | d = -178 | `2d/growth_models.py` |
+| 49 | Sandpile SOC: 5/6 pairs, convergence detected | d = 261 | `2d/sandpile.py` |
+| 50 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
+| 51 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
 ## Negative Results (17)
 
