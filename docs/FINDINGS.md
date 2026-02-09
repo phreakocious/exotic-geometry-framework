@@ -1,8 +1,8 @@
 # Complete Findings
 
-All validated discoveries and negative results from 35 investigations.
+All validated discoveries and negative results from 36 investigations.
 
-## Validated Positive Findings (102)
+## Validated Positive Findings (108)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -148,6 +148,16 @@ All validated discoveries and negative results from 35 investigations.
 | 40i | Khinchin's constant: π geo_mean=2.6624 ≈ K=2.6854, ln 2 geo_mean=2.6266 | both approach K | `1d/continued_fractions.py` |
 | 40j | √3 delay embedding peaks at τ=2, matching its period-2 CF structure | τ=2 → 103 sig (vs 101 at τ=1) | `1d/continued_fractions.py` |
 
+### Unsolved Problems: Goldbach's Comet
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 41a | Goldbach g(2n) massively non-random | 86 sig metrics vs random | `1d/unsolved.py` |
+| 41b | Hardy-Littlewood prediction captures most but not all structure | 17 sig metrics beyond HL (E8, HOS lead) | `1d/unsolved.py` |
+| 41c | g(2n) has strong sequential correlations (destroyed by shuffling) | 51 sig vs shuffled | `1d/unsolved.py` |
+| 41d | g(2n) sequential structure beyond marginal distribution | 56 sig vs distribution-matched | `1d/unsolved.py` |
+| 41e | HL predicts g(2n) with r=0.992 but systematic underestimate (+19 residual) | mean residual = +19.07 | `1d/unsolved.py` |
+| 41f | Goldbach structure robust across scales (n=100 to n=200K) | 17-32 sig vs HL across ranges | `1d/unsolved.py` |
+
 ### Preprocessing
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
@@ -173,7 +183,7 @@ All validated discoveries and negative results from 35 investigations.
 | 55 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
 | 56 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
-## Negative Results (19)
+## Negative Results (21)
 
 These are equally important — they define the boundaries of what geometric analysis can and cannot do.
 
@@ -200,6 +210,8 @@ These are equally important — they define the boundaries of what geometric ana
 | 16 | Sandpile 10k ≈ 50k iterations | Both at SOC steady state |
 | 17 | Kruskal ≈ Aldous-Broder maze generation | Both produce uniform spanning trees |
 | 18 | **π CF coefficients indistinguishable from iid Gauss-Kuzmin** (0 sig, 0 ordering) | Geometry confirms "almost all" applies to π |
+| 19 | **π digits indistinguishable from random in base-256 AND base-10** (0 sig vs random, 0 vs shuffled, 0 across positions 0K-48K, 0 under delay embedding τ=1-5) | Strong geometric evidence for normality of π |
+| 19a | **e and √2 digits also indistinguishable from random** (same battery: all 0 sig) | Evidence extends to e and √2 |
 
 ## Key Takeaway
 
@@ -214,3 +226,5 @@ The number theory investigations reveal that classical limit theorems leave subs
 The continued fractions investigation provides a striking validation of Khinchin's theorem: π's CF coefficients are geometrically indistinguishable from iid Gauss-Kuzmin samples (0 sig, 0 ordering dependence), confirming that "almost all" applies to π as far as 131 exotic geometric metrics can detect. ln 2 shows a faint crack (11 sig vs GK), while algebraic constants are trivially distinguishable. The √2 control (constant sequence, 0 ordering sig) and random self-check (0 sig) validate the methodology.
 
 The RNG quality testing investigation (`rng.py`) provides a clean validation story: 10 generators spanning a quality gradient from cryptographic to historically broken. CRYPTO/GOOD generators return 0 significant metrics (self-check urandom vs urandom also 0), while RANDU (44 sig) and Middle-Square (78 sig) are massively detected. Geometric metrics outperform standard statistical tests by 11x on the worst generators. Delay embedding newly reveals XorShift128 (undetected raw), and RANDU is detectable from just 500 bytes. Different weaknesses have distinct geometric fingerprints — Penrose quasicrystal metrics detect lattice structure (d=-37), while Higher-Order Statistics catches nonlinear correlations.
+
+The unsolved problems investigation (`unsolved.py`) addresses two famous open questions. For normality of π: digits of π, e, and √2 are completely indistinguishable from random bytes across 131 geometric metrics, in both base-256 and base-10, at four different digit positions (0K-48K), and under delay embedding at τ=1-5. Combined with the CF result (π passes iid Gauss-Kuzmin), this is comprehensive geometric evidence for normality. For Goldbach's comet: g(2n) is massively structured (86 sig vs random), with strong sequential correlations (51 sig vs shuffled). The Hardy-Littlewood prediction captures most structure (r=0.992) but 17 metrics detect patterns beyond HL — primarily via E8 Lattice and Higher-Order Statistics. This gap persists across scales from n=100 to n=200K.
