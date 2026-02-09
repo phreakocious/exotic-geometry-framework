@@ -1,8 +1,8 @@
 # Exotic Geometry Framework
 
-Embed byte sequences into 24 exotic geometric spaces — E8 lattices, Heisenberg groups, tropical semirings, Penrose quasicrystals — and measure what comes out. Structure that survives the embedding is real. Structure that doesn't is noise.
+Embed byte sequences into 31 exotic geometric spaces — E8 lattices, Heisenberg groups, tropical semirings, Penrose quasicrystals, and 8 native 2D spatial geometries — and measure what comes out. Structure that survives the embedding is real. Structure that doesn't is noise.
 
-This framework treats data analysis as a question of **geometry**: different mathematical spaces are sensitive to different kinds of hidden structure. A single data stream analyzed through 24 independent lenses produces a geometric fingerprint that can distinguish chaotic maps, detect cipher weaknesses, identify DNA organisms, and find backdoors in neural network weights.
+This framework treats data analysis as a question of **geometry**: different mathematical spaces are sensitive to different kinds of hidden structure. A single data stream analyzed through 24 independent 1D lenses produces a geometric fingerprint that can distinguish chaotic maps, detect cipher weaknesses, identify DNA organisms, and find backdoors in neural network weights. For 2D fields, 8 spatial geometries (80 metrics) span differential geometry, algebraic topology, conformal analysis, integral geometry, fractal scaling, Hodge theory, and spectral analysis.
 
 ## Headline Results
 
@@ -67,7 +67,7 @@ Two follow-up investigations probe the convergence mechanism of 3n+1 from ten an
 
 ### 2D spatial analysis: phase transitions and morphologies
 
-Native 2D analysis with 15 spatial metrics (tension, curvature, anisotropy, criticality, basin structure, multiscale coherence). Each metric captures a different aspect of spatial organization.
+Native 2D analysis with 8 spatial geometries providing 80 metrics. SpatialField (tension, curvature, basins), Surface (Gaussian/mean curvature, shape index), PersistentHomology2D (sublevel persistence), Conformal2D (Cauchy-Riemann, Riesz transform), MinkowskiFunctional (excursion sets), MultiscaleFractal (lacunarity, Hurst exponent), HodgeLaplacian (Dirichlet/biharmonic energy), and SpectralPower (spectral slope, anisotropy).
 
 **Ising model** — Phase transitions detected at all temperatures. `multiscale_coherence` peaks sharply near T_c = 2.269, providing a geometric signature of criticality. Adjacent temperature pairs distinguished even at 0.1K resolution.
 
@@ -100,7 +100,15 @@ Native 2D analysis with 15 spatial metrics (tension, curvature, anisotropy, crit
 ![Lenia](docs/figures/lenia.png)
 ![Sandpile](docs/figures/sandpile.png)
 
-→ See `investigations/2d/` for all 11 scripts
+→ See `investigations/2d/` for all 12 scripts
+
+### Prime number sequences (7/7 encodings, 21/21 pairwise, primes ≠ Cramér model)
+
+Seven encodings of prime sequences — gaps, residues mod 256, last digits, binary expansion, gap pairs, mod 30#, second differences — all massively non-random (49-100 significant metrics). All 21 encoding pairs distinguished. Every encoding has ordering-dependent structure (destroyed by shuffling), but most also carry distributional structure that survives shuffling. Prime gaps are distinguishable from the Cramér probabilistic model (55 sig) and from semiprime gaps (80 sig) — there is geometric structure specific to primality. Gap geometry evolves with prime size: all 6 range pairs distinguished (68-82 sig), consistent with growing mean gap.
+
+![Primes](docs/figures/primes.png)
+
+→ `investigations/1d/primes.py`
 
 ## Quick Start
 
@@ -155,8 +163,9 @@ from exotic_geometry_framework import GeometryAnalyzer, SpatialFieldGeometry
 
 field = np.random.rand(64, 64)
 
-# Via analyzer
+# All 8 spatial geometries (80 metrics)
 analyzer = GeometryAnalyzer().add_spatial_geometries()
+results = analyzer.analyze(field)
 
 # Or standalone
 geom = SpatialFieldGeometry()
@@ -203,8 +212,12 @@ encoded = encode_float_to_unit(float_array)
 | **Cantor** | `coverage` | Fractal/binary patterns | Pruned NN d=1.3B |
 | **Penrose** | `fivefold_balance` | Quasiperiodic/chaotic | Lorenz d=60 |
 | **SpatialField** (2D) | `n_basins`, `coherence` | Spatial structure | Percolation d=261 |
+| **Surface** (2D) | `gaussian_curvature` | Height map geometry | Stego curvedness d=-6.1 |
+| **Conformal2D** (2D) | `cauchy_riemann_residual` | Angle preservation | Riesz amplitude d=+7.0 |
+| **PersistentHomology2D** (2D) | `sub_total_persistence` | Component lifetimes | 9.0 sig/pair avg |
+| **SpectralPower** (2D) | `spectral_slope` | Frequency structure | 1/f^β power law |
 
-Full catalog of all 25 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATALOG.md)
+Full catalog of all 31 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATALOG.md)
 
 ## Investigations
 
@@ -225,6 +238,7 @@ Full catalog of all 25 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [collatz.py](investigations/1d/collatz.py) | Collatz sequences | 7/7 encodings detected, 3n+1 vs 5n+1 d=12.8 |
 | [collatz_deep.py](investigations/1d/collatz_deep.py) | Deep Collatz I | Sharp k=1→2 phase boundary, tropical slopes match theory |
 | [collatz_deep2.py](investigations/1d/collatz_deep2.py) | Deep Collatz II | 45 convergence-specific metrics, 5 geometry families go dark at k=2 |
+| [primes.py](investigations/1d/primes.py) | Prime numbers | 7/7 encodings, 21/21 pairwise. Primes vs Cramér model: 55 sig |
 
 ### 2D (spatial field analysis)
 
@@ -241,6 +255,7 @@ Full catalog of all 25 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [growth_models.py](investigations/2d/growth_models.py) | DLA/Eden/random | 3/3 pairs |
 | [sandpile.py](investigations/2d/sandpile.py) | Self-organized criticality | SOC convergence |
 | [lenia.py](investigations/2d/lenia.py) | Continuous CA | 15/15 configs |
+| [stego_bitmatrix.py](investigations/2d/stego_bitmatrix.py) | 2D stego detection | Co-occurrence SS=14/15, diff grid LSBMR=14 sig |
 
 ## Statistical Methodology
 
@@ -266,7 +281,7 @@ See [docs/NEGATIVE_RESULTS.md](docs/NEGATIVE_RESULTS.md).
 
 ## Complete Results
 
-All 62 validated findings and 17 negative results from 32 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
+All 92 validated findings and 17 negative results from 34 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
 
 ## Dependencies
 

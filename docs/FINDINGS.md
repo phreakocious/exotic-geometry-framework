@@ -2,7 +2,7 @@
 
 All validated discoveries and negative results from 34 investigations.
 
-## Validated Positive Findings (89)
+## Validated Positive Findings (92)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -26,6 +26,9 @@ All validated discoveries and negative results from 34 investigations.
 | 9d | 2D co-occurrence matrix detects PVD and SS via spatial metrics alone | PVD: 13/15, SS: 14/15; tension_mean d=−5.6 | `2d/stego_bitmatrix.py` |
 | 9e | 2D diff grid amplifies LSBMR from near-invisible to solidly detected | 14 sig (up from 2–6 in 1D); Wasserstein d=−1.36 | `2d/stego_bitmatrix.py` |
 | 9f | 2D representation choice is critical — co-occurrence Σ=27, diff grid Σ=24, bitplane tiled Σ=0 | binary grids kill SpatialField metric variance | `2d/stego_bitmatrix.py` |
+| 9g | 8 spatial geometries (80 metrics) nearly 4x PVD/SS detection on co-occurrence | PVD: 13→49, SS: 14→52; every geometry contributes unique detections | Framework 2D battery |
+| 9h | HodgeLaplacian saturates co-occurrence detection (8/9 metrics); SpectralPower adds 7/8 | Laplacian energy, Poisson recovery, spectral slope are new detection axes | Framework 2D battery |
+| 9i | 10 diverse 2D field types: all 45 pairwise distinguished by 8 spatial geometries | min 45/80 sig (Stripes vs Spirals), max 78/80 (Checkerboard vs Voronoi) | 2D field type validation |
 
 ### PRNG Testing
 | # | Finding | Effect Size | Investigation |
@@ -125,7 +128,7 @@ All validated discoveries and negative results from 34 investigations.
 | 42 | kurt_mean (4th order) is independent from all 23 geometries | max r = 0.22 | Higher-order study |
 | 43 | Permutation entropy: 33x better for recurrence detection | d = 250 vs 7.5 | Higher-order study |
 
-### 2D Spatial Field
+### 2D Spatial Field (8 geometries, 80 metrics)
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
 | 44 | Ising model: all temperatures vs random distinguished | varies | `2d/ising.py` |
@@ -171,6 +174,8 @@ These are equally important — they define the boundaries of what geometric ana
 ## Key Takeaway
 
 The framework detects genuine structure with large effect sizes (d = 7-266) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly.
+
+The 2D spatial geometry battery (8 geometries, 80 metrics) demonstrates that genuinely different mathematical lenses — differential geometry (Surface), algebraic topology (PersistentHomology2D), complex analysis (Conformal2D), integral geometry (MinkowskiFunctional), scaling analysis (MultiscaleFractal), Hodge theory (HodgeLaplacian), and spectral analysis (SpectralPower) — each contribute unique discriminative power. On stego co-occurrence matrices, PVD detection jumps from 13/15 (SpatialField alone) to 49/80 (all 8 geometries). On 10 diverse field types, all 45 pairs are distinguished.
 
 The deep Collatz investigations (collatz_deep, collatz_deep2) demonstrate a particularly striking application: five specific geometry families (Fisher, Heisenberg, Sol, Spherical, Wasserstein) detect convergence-specific structure in 3n+1 that categorically vanishes in divergent variants. The convergence mechanism has a geometric character — information-geometric, nilpotent, solvable — that is absent, not merely attenuated, in divergent maps.
 

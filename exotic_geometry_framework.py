@@ -4,7 +4,7 @@ Exotic Geometry Framework for Data Analysis
 A reusable framework for applying exotic geometries to detect hidden structure in data.
 Each geometry provides a consistent API for embedding data and computing metrics.
 
-AVAILABLE GEOMETRIES (24 total):
+AVAILABLE GEOMETRIES (31 total):
 
   Lattice/Discrete:
     - E8Geometry: 240 roots in 8D, detects algebraic constraints (validated d=2.34)
@@ -50,6 +50,20 @@ AVAILABLE GEOMETRIES (24 total):
   Spatial (opt-in, not in add_all_geometries):
     - SpatialFieldGeometry: native 2D field analysis — gradient tension,
       Hessian anisotropy, basin detection, multi-scale coherence
+    - SurfaceGeometry: differential geometry of height maps — Gaussian/mean
+      curvature, shape index, curvedness, Gauss-Bonnet integral
+    - PersistentHomology2DGeometry: sublevel/superlevel persistence on 2D
+      grids — component lifetimes, persistence entropy, asymmetry
+    - ConformalGeometry2D: conformal analysis — Cauchy-Riemann residual,
+      Riesz transform, structure isotropy, Liouville curvature
+    - MinkowskiFunctionalGeometry: integral geometry — area, boundary, Euler
+      characteristic of excursion sets at multiple thresholds (Hadwiger)
+    - MultiscaleFractalGeometry: fractal/scaling analysis — box-counting
+      dimension, lacunarity, Hurst exponent, fluctuation scaling
+    - HodgeLaplacianGeometry: Hodge-Laplacian analysis — Dirichlet/biharmonic
+      energy, Poisson recovery, gradient coherence, spectral gap
+    - SpectralPowerGeometry: 2D FFT power spectrum — spectral slope β,
+      centroid, entropy, anisotropy, high-frequency ratio
 
 PREPROCESSING UTILITIES:
     - delay_embed(data, tau): Takens delay embedding, pairs byte[i] with byte[i+τ]
@@ -102,6 +116,8 @@ Usage:
 """
 
 import math
+import os
+import json
 import numpy as np
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -3000,6 +3016,1097 @@ class SpatialFieldGeometry(ExoticGeometry):
         )
 
 
+class SurfaceGeometry(ExoticGeometry):
+    """Differential geometry of 2D fields as height maps z = f(x,y).
+
+    Computes Gaussian/mean curvature, shape index, curvedness, and the
+    Gauss-Bonnet integral — invariants from classical surface theory.
+
+    Gaussian curvature K is intrinsic (preserved by bending); mean curvature H
+    is extrinsic (depends on embedding). Shape index classifies local shape
+    from cup (-1) through saddle (0) to cap (+1). The Gauss-Bonnet integral
+    ∫∫ K dA is a topological invariant related to Euler characteristic.
+
+    Parameters
+    ----------
+    max_field_size : int
+        Fields larger than this are block-averaged down.
+    """
+
+    def __init__(self, max_field_size: int = 128):
+        self._max_field_size = max_field_size
+
+    @property
+    def name(self) -> str:
+        return "Surface"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "2D"
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 2:
+            return data
+        data = data.flatten()
+        n = len(data)
+        side = int(np.ceil(np.sqrt(n)))
+        padded = np.full(side * side, np.mean(data))
+        padded[:n] = data
+        return padded.reshape(side, side)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def _downsample(self, field: np.ndarray) -> np.ndarray:
+        H, W = field.shape
+        if H <= self._max_field_size and W <= self._max_field_size:
+            return field
+        scale = max(H, W) / self._max_field_size
+        bh = max(1, int(np.ceil(scale)))
+        new_H, new_W = H // bh, W // bh
+        if new_H < 4 or new_W < 4:
+            return field[:4, :4]
+        trimmed = field[:new_H * bh, :new_W * bh]
+        return trimmed.reshape(new_H, bh, new_W, bh).mean(axis=(1, 3))
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        field = self._downsample(self.validate_data(data))
+        metrics: Dict[str, float] = {}
+
+        # First derivatives
+        fy, fx = np.gradient(field)
+        # Second derivatives
+        fyy, fxy = np.gradient(fy)
+        _, fxx = np.gradient(fx)
+
+        # Metric tensor quantities
+        fx2 = fx ** 2
+        fy2 = fy ** 2
+        denom_sq = 1.0 + fx2 + fy2  # (1 + |∇f|²)
+
+        # Gaussian curvature: K = (fxx·fyy - fxy²) / (1 + fx² + fy²)²
+        K = (fxx * fyy - fxy ** 2) / (denom_sq ** 2 + 1e-12)
+        metrics['gaussian_curvature_mean'] = float(np.mean(K))
+        metrics['gaussian_curvature_std'] = float(np.std(K))
+
+        # Mean curvature: H = ((1+fy²)fxx - 2·fx·fy·fxy + (1+fx²)fyy) / (2·(1+|∇f|²)^(3/2))
+        H_num = (1 + fy2) * fxx - 2 * fx * fy * fxy + (1 + fx2) * fyy
+        H = H_num / (2.0 * denom_sq ** 1.5 + 1e-12)
+        metrics['mean_curvature_mean'] = float(np.mean(H))
+        metrics['mean_curvature_std'] = float(np.std(H))
+
+        # Principal curvatures: κ₁,₂ = H ± √(H² - K)
+        discriminant = np.maximum(H ** 2 - K, 0.0)
+        sqrt_disc = np.sqrt(discriminant)
+        kappa1 = H + sqrt_disc
+        kappa2 = H - sqrt_disc
+
+        # Shape index: S = (2/π)·arctan((κ₁+κ₂)/(κ₁-κ₂))
+        ksum = kappa1 + kappa2
+        kdiff = kappa1 - kappa2
+        with np.errstate(divide='ignore', invalid='ignore'):
+            S = (2.0 / np.pi) * np.arctan2(ksum, kdiff + 1e-12)
+        S = np.nan_to_num(S, nan=0.0)
+        metrics['shape_index_mean'] = float(np.mean(S))
+        metrics['shape_index_std'] = float(np.std(S))
+
+        # Curvedness: C = √((κ₁² + κ₂²) / 2)
+        C = np.sqrt((kappa1 ** 2 + kappa2 ** 2) / 2.0)
+        metrics['curvedness_mean'] = float(np.mean(C))
+
+        # Gauss-Bonnet integral: ∫∫ K √(1+|∇f|²) dx dy
+        dA = np.sqrt(denom_sq)
+        metrics['gauss_bonnet_integral'] = float(np.sum(K * dA))
+
+        # Total metric area: ∫∫ √(1+|∇f|²) dx dy
+        metrics['total_metric_area'] = float(np.sum(dA))
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+class PersistentHomology2DGeometry(ExoticGeometry):
+    """Sublevel/superlevel set persistence on 2D grids via union-find.
+
+    Computes H₀ (connected component) persistence for both sublevel sets
+    (low→high threshold) and superlevel sets (high→low). Metrics capture
+    the birth-death structure of topological features.
+
+    Unlike the 1D PersistentHomologyGeometry (which builds a VR complex on
+    byte pairs), this works natively on the grid's 4-connectivity.
+
+    Parameters
+    ----------
+    max_field_size : int
+        Fields larger than this are block-averaged down.
+    """
+
+    def __init__(self, max_field_size: int = 128):
+        self._max_field_size = max_field_size
+
+    @property
+    def name(self) -> str:
+        return "PersistentHomology2D"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "2D"
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 2:
+            return data
+        data = data.flatten()
+        n = len(data)
+        side = int(np.ceil(np.sqrt(n)))
+        padded = np.full(side * side, np.mean(data))
+        padded[:n] = data
+        return padded.reshape(side, side)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def _downsample(self, field: np.ndarray) -> np.ndarray:
+        H, W = field.shape
+        if H <= self._max_field_size and W <= self._max_field_size:
+            return field
+        scale = max(H, W) / self._max_field_size
+        bh = max(1, int(np.ceil(scale)))
+        new_H, new_W = H // bh, W // bh
+        if new_H < 4 or new_W < 4:
+            return field[:4, :4]
+        trimmed = field[:new_H * bh, :new_W * bh]
+        return trimmed.reshape(new_H, bh, new_W, bh).mean(axis=(1, 3))
+
+    def _persistence_h0(self, values: np.ndarray, H: int, W: int) -> list:
+        """Compute H₀ persistence via union-find on a flat array of pixel values.
+
+        Parameters
+        ----------
+        values : 1D array of pixel values (flat view of 2D grid)
+        H, W : grid dimensions
+
+        Returns
+        -------
+        List of (birth, death) persistence pairs.
+        """
+        n = H * W
+        parent = np.arange(n)
+        rank = np.zeros(n, dtype=np.int32)
+        birth = values.copy()  # birth value of each component
+        alive = np.zeros(n, dtype=bool)
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a, b, threshold):
+            ra, rb = find(a), find(b)
+            if ra == rb:
+                return None
+            # Elder rule: component born earlier (lower value) survives
+            if birth[ra] > birth[rb]:
+                ra, rb = rb, ra
+            # rb dies (younger component)
+            pair = (float(birth[rb]), float(threshold))
+            if rank[ra] < rank[rb]:
+                rank[ra], rank[rb] = rank[rb], rank[ra]
+            parent[rb] = ra
+            if rank[ra] == rank[rb]:
+                rank[ra] += 1
+            return pair
+
+        # Process pixels in order of increasing value (sublevel filtration)
+        order = np.argsort(values)
+        pairs = []
+        offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # 4-connectivity
+
+        for idx in order:
+            alive[idx] = True
+            r, c = divmod(int(idx), W)
+            for dr, dc in offsets:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < H and 0 <= nc < W:
+                    nidx = nr * W + nc
+                    if alive[nidx]:
+                        pair = union(idx, nidx, values[idx])
+                        if pair is not None:
+                            pairs.append(pair)
+
+        return pairs
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        field = self._downsample(self.validate_data(data))
+        H, W = field.shape
+        flat = field.ravel()
+        metrics: Dict[str, float] = {}
+
+        # Sublevel persistence (low → high)
+        sub_pairs = self._persistence_h0(flat, H, W)
+        sub_lifetimes = np.array([d - b for b, d in sub_pairs]) if sub_pairs else np.array([0.0])
+        sub_lifetimes = sub_lifetimes[sub_lifetimes > 0]
+        if len(sub_lifetimes) == 0:
+            sub_lifetimes = np.array([0.0])
+
+        metrics['sub_total_persistence'] = float(np.sum(sub_lifetimes))
+        metrics['sub_max_persistence'] = float(np.max(sub_lifetimes))
+        metrics['sub_n_components'] = float(len(sub_lifetimes))
+
+        # Superlevel persistence (high → low): negate values
+        super_pairs = self._persistence_h0(-flat, H, W)
+        super_lifetimes = np.array([d - b for b, d in super_pairs]) if super_pairs else np.array([0.0])
+        super_lifetimes = super_lifetimes[super_lifetimes > 0]
+        if len(super_lifetimes) == 0:
+            super_lifetimes = np.array([0.0])
+
+        metrics['super_total_persistence'] = float(np.sum(super_lifetimes))
+        metrics['super_max_persistence'] = float(np.max(super_lifetimes))
+        metrics['super_n_components'] = float(len(super_lifetimes))
+
+        # Persistence entropy (sublevel)
+        total = np.sum(sub_lifetimes)
+        if total > 0:
+            probs = sub_lifetimes / total
+            probs = probs[probs > 0]
+            metrics['persistence_entropy'] = float(-np.sum(probs * np.log(probs)))
+        else:
+            metrics['persistence_entropy'] = 0.0
+
+        # Asymmetry between sublevel and superlevel
+        s_total = metrics['sub_total_persistence']
+        u_total = metrics['super_total_persistence']
+        if s_total + u_total > 0:
+            metrics['persistence_asymmetry'] = float(abs(s_total - u_total) / (s_total + u_total))
+        else:
+            metrics['persistence_asymmetry'] = 0.0
+
+        # Number of persistent features (lifetime > median)
+        all_lifetimes = np.concatenate([sub_lifetimes, super_lifetimes])
+        med = np.median(all_lifetimes)
+        metrics['n_persistent_features'] = float(np.sum(all_lifetimes > med))
+
+        # Range ratio
+        total_all = np.sum(all_lifetimes)
+        if total_all > 0:
+            metrics['persistence_range_ratio'] = float(np.max(all_lifetimes) / total_all)
+        else:
+            metrics['persistence_range_ratio'] = 0.0
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+class ConformalGeometry2D(ExoticGeometry):
+    """Conformal analysis of 2D fields.
+
+    Measures departure from conformal (angle-preserving) structure using
+    Cauchy-Riemann residuals, the Riesz transform (2D Hilbert transform via FFT),
+    structure tensor isotropy, and Liouville curvature.
+
+    Random fields have high conformal distortion and uniform orientation entropy.
+    Structured fields exhibit lower distortion and orientation bias.
+
+    Parameters
+    ----------
+    max_field_size : int
+        Fields larger than this are block-averaged down.
+    """
+
+    def __init__(self, max_field_size: int = 128):
+        self._max_field_size = max_field_size
+
+    @property
+    def name(self) -> str:
+        return "Conformal2D"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "2D"
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 2:
+            return data
+        data = data.flatten()
+        n = len(data)
+        side = int(np.ceil(np.sqrt(n)))
+        padded = np.full(side * side, np.mean(data))
+        padded[:n] = data
+        return padded.reshape(side, side)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def _downsample(self, field: np.ndarray) -> np.ndarray:
+        H, W = field.shape
+        if H <= self._max_field_size and W <= self._max_field_size:
+            return field
+        scale = max(H, W) / self._max_field_size
+        bh = max(1, int(np.ceil(scale)))
+        new_H, new_W = H // bh, W // bh
+        if new_H < 4 or new_W < 4:
+            return field[:4, :4]
+        trimmed = field[:new_H * bh, :new_W * bh]
+        return trimmed.reshape(new_H, bh, new_W, bh).mean(axis=(1, 3))
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        field = self._downsample(self.validate_data(data))
+        H, W = field.shape
+        metrics: Dict[str, float] = {}
+
+        # Gradients
+        fy, fx = np.gradient(field)
+
+        # --- Structure tensor ---
+        # J = [[Σfx², Σfxfy], [Σfxfy, Σfy²]]  (locally averaged)
+        Jxx = fx ** 2
+        Jxy = fx * fy
+        Jyy = fy ** 2
+
+        # Local averaging via 3x3 box filter
+        from scipy.ndimage import uniform_filter
+        Jxx_s = uniform_filter(Jxx, size=3)
+        Jxy_s = uniform_filter(Jxy, size=3)
+        Jyy_s = uniform_filter(Jyy, size=3)
+
+        # Eigenvalues of structure tensor
+        trace = Jxx_s + Jyy_s
+        det = Jxx_s * Jyy_s - Jxy_s ** 2
+        disc = np.maximum(trace ** 2 - 4 * det, 0.0)
+        sqrt_disc = np.sqrt(disc)
+        lam1 = (trace + sqrt_disc) / 2.0
+        lam2 = (trace - sqrt_disc) / 2.0
+
+        # Structure isotropy: 1 - (λ₁ - λ₂)/(λ₁ + λ₂ + ε)
+        isotropy = 1.0 - (lam1 - lam2) / (lam1 + lam2 + 1e-12)
+        metrics['structure_isotropy'] = float(np.mean(isotropy))
+
+        # Conformal distortion: log(λ₁ / (λ₂ + ε)) — log-ratio of max to min stretch
+        with np.errstate(divide='ignore', invalid='ignore'):
+            distortion = np.log(lam1 / (lam2 + 1e-12) + 1.0)
+        distortion = np.clip(distortion, 0.0, 20.0)
+        metrics['conformal_distortion_mean'] = float(np.mean(distortion))
+        metrics['conformal_distortion_std'] = float(np.std(distortion))
+
+        # Liouville curvature: Δ(log(conformal_factor))
+        # conformal factor ≈ √(λ₁) (dominant stretch)
+        log_cf = np.log(np.sqrt(np.maximum(lam1, 1e-12)) + 1e-12)
+        laplacian_log_cf = (
+            np.gradient(np.gradient(log_cf, axis=0), axis=0)
+            + np.gradient(np.gradient(log_cf, axis=1), axis=1)
+        )
+        metrics['liouville_curvature_mean'] = float(np.mean(laplacian_log_cf))
+        metrics['liouville_curvature_std'] = float(np.std(laplacian_log_cf))
+
+        # Harmonic residual: ||Δf|| / ||f||
+        laplacian_f = (
+            np.gradient(np.gradient(field, axis=0), axis=0)
+            + np.gradient(np.gradient(field, axis=1), axis=1)
+        )
+        f_norm = np.sqrt(np.mean(field ** 2)) + 1e-12
+        metrics['harmonic_residual'] = float(np.sqrt(np.mean(laplacian_f ** 2)) / f_norm)
+
+        # --- Riesz transform via FFT ---
+        F = np.fft.fft2(field)
+        freqs_y = np.fft.fftfreq(H).reshape(-1, 1)
+        freqs_x = np.fft.fftfreq(W).reshape(1, -1)
+        mag_freq = np.sqrt(freqs_x ** 2 + freqs_y ** 2)
+        mag_freq[0, 0] = 1.0  # avoid division by zero at DC
+
+        # Riesz kernels: -i * k_j / |k|
+        Rx = np.fft.ifft2(F * (-1j * freqs_x / mag_freq)).real
+        Ry = np.fft.ifft2(F * (-1j * freqs_y / mag_freq)).real
+
+        riesz_amp = np.sqrt(Rx ** 2 + Ry ** 2)
+        metrics['riesz_amplitude_mean'] = float(np.mean(riesz_amp))
+
+        # Riesz orientation entropy
+        riesz_angle = np.arctan2(Ry, Rx + 1e-12)
+        n_bins = 36
+        hist, _ = np.histogram(riesz_angle, bins=n_bins, range=(-np.pi, np.pi))
+        hist = hist / (hist.sum() + 1e-12)
+        hist = hist[hist > 0]
+        max_entropy = np.log(n_bins)
+        metrics['riesz_orientation_entropy'] = float(-np.sum(hist * np.log(hist)) / max_entropy) if max_entropy > 0 else 0.0
+
+        # Cauchy-Riemann residual: treat (field, Ry) as (u, v) of complex function
+        # C-R equations: ∂u/∂x = ∂v/∂y, ∂u/∂y = -∂v/∂x
+        vy, vx = np.gradient(Ry)
+        cr1 = fx - vy  # ∂u/∂x - ∂v/∂y
+        cr2 = fy + vx  # ∂u/∂y + ∂v/∂x
+        cr_residual = np.sqrt(cr1 ** 2 + cr2 ** 2)
+        grad_norm_mean = np.mean(np.sqrt(fx ** 2 + fy ** 2)) + 1e-12
+        metrics['cauchy_riemann_residual'] = float(np.mean(cr_residual) / grad_norm_mean)
+
+        # Analytic energy fraction: energy in "positive frequency" half
+        total_energy = np.sum(np.abs(F) ** 2)
+        # Analytic signal: zero out negative frequencies
+        F_analytic = F.copy()
+        # For 2D, "analytic" = keep only positive kx half
+        half = W // 2
+        F_analytic[:, half + 1:] = 0
+        analytic_energy = np.sum(np.abs(F_analytic) ** 2)
+        metrics['analytic_energy_fraction'] = float(analytic_energy / (total_energy + 1e-12))
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+class MinkowskiFunctionalGeometry(ExoticGeometry):
+    """Integral geometry of 2D fields via Minkowski functionals.
+
+    From Hadwiger's theorem: any additive, motion-invariant, continuous
+    valuation on convex bodies in ℝ² is a linear combination of three
+    Minkowski functionals — area (V₀), perimeter (V₁), and Euler
+    characteristic (V₂).
+
+    We threshold the field at multiple levels and compute all three
+    functionals for each excursion set {f > t}. The resulting functional
+    curves encode the complete morphological structure of the field.
+
+    Used in cosmology (CMB analysis), materials science, and stochastic
+    geometry. Captures level-set topology that curvature and persistence miss.
+
+    Parameters
+    ----------
+    max_field_size : int
+        Fields larger than this are block-averaged down.
+    n_thresholds : int
+        Number of threshold levels to sweep.
+    """
+
+    def __init__(self, max_field_size: int = 128, n_thresholds: int = 11):
+        self._max_field_size = max_field_size
+        self._n_thresholds = n_thresholds
+
+    @property
+    def name(self) -> str:
+        return "MinkowskiFunctional"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "2D"
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 2:
+            return data
+        data = data.flatten()
+        n = len(data)
+        side = int(np.ceil(np.sqrt(n)))
+        padded = np.full(side * side, np.mean(data))
+        padded[:n] = data
+        return padded.reshape(side, side)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def _downsample(self, field: np.ndarray) -> np.ndarray:
+        H, W = field.shape
+        if H <= self._max_field_size and W <= self._max_field_size:
+            return field
+        scale = max(H, W) / self._max_field_size
+        bh = max(1, int(np.ceil(scale)))
+        new_H, new_W = H // bh, W // bh
+        if new_H < 4 or new_W < 4:
+            return field[:4, :4]
+        trimmed = field[:new_H * bh, :new_W * bh]
+        return trimmed.reshape(new_H, bh, new_W, bh).mean(axis=(1, 3))
+
+    def _excursion_functionals(self, binary: np.ndarray) -> tuple:
+        """Compute Minkowski functionals for a binary excursion set.
+
+        Returns (area_fraction, boundary_density, euler_density).
+        Uses the marching squares approach for boundary and Euler characteristic.
+        """
+        H, W = binary.shape
+        n_pixels = H * W
+
+        # V₀: area fraction
+        area = float(np.sum(binary)) / n_pixels
+
+        # V₁: boundary density — count edges between 0 and 1
+        h_edges = np.sum(binary[:, :-1] != binary[:, 1:])
+        v_edges = np.sum(binary[:-1, :] != binary[1:, :])
+        boundary = float(h_edges + v_edges) / n_pixels
+
+        # V₂: Euler characteristic density via 2×2 quad counting
+        # For each 2×2 block, count vertices in the excursion set
+        # χ = (n₁ - n₃ + 2·n_diag) / 4  where n_k = quads with k corners set
+        # Simpler: χ = V - E + F for the excursion boundary
+        # Use the efficient formula: χ = Σ q₁ - Σ q₃ + 2·Σ q_d
+        if H < 2 or W < 2:
+            euler = 0.0
+        else:
+            quads = (binary[:-1, :-1].astype(int) + binary[:-1, 1:].astype(int) +
+                     binary[1:, :-1].astype(int) + binary[1:, 1:].astype(int))
+            # Count quads by vertex count
+            n1 = np.sum(quads == 1)
+            n3 = np.sum(quads == 3)
+            # Diagonal configurations (checkerboard 2×2): both diagonals set
+            diag1 = (binary[:-1, :-1] == 1) & (binary[1:, 1:] == 1) & \
+                     (binary[:-1, 1:] == 0) & (binary[1:, :-1] == 0)
+            diag2 = (binary[:-1, 1:] == 1) & (binary[1:, :-1] == 1) & \
+                     (binary[:-1, :-1] == 0) & (binary[1:, 1:] == 0)
+            n_diag = np.sum(diag1) + np.sum(diag2)
+            euler = float(n1 - n3 + 2 * n_diag) / (4.0 * n_pixels)
+
+        return area, boundary, euler
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        field = self._downsample(self.validate_data(data))
+        metrics: Dict[str, float] = {}
+
+        fmin, fmax = float(np.min(field)), float(np.max(field))
+        if fmax - fmin < 1e-12:
+            # Constant field — all functionals are trivial
+            for prefix in ['area', 'boundary', 'euler']:
+                metrics[f'{prefix}_mean'] = 0.0
+                metrics[f'{prefix}_std'] = 0.0
+            metrics['euler_max'] = 0.0
+            metrics['euler_max_threshold'] = 0.5
+            metrics['boundary_max'] = 0.0
+            metrics['area_auc'] = 0.0
+            return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+        # Sweep thresholds from 5th to 95th percentile
+        thresholds = np.linspace(
+            np.percentile(field, 5), np.percentile(field, 95), self._n_thresholds
+        )
+
+        areas, boundaries, eulers = [], [], []
+        for t in thresholds:
+            binary = (field > t).astype(np.int8)
+            a, b, e = self._excursion_functionals(binary)
+            areas.append(a)
+            boundaries.append(b)
+            eulers.append(e)
+
+        areas = np.array(areas)
+        boundaries = np.array(boundaries)
+        eulers = np.array(eulers)
+
+        # Area functional statistics
+        metrics['area_mean'] = float(np.mean(areas))
+        metrics['area_std'] = float(np.std(areas))
+        _trapz = getattr(np, 'trapezoid', getattr(np, 'trapz', None))
+        metrics['area_auc'] = float(_trapz(areas, np.linspace(0, 1, len(areas))))
+
+        # Boundary functional statistics
+        metrics['boundary_mean'] = float(np.mean(boundaries))
+        metrics['boundary_std'] = float(np.std(boundaries))
+        metrics['boundary_max'] = float(np.max(boundaries))
+
+        # Euler characteristic statistics
+        metrics['euler_mean'] = float(np.mean(eulers))
+        metrics['euler_std'] = float(np.std(eulers))
+        metrics['euler_max'] = float(np.max(np.abs(eulers)))
+        # Threshold at which Euler characteristic is maximized (topology most complex)
+        idx_max = int(np.argmax(np.abs(eulers)))
+        metrics['euler_max_threshold'] = float(
+            (thresholds[idx_max] - fmin) / (fmax - fmin + 1e-12)
+        )
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+class MultiscaleFractalGeometry(ExoticGeometry):
+    """Multiscale fractal analysis of 2D fields.
+
+    Computes fractal dimension via 2D box-counting, lacunarity (gap structure
+    at multiple scales), and the Hurst exponent (long-range dependence via
+    rescaled range analysis on rows/columns).
+
+    Stego subtly breaks self-similarity across scales — the fractal
+    dimension may stay similar, but lacunarity (how "gappy" the structure is)
+    and the Hurst exponent shift detectably.
+
+    Parameters
+    ----------
+    max_field_size : int
+        Fields larger than this are block-averaged down.
+    """
+
+    def __init__(self, max_field_size: int = 128):
+        self._max_field_size = max_field_size
+
+    @property
+    def name(self) -> str:
+        return "MultiscaleFractal"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "2D"
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 2:
+            return data
+        data = data.flatten()
+        n = len(data)
+        side = int(np.ceil(np.sqrt(n)))
+        padded = np.full(side * side, np.mean(data))
+        padded[:n] = data
+        return padded.reshape(side, side)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def _downsample(self, field: np.ndarray) -> np.ndarray:
+        H, W = field.shape
+        if H <= self._max_field_size and W <= self._max_field_size:
+            return field
+        scale = max(H, W) / self._max_field_size
+        bh = max(1, int(np.ceil(scale)))
+        new_H, new_W = H // bh, W // bh
+        if new_H < 4 or new_W < 4:
+            return field[:4, :4]
+        trimmed = field[:new_H * bh, :new_W * bh]
+        return trimmed.reshape(new_H, bh, new_W, bh).mean(axis=(1, 3))
+
+    def _box_counting_dim(self, field: np.ndarray, threshold: float) -> float:
+        """2D box-counting dimension of the excursion set {f > threshold}."""
+        binary = (field > threshold).astype(np.int8)
+        H, W = binary.shape
+        min_dim = min(H, W)
+        if min_dim < 4:
+            return 2.0
+
+        sizes = []
+        counts = []
+        box_size = 2
+        while box_size <= min_dim // 2:
+            # Count non-empty boxes
+            nH, nW = H // box_size, W // box_size
+            trimmed = binary[:nH * box_size, :nW * box_size]
+            blocks = trimmed.reshape(nH, box_size, nW, box_size)
+            occupied = np.any(blocks, axis=(1, 3)).sum()
+            if occupied > 0:
+                sizes.append(box_size)
+                counts.append(int(occupied))
+            box_size *= 2
+
+        if len(sizes) < 2:
+            return 2.0
+
+        log_sizes = np.log(1.0 / np.array(sizes, dtype=np.float64))
+        log_counts = np.log(np.array(counts, dtype=np.float64))
+        coeffs = np.polyfit(log_sizes, log_counts, 1)
+        return float(np.clip(coeffs[0], 0.0, 3.0))
+
+    def _lacunarity(self, field: np.ndarray, box_sizes: list) -> np.ndarray:
+        """Gliding-box lacunarity at multiple scales.
+
+        Λ(r) = <M²>/<M>² where M is the mass (sum) in each box of size r.
+        Λ=1 for perfectly uniform, Λ>1 for gappy/clustered structure.
+        """
+        H, W = field.shape
+        lacs = []
+        for r in box_sizes:
+            if r > min(H, W):
+                lacs.append(1.0)
+                continue
+            # Compute box sums via cumulative sum
+            cumsum = np.cumsum(np.cumsum(field, axis=0), axis=1)
+            # Pad with zeros for easy box sum computation
+            padded = np.zeros((H + 1, W + 1))
+            padded[1:, 1:] = cumsum
+            # Box sums for all positions
+            box_sums = (padded[r:, r:] - padded[r:, :-r] -
+                        padded[:-r, r:] + padded[:-r, :-r])
+            if box_sums.size == 0:
+                lacs.append(1.0)
+                continue
+            mean_m = np.mean(box_sums)
+            mean_m2 = np.mean(box_sums ** 2)
+            if mean_m > 1e-12:
+                lacs.append(float(mean_m2 / (mean_m ** 2)))
+            else:
+                lacs.append(1.0)
+        return np.array(lacs)
+
+    def _hurst_exponent(self, series: np.ndarray) -> float:
+        """Rescaled range (R/S) estimate of Hurst exponent."""
+        n = len(series)
+        if n < 16:
+            return 0.5
+
+        sizes = []
+        rs_values = []
+        size = 8
+        while size <= n // 2:
+            n_chunks = n // size
+            rs_chunk = []
+            for i in range(n_chunks):
+                chunk = series[i * size:(i + 1) * size]
+                mean = np.mean(chunk)
+                deviations = np.cumsum(chunk - mean)
+                R = np.max(deviations) - np.min(deviations)
+                S = np.std(chunk, ddof=1)
+                if S > 1e-12:
+                    rs_chunk.append(R / S)
+            if rs_chunk:
+                sizes.append(size)
+                rs_values.append(np.mean(rs_chunk))
+            size *= 2
+
+        if len(sizes) < 2:
+            return 0.5
+
+        log_s = np.log(np.array(sizes, dtype=np.float64))
+        log_rs = np.log(np.array(rs_values, dtype=np.float64))
+        coeffs = np.polyfit(log_s, log_rs, 1)
+        return float(np.clip(coeffs[0], 0.0, 1.0))
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        field = self._downsample(self.validate_data(data))
+        H, W = field.shape
+        metrics: Dict[str, float] = {}
+
+        fmin, fmax = float(np.min(field)), float(np.max(field))
+
+        # Box-counting dimension at median threshold
+        median_val = float(np.median(field))
+        metrics['box_counting_dim'] = self._box_counting_dim(field, median_val)
+
+        # Box-counting at 25th and 75th percentile — dimension spread
+        d25 = self._box_counting_dim(field, float(np.percentile(field, 25)))
+        d75 = self._box_counting_dim(field, float(np.percentile(field, 75)))
+        metrics['dim_spread'] = float(abs(d75 - d25))
+
+        # Lacunarity at multiple scales
+        box_sizes = [2, 4, 8, 16]
+        box_sizes = [s for s in box_sizes if s <= min(H, W)]
+        if box_sizes:
+            lacs = self._lacunarity(field, box_sizes)
+            metrics['lacunarity_small'] = float(lacs[0]) if len(lacs) > 0 else 1.0
+            metrics['lacunarity_large'] = float(lacs[-1]) if len(lacs) > 0 else 1.0
+            metrics['lacunarity_slope'] = float(
+                (np.log(lacs[-1] + 1e-12) - np.log(lacs[0] + 1e-12)) /
+                (np.log(box_sizes[-1]) - np.log(box_sizes[0]) + 1e-12)
+            ) if len(lacs) > 1 else 0.0
+        else:
+            metrics['lacunarity_small'] = 1.0
+            metrics['lacunarity_large'] = 1.0
+            metrics['lacunarity_slope'] = 0.0
+
+        # Hurst exponent — average over rows and columns
+        row_hursts = [self._hurst_exponent(field[i, :]) for i in range(H)]
+        col_hursts = [self._hurst_exponent(field[:, j]) for j in range(W)]
+        all_hursts = row_hursts + col_hursts
+        metrics['hurst_mean'] = float(np.mean(all_hursts))
+        metrics['hurst_std'] = float(np.std(all_hursts))
+        metrics['hurst_anisotropy'] = float(
+            abs(np.mean(row_hursts) - np.mean(col_hursts))
+        )
+
+        # Fluctuation function: variance at multiple scales (DFA-like)
+        if min(H, W) >= 8:
+            variances = []
+            for scale in [1, 2, 4, 8]:
+                if scale > min(H, W) // 2:
+                    break
+                bh = scale
+                nH, nW = H // bh, W // bh
+                if nH < 2 or nW < 2:
+                    break
+                trimmed = field[:nH * bh, :nW * bh]
+                blocks = trimmed.reshape(nH, bh, nW, bh)
+                block_means = blocks.mean(axis=(1, 3))
+                variances.append(float(np.var(block_means)))
+
+            if len(variances) >= 2:
+                log_scales = np.log(np.array([1, 2, 4, 8][:len(variances)], dtype=np.float64))
+                log_vars = np.log(np.array(variances) + 1e-12)
+                coeffs = np.polyfit(log_scales, log_vars, 1)
+                metrics['fluctuation_exponent'] = float(coeffs[0])
+            else:
+                metrics['fluctuation_exponent'] = 0.0
+        else:
+            metrics['fluctuation_exponent'] = 0.0
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+class HodgeLaplacianGeometry(ExoticGeometry):
+    """Hodge-Laplacian analysis of 2D fields via FFT Poisson solvers.
+
+    Analyzes the field through the lens of the Laplacian operator and its
+    iterated applications: the Laplacian Δf (source/sink density), the
+    biharmonic Δ²f (curvature of curvature), and the Poisson recovery
+    error (non-periodic boundary content).
+
+    The FFT Poisson solver recovers f from Δf assuming periodic boundaries.
+    The recovery error measures how much structure lives at the boundary
+    (non-periodic content). Stego disrupts fine-scale Laplacian statistics
+    and shifts the energy partition between Dirichlet and biharmonic terms.
+
+    Parameters
+    ----------
+    max_field_size : int
+        Fields larger than this are block-averaged down.
+    """
+
+    def __init__(self, max_field_size: int = 128):
+        self._max_field_size = max_field_size
+
+    @property
+    def name(self) -> str:
+        return "HodgeLaplacian"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "2D"
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 2:
+            return data
+        data = data.flatten()
+        n = len(data)
+        side = int(np.ceil(np.sqrt(n)))
+        padded = np.full(side * side, np.mean(data))
+        padded[:n] = data
+        return padded.reshape(side, side)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def _downsample(self, field: np.ndarray) -> np.ndarray:
+        H, W = field.shape
+        if H <= self._max_field_size and W <= self._max_field_size:
+            return field
+        scale = max(H, W) / self._max_field_size
+        bh = max(1, int(np.ceil(scale)))
+        new_H, new_W = H // bh, W // bh
+        if new_H < 4 or new_W < 4:
+            return field[:4, :4]
+        trimmed = field[:new_H * bh, :new_W * bh]
+        return trimmed.reshape(new_H, bh, new_W, bh).mean(axis=(1, 3))
+
+    def _solve_poisson_fft(self, rhs: np.ndarray) -> np.ndarray:
+        """Solve Δu = rhs with periodic boundary conditions via FFT."""
+        H, W = rhs.shape
+        ky = np.fft.fftfreq(H).reshape(-1, 1) * 2 * np.pi
+        kx = np.fft.fftfreq(W).reshape(1, -1) * 2 * np.pi
+        k_sq = kx ** 2 + ky ** 2
+        k_sq[0, 0] = 1.0  # avoid division by zero
+        rhs_hat = np.fft.fft2(rhs)
+        u_hat = rhs_hat / (-k_sq)
+        u_hat[0, 0] = 0.0  # zero mean
+        return np.fft.ifft2(u_hat).real
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        field = self._downsample(self.validate_data(data))
+        metrics: Dict[str, float] = {}
+
+        f_centered = field - np.mean(field)
+        f_norm_sq = np.sum(f_centered ** 2) + 1e-12
+
+        # Gradient and Laplacian
+        fy, fx = np.gradient(field)
+        laplacian = (np.gradient(np.gradient(field, axis=0), axis=0) +
+                     np.gradient(np.gradient(field, axis=1), axis=1))
+
+        # Laplacian statistics (= divergence of gradient = Δf)
+        metrics['laplacian_mean'] = float(np.mean(laplacian))
+        metrics['laplacian_std'] = float(np.std(laplacian))
+
+        # Laplacian energy ratio: ||Δf||² / ||f||²
+        lap_energy = np.sum(laplacian ** 2)
+        metrics['laplacian_energy'] = float(lap_energy / f_norm_sq)
+
+        # Dirichlet energy: ||∇f||² / ||f||²
+        dirichlet = np.sum(fx ** 2 + fy ** 2)
+        metrics['dirichlet_energy'] = float(dirichlet / f_norm_sq)
+
+        # Biharmonic: Δ²f (Laplacian of Laplacian)
+        biharm = (np.gradient(np.gradient(laplacian, axis=0), axis=0) +
+                  np.gradient(np.gradient(laplacian, axis=1), axis=1))
+        biharm_energy = np.sum(biharm ** 2)
+        metrics['biharmonic_energy'] = float(biharm_energy / (lap_energy + 1e-12))
+
+        # Poisson recovery error: solve Δu = Δf, compare u to f
+        recovered = self._solve_poisson_fft(laplacian)
+        recovery_error = np.sum((recovered - f_centered) ** 2)
+        metrics['poisson_recovery_error'] = float(recovery_error / f_norm_sq)
+
+        # Source/sink balance: fraction of field where Δf > 0
+        metrics['source_fraction'] = float(np.mean(laplacian > 0))
+
+        # Gradient coherence: mean cosine similarity between adjacent gradient vectors
+        # Measures how "aligned" the gradient field is locally
+        grad_mag = np.sqrt(fx ** 2 + fy ** 2) + 1e-12
+        ux, uy = fx / grad_mag, fy / grad_mag  # unit gradient
+        # Dot product with rightward and downward neighbors
+        coh_x = ux[:, :-1] * ux[:, 1:] + uy[:, :-1] * uy[:, 1:]
+        coh_y = ux[:-1, :] * ux[1:, :] + uy[:-1, :] * uy[1:, :]
+        metrics['gradient_coherence'] = float(
+            (np.mean(coh_x) + np.mean(coh_y)) / 2.0
+        )
+
+        # Spectral gap ratio: energy in lowest vs highest frequency bands of Laplacian
+        lap_fft = np.abs(np.fft.fftshift(np.fft.fft2(laplacian))) ** 2
+        H, W = lap_fft.shape
+        center = (H // 2, W // 2)
+        Y, X = np.ogrid[:H, :W]
+        r = np.sqrt((X - center[1]) ** 2 + (Y - center[0]) ** 2)
+        r_max = min(H, W) // 2
+        low_mask = r < r_max * 0.25
+        high_mask = r > r_max * 0.75
+        low_e = np.sum(lap_fft[low_mask])
+        high_e = np.sum(lap_fft[high_mask])
+        metrics['laplacian_spectral_ratio'] = float(
+            low_e / (high_e + 1e-12)
+        )
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+class SpectralPowerGeometry(ExoticGeometry):
+    """Spectral power analysis of 2D fields via FFT.
+
+    Natural images/textures follow characteristic power-law spectra
+    P(k) ∝ k^(-β) where β ≈ 2 for natural scenes. Steganographic
+    embedding disrupts this scaling, particularly at high frequencies.
+
+    Computes the radial power spectrum P(k), spectral slope β, spectral
+    centroid, spectral entropy, and directional anisotropy.
+
+    Parameters
+    ----------
+    max_field_size : int
+        Fields larger than this are block-averaged down.
+    """
+
+    def __init__(self, max_field_size: int = 128):
+        self._max_field_size = max_field_size
+
+    @property
+    def name(self) -> str:
+        return "SpectralPower"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "2D"
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64)
+        if data.ndim == 2:
+            return data
+        data = data.flatten()
+        n = len(data)
+        side = int(np.ceil(np.sqrt(n)))
+        padded = np.full(side * side, np.mean(data))
+        padded[:n] = data
+        return padded.reshape(side, side)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def _downsample(self, field: np.ndarray) -> np.ndarray:
+        H, W = field.shape
+        if H <= self._max_field_size and W <= self._max_field_size:
+            return field
+        scale = max(H, W) / self._max_field_size
+        bh = max(1, int(np.ceil(scale)))
+        new_H, new_W = H // bh, W // bh
+        if new_H < 4 or new_W < 4:
+            return field[:4, :4]
+        trimmed = field[:new_H * bh, :new_W * bh]
+        return trimmed.reshape(new_H, bh, new_W, bh).mean(axis=(1, 3))
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        field = self._downsample(self.validate_data(data))
+        H, W = field.shape
+        metrics: Dict[str, float] = {}
+
+        # 2D FFT power spectrum
+        F = np.fft.fft2(field - np.mean(field))  # subtract mean (remove DC)
+        power = np.abs(np.fft.fftshift(F)) ** 2
+
+        # Frequency coordinates (integer spatial frequencies)
+        ky = np.fft.fftshift(np.fft.fftfreq(H)) * H
+        kx = np.fft.fftshift(np.fft.fftfreq(W)) * W
+        KX, KY = np.meshgrid(kx, ky)
+        K = np.sqrt(KX ** 2 + KY ** 2)
+        angles = np.arctan2(KY, KX)
+
+        # Radial power spectrum P(k) via binning
+        k_max = min(H, W) // 2
+        k_bins = np.arange(1, k_max + 1, dtype=np.float64)
+        radial_power = np.zeros(len(k_bins))
+        for i, k in enumerate(k_bins):
+            mask = (K >= k - 0.5) & (K < k + 0.5)
+            if np.any(mask):
+                radial_power[i] = np.mean(power[mask])
+
+        # Filter out zeros for log fitting
+        valid = radial_power > 0
+        if np.sum(valid) >= 3:
+            log_k = np.log(k_bins[valid])
+            log_p = np.log(radial_power[valid])
+            coeffs = np.polyfit(log_k, log_p, 1)
+            metrics['spectral_slope'] = float(coeffs[0])
+
+            # Residual from power law (goodness of fit)
+            predicted = np.polyval(coeffs, log_k)
+            ss_res = np.sum((log_p - predicted) ** 2)
+            ss_tot = np.sum((log_p - np.mean(log_p)) ** 2) + 1e-12
+            metrics['spectral_r_squared'] = float(1.0 - ss_res / ss_tot)
+        else:
+            metrics['spectral_slope'] = 0.0
+            metrics['spectral_r_squared'] = 0.0
+
+        # Spectral centroid: <k> = Σ k·P(k) / Σ P(k)
+        total_power = np.sum(radial_power) + 1e-12
+        metrics['spectral_centroid'] = float(np.sum(k_bins * radial_power) / total_power)
+
+        # Spectral entropy
+        p_norm = radial_power / total_power
+        p_norm = p_norm[p_norm > 0]
+        max_entropy = np.log(len(k_bins)) if len(k_bins) > 1 else 1.0
+        metrics['spectral_entropy'] = float(
+            -np.sum(p_norm * np.log(p_norm)) / max_entropy
+        ) if max_entropy > 0 else 0.0
+
+        # High-frequency energy ratio: energy above k_max/2 vs total
+        hf_mask = K > k_max / 2
+        metrics['high_freq_ratio'] = float(np.sum(power[hf_mask]) / (np.sum(power) + 1e-12))
+
+        # Directional anisotropy: compare power in 4 angular sectors
+        sector_powers = []
+        for angle_start in [0, np.pi / 4, np.pi / 2, 3 * np.pi / 4]:
+            sector_mask = (angles >= angle_start - np.pi / 8) & \
+                          (angles < angle_start + np.pi / 8) & (K > 1)
+            if np.any(sector_mask):
+                sector_powers.append(float(np.mean(power[sector_mask])))
+            else:
+                sector_powers.append(0.0)
+        sector_powers = np.array(sector_powers)
+        if np.sum(sector_powers) > 0:
+            sector_norm = sector_powers / (np.sum(sector_powers) + 1e-12)
+            # Anisotropy: 0 = isotropic, 1 = all power in one direction
+            metrics['spectral_anisotropy'] = float(
+                1.0 - 4.0 * np.min(sector_norm)
+            )
+        else:
+            metrics['spectral_anisotropy'] = 0.0
+
+        # Spectral kurtosis: peakedness of radial spectrum
+        spec_mean = np.mean(radial_power)
+        spec_std = np.std(radial_power) + 1e-12
+        metrics['spectral_kurtosis'] = float(
+            np.mean(((radial_power - spec_mean) / spec_std) ** 4) - 3.0
+        )
+
+        # Mid-frequency concentration: power in k_max/4 to k_max/2 band
+        mid_mask = (K > k_max / 4) & (K <= k_max / 2)
+        metrics['mid_freq_ratio'] = float(np.sum(power[mid_mask]) / (np.sum(power) + 1e-12))
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
 # =============================================================================
 # PREPROCESSING UTILITIES
 # =============================================================================
@@ -3289,6 +4396,13 @@ class GeometryAnalyzer:
             if chained.
         """
         self.geometries.append(SpatialFieldGeometry())
+        self.geometries.append(SurfaceGeometry())
+        self.geometries.append(PersistentHomology2DGeometry())
+        self.geometries.append(ConformalGeometry2D())
+        self.geometries.append(MinkowskiFunctionalGeometry())
+        self.geometries.append(MultiscaleFractalGeometry())
+        self.geometries.append(HodgeLaplacianGeometry())
+        self.geometries.append(SpectralPowerGeometry())
         return self
 
     def analyze(self, data: np.ndarray, data_label: str = "") -> AnalysisResult:
@@ -3332,6 +4446,161 @@ class GeometryAnalyzer:
                     comparison[r1.geometry_name] = diffs
 
         return comparison
+
+    def classify(self, data: np.ndarray, signature_dir: str = "signatures") -> List[Dict[str, Any]]:
+        """
+        Classify a data stream by comparing its geometric signature to a library.
+        
+        Returns a ranked list of potential system matches with confidence scores.
+        """
+        classifier = GeometricClassifier(signature_dir)
+        if not classifier.has_signatures:
+            warnings.warn("No signatures found in directory. Use train_signature.py to create them.")
+            return []
+            
+        return classifier.classify(self, data)
+
+
+# =============================================================================
+# CLASSIFICATION ENGINE
+# =============================================================================
+
+class GeometricClassifier:
+    """
+    Engine for identifying systems via high-dimensional geometric signatures.
+
+    Matches input data against a library of pre-trained signatures using
+    Z-score distance across multiple scales. Uses median z-score (robust to
+    outlier metrics) and match fraction for interpretable quality.
+    """
+
+    def __init__(self, signature_dir: str = "signatures"):
+        self.signature_dir = signature_dir
+        self.signatures = self._load_signatures()
+        self.has_signatures = len(self.signatures) > 0
+
+    def _load_signatures(self) -> List[Dict[str, Any]]:
+        """Load all JSON signatures from the directory."""
+        sigs = []
+        if not os.path.exists(self.signature_dir):
+            return []
+
+        import json
+        for filename in sorted(os.listdir(self.signature_dir)):
+            if filename.endswith(".json"):
+                try:
+                    with open(os.path.join(self.signature_dir, filename), 'r') as f:
+                        sigs.append(json.load(f))
+                except Exception as e:
+                    warnings.warn(f"Failed to load signature {filename}: {e}")
+        return sigs
+
+    def classify(self, analyzer: 'GeometryAnalyzer', data: np.ndarray) -> List[Dict[str, Any]]:
+        """
+        Classify data using the provided analyzer.
+
+        Returns ranked list of matches. Each entry contains:
+          - system: signature name
+          - avg_z_score: median absolute z-score (backward compat key name)
+          - median_z: same as avg_z_score
+          - match_fraction: fraction of metrics within 2 sigma
+          - confidence: gap-based confidence (only meaningful for rank #1)
+          - metric_details: list of (metric_name, z_value) sorted by |z|
+        """
+        if not self.signatures:
+            return []
+
+        # 1. Compute input signature (must match library scales)
+        target_scales = self.signatures[0].get("scales", [1])
+
+        input_metrics = []
+        for tau in target_scales:
+            if tau == 1:
+                scaled_data = data
+            else:
+                scaled_data = delay_embed(data, tau=tau)
+                if len(scaled_data) > 2000:
+                    scaled_data = scaled_data[:2000]
+
+            results = analyzer.analyze(scaled_data)
+            for r in results.results:
+                for mname in sorted(r.metrics.keys()):
+                    input_metrics.append(r.metrics[mname])
+
+        input_vec = np.array(input_metrics)
+
+        # 2. Compare against all signatures
+        rankings = []
+        for sig in self.signatures:
+            means = np.array(sig["means"])
+            stds = np.array(sig["stds"])
+            metric_names = sig.get("metrics", [])
+
+            # Ensure vector lengths match
+            if len(input_vec) != len(means):
+                min_len = min(len(input_vec), len(means))
+                iv = input_vec[:min_len]
+                m = means[:min_len]
+                s = stds[:min_len]
+                names = metric_names[:min_len] if metric_names else []
+            else:
+                iv, m, s = input_vec, means, stds
+                names = metric_names
+
+            # Filter out constant metrics (std < 1e-8): uninformative
+            mask = s >= 1e-8
+            if not np.any(mask):
+                # All metrics constant — can't classify
+                rankings.append({
+                    "system": sig["name"],
+                    "avg_z_score": float('inf'),
+                    "median_z": float('inf'),
+                    "match_fraction": 0.0,
+                    "confidence": 0.0,
+                    "metric_details": []
+                })
+                continue
+
+            iv_f, m_f, s_f = iv[mask], m[mask], s[mask]
+            names_f = [names[i] for i in range(len(names)) if mask[i]] if names else []
+
+            # Z-score distance
+            z_scores = np.abs((iv_f - m_f) / s_f)
+            z_scores = np.nan_to_num(z_scores, nan=10.0, posinf=10.0, neginf=10.0)
+
+            median_z = float(np.median(z_scores))
+            match_frac = float(np.mean(z_scores < 2.0))
+
+            # Per-metric diagnostics
+            if names_f:
+                details = sorted(zip(names_f, z_scores.tolist()), key=lambda x: x[1])
+            else:
+                details = sorted(enumerate(z_scores.tolist()), key=lambda x: x[1])
+
+            rankings.append({
+                "system": sig["name"],
+                "avg_z_score": median_z,  # backward compat
+                "median_z": median_z,
+                "match_fraction": match_frac,
+                "confidence": 0.0,  # computed after sorting
+                "metric_details": details
+            })
+
+        # Sort by median z-score (lowest first = best match)
+        rankings.sort(key=lambda x: x["avg_z_score"])
+
+        # Gap-based confidence for top match
+        if len(rankings) >= 2:
+            best_z = rankings[0]["median_z"]
+            second_z = rankings[1]["median_z"]
+            if second_z > 0:
+                rankings[0]["confidence"] = float((second_z - best_z) / second_z)
+            else:
+                rankings[0]["confidence"] = 0.0
+        elif len(rankings) == 1:
+            rankings[0]["confidence"] = 1.0 if rankings[0]["median_z"] < 2.0 else 0.0
+
+        return rankings
 
 
 # =============================================================================

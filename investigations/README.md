@@ -45,7 +45,7 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 
 ## 2D Investigations (12)
 
-All 2D scripts use `SpatialFieldGeometry` for native spatial analysis.
+2D scripts use the spatial geometry battery. `add_spatial_geometries()` provides 8 geometries (80 metrics): SpatialField, Surface, PersistentHomology2D, Conformal2D, MinkowskiFunctional, MultiscaleFractal, HodgeLaplacian, SpectralPower.
 
 | Script | Domain | Key Result | Dependencies |
 |--------|--------|------------|-------------|
