@@ -15,6 +15,22 @@ import numpy as np
 from exotic_geometry_framework import GeometryAnalyzer
 
 
+def entropy(data):
+    counts = np.bincount(data, minlength=256)
+    p = counts[counts > 0] / len(data)
+    return float(-np.sum(p * np.log2(p)))
+
+
+CONTENT_LABELS = {
+    "high-entropy": "high-entropy stream",
+    "high-entropy-ordered": "high-entropy with sequential structure",
+    "low-entropy-discrete": "low-entropy discrete values",
+    "ordering-dependent": "ordering-dependent sequence",
+    "mixed": "structured data (mixed features)",
+    "distributional": "distribution-shaped data",
+}
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Classify binary data using exotic geometry signatures."
@@ -41,15 +57,39 @@ def main():
 
     byte_array = np.frombuffer(data, dtype=np.uint8)
 
+    # Input data attributes
+    input_ent = entropy(byte_array)
+    input_distinct = len(np.unique(byte_array))
+
     print(f"Classifying {args.filename} ({len(byte_array)} bytes)...")
+    print(f"  Input: {input_ent:.1f} bits/byte entropy, {input_distinct} distinct values")
+
     analyzer = GeometryAnalyzer().add_all_geometries()
     results = analyzer.classify(byte_array, signature_dir=args.signatures)
 
     if not results:
-        print("No signatures found. Run train_signature.py / harvest_*.py first.")
+        print("No signatures found. Run train_signature.py first.")
         sys.exit(1)
 
-    # Table header
+    # Top match profile
+    top = results[0]
+    attrs = top.get("attributes", {})
+    if attrs:
+        ctype = attrs.get("content_type", "unknown")
+        label = CONTENT_LABELS.get(ctype, ctype)
+        sig_ent = attrs.get("entropy", "?")
+        sig_dist = attrs.get("n_distinct", "?")
+        shuf = attrs.get("shuffle_ratio", "?")
+        shuf_str = f"{shuf:.1f}x" if isinstance(shuf, (int, float)) else "?"
+        desc = attrs.get("description", "")
+
+        print(f"\n  Profile: {label}")
+        print(f"  Signature: {sig_ent} bits/byte, {sig_dist} distinct, "
+              f"shuffle ratio {shuf_str}")
+        if desc:
+            print(f"  {desc}")
+
+    # Table
     print()
     print(f"  {'#':<4} {'System':<25} {'Median Z':>9} {'Match %':>8} {'Confidence':>11}")
     print(f"  {'─'*4} {'─'*25} {'─'*9} {'─'*8} {'─'*11}")
@@ -61,12 +101,10 @@ def main():
               f"{res['match_fraction']:>7.0%} {conf_str:>11}")
 
     # High-entropy / ambiguous warning
-    top = results[0]
     if top["median_z"] > 2.0 and top["match_fraction"] < 0.5:
         print(f"\n  Note: Weak best match (z={top['median_z']:.1f}, {top['match_fraction']:.0%}).")
         print(f"  No signature in the library is a strong match.")
     elif top["confidence"] < 0.30 and len(results) >= 3:
-        # Check if top matches are clustered (high-entropy pack)
         z3 = results[2]["median_z"]
         spread = z3 - top["median_z"]
         if spread < 0.5:

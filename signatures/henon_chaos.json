@@ -1585,5 +1585,12 @@
     0.028440361577635867,
     0.020999234196555184,
     0.013669347152438397
-  ]
+  ],
+  "attributes": {
+    "entropy": 7.72,
+    "n_distinct": 251,
+    "shuffle_ratio": 2.79,
+    "content_type": "high-entropy-ordered",
+    "description": "High-entropy but with detectable sequential structure that shuffling destroys."
+  }
 }

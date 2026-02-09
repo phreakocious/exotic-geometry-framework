@@ -1585,5 +1585,12 @@
     0.0,
     0.029151750821815196,
     0.01893797903225148
-  ]
+  ],
+  "attributes": {
+    "entropy": 7.91,
+    "n_distinct": 255,
+    "shuffle_ratio": 0.65,
+    "content_type": "high-entropy",
+    "description": "Near-random byte stream. Compression, encryption, chaos, and PRNGs all produce this profile."
+  }
 }

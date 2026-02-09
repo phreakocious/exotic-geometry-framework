@@ -1585,5 +1585,12 @@
     0.0016329931618554515,
     0.27002908420287275,
     0.19948322738878005
-  ]
+  ],
+  "attributes": {
+    "entropy": 6.28,
+    "n_distinct": 202,
+    "shuffle_ratio": 0.8,
+    "content_type": "distributional",
+    "description": "Primarily detected by value distribution shape, not byte ordering."
+  }
 }

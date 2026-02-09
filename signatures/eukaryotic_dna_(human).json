@@ -1585,5 +1585,12 @@
     0.018333333333333333,
     0.017102857516793326,
     0.00707154922476254
-  ]
+  ],
+  "attributes": {
+    "entropy": 1.98,
+    "n_distinct": 4,
+    "shuffle_ratio": 0.98,
+    "content_type": "low-entropy-discrete",
+    "description": "Few distinct byte values. Detected by value distribution, not ordering."
+  }
 }

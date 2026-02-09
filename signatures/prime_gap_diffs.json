@@ -1585,5 +1585,12 @@
     0.009279607271383366,
     0.08216180638302084,
     0.039054936919510196
-  ]
+  ],
+  "attributes": {
+    "entropy": 4.55,
+    "n_distinct": 48,
+    "shuffle_ratio": 1.61,
+    "content_type": "mixed",
+    "description": "Combination of distributional and sequential features."
+  }
 }

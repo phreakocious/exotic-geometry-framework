@@ -1585,5 +1585,12 @@
     2.220446049250313e-16,
     0.00030577136521163376,
     0.00010081622282513805
-  ]
+  ],
+  "attributes": {
+    "entropy": 4.43,
+    "n_distinct": 27,
+    "shuffle_ratio": 305.26,
+    "content_type": "ordering-dependent",
+    "description": "Sequential structure is critical \u2014 shuffling the bytes destroys the signature."
+  }
 }

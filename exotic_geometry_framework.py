@@ -4583,7 +4583,8 @@ class GeometricClassifier:
                 "median_z": median_z,
                 "match_fraction": match_frac,
                 "confidence": 0.0,  # computed after sorting
-                "metric_details": details
+                "metric_details": details,
+                "attributes": sig.get("attributes", {}),
             })
 
         # Sort by median z-score (lowest first = best match)
