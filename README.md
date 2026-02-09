@@ -4,6 +4,8 @@ Embed byte sequences into 31 exotic geometric spaces — E8 lattices, Heisenberg
 
 This framework treats data analysis as a question of **geometry**: different mathematical spaces are sensitive to different kinds of hidden structure. A single data stream analyzed through 24 independent 1D lenses produces a geometric fingerprint that can distinguish chaotic maps, detect cipher weaknesses, identify DNA organisms, and find backdoors in neural network weights. For 2D fields, 8 spatial geometries (80 metrics) span differential geometry, algebraic topology, conformal analysis, integral geometry, fractal scaling, Hodge theory, and spectral analysis.
 
+**Key differentiator**: [Surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves these geometric embeddings capture genuinely nonlinear dynamical structure that no combination of entropy, autocorrelation, spectral slope, or other standard features can replicate. Simple features: **0 detections** against IAAFT surrogates. Exotic geometries: **204 detections** across 6 signal types.
+
 ## Headline Results
 
 Every finding uses shuffled baselines, Bonferroni correction, and Cohen's d effect sizes. Zero false positives on validated random sources. See [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the full protocol.
@@ -13,6 +15,30 @@ Every finding uses shuffled baselines, Bonferroni correction, and Cohen's d effe
 All 6 hash functions tested (MD5, SHA-1, SHA-256, SHA-3, BLAKE2, SHA-512) produce 0 significant geometric differences from `os.urandom`. This is the first result for a reason: it proves the framework doesn't hallucinate structure.
 
 → `investigations/1d/hashes.py`
+
+### Exotic geometries detect nonlinear structure simple features cannot
+
+Using IAAFT surrogates (Schreiber & Schmitz, 1996) — which preserve both power spectrum and marginal distribution by construction — we prove the framework captures genuinely nonlinear structure. Simple features (entropy, autocorrelation, spectral slope, permutation entropy, kurtosis, etc.) score **0/11 detections** against IAAFT surrogates for all 7 test signals. This is mathematically guaranteed: the surrogates match all linear statistics exactly.
+
+Exotic geometries score **204 total detections** across 6 of 7 signals:
+
+| Signal | Simple vs IAAFT | Exotic vs IAAFT |
+|--------|:-:|:-:|
+| Hénon map | 0 | 56 |
+| Logistic map | 0 | 53 |
+| Collatz stopping times | 0 | 42 |
+| Heartbeat (ECG) | 0 | 30 |
+| Lorenz attractor | 0 | 19 |
+| Prime gaps | 0 | 4 |
+| Coupled AR (linear) | 0 | 0 |
+
+The coupled AR system correctly returns 0 — it's a linear system with no nonlinear structure to detect. Top nonlinear detectors: Higher-Order Statistics (37), E8 Lattice (27), Clifford Torus (23), Torus T² (22). Five geometries (2-adic, Cantor, Fisher, Heisenberg, Sol) score zero — they are linear-equivalent features in geometric clothing.
+
+An [ablation study](#ablation-131-metrics--15-effective-dimensions) confirms this: exotic geometries amplify detection (79-89% of significant metrics) but 131 metrics collapse to ~15 independent dimensions. The surrogate test is what proves they carry genuinely new information.
+
+![Surrogate Testing](figures/surrogate.png)
+
+→ `investigations/1d/surrogate.py` · `investigations/1d/ablation.py`
 
 ### ECB cipher mode detection (d = 19-146)
 
@@ -100,7 +126,7 @@ Native 2D analysis with 8 spatial geometries providing 80 metrics. SpatialField 
 ![Lenia](docs/figures/lenia.png)
 ![Sandpile](docs/figures/sandpile.png)
 
-→ See `investigations/2d/` for all 12 scripts
+→ See `investigations/2d/` for all scripts
 
 ### Prime number sequences (7/7 encodings, 21/21 pairwise, primes ≠ Cramér model)
 
@@ -109,6 +135,40 @@ Seven encodings of prime sequences — gaps, residues mod 256, last digits, bina
 ![Primes](docs/figures/primes.png)
 
 → `investigations/1d/primes.py`
+
+### Deep primes: 52 metrics detect pure primality beyond Cramér's model
+
+A follow-up investigation tests progressively refined probabilistic models of the primes. Model hierarchy (significant metrics vs real prime gaps): Cramér random model = 54, even-gap constrained = 37, sieved composites = 30, distribution-matched = 14. Those final 14 metrics — led by Lorentzian `causal_order` (d=10.5) — detect pure sequential correlation that survives even when the gap distribution is perfectly matched. The gap between real primes and Cramér shrinks with scale (75 sig at 1K primes → 54 sig at 1M primes), but 31 metrics remain significant at every scale tested.
+
+→ `investigations/1d/primes_deep.py`
+
+### Number theory: arithmetic functions have rich geometric structure
+
+Eight arithmetic sequences tested — divisor count d(n), distinct prime factors Ω(n), Euler totient ratio φ(n)/n, Mertens function M(n), Riemann zeta zero spacings, Möbius μ(n), Liouville λ(n), and totient mod 256. All 8 detected as non-random (50-105 sig metrics), all 28 pairwise pairs distinguished. Even degenerate sequences — μ(n) takes only 3 values, λ(n) only 2 — are detected at 78 and 71 significant metrics.
+
+Geometry detects structure theoretical models miss: Mertens function has 37 significant metrics beyond a random walk model. Zeta zero spacings vs the GUE/Wigner-Dyson prediction show 90 significant metrics — massive structure beyond what random matrix theory predicts. A second investigation adds continued fractions (π's CF geometric mean = 2.663 ≈ Khinchin's constant K = 2.685), the partition function (107 sig vs Hardy-Ramanujan asymptotics, but only 1 sig vs shuffled — purely distributional), and σ(n)/n ratios (96 sig, 71 ordering-dependent).
+
+→ `investigations/1d/number_theory.py` · `investigations/1d/number_theory_deep.py`
+
+### Time series: process class fingerprinting and Hurst detection
+
+Nine signal types — Brownian motion, pink noise, fractional Brownian motion (H=0.3, H=0.7), ARMA(2,1), Ornstein-Uhlenbeck, regime-switching, heartbeat ECG, and network traffic — all detected as non-random (74-94 sig metrics). All process class pairs distinguished (62-73 sig). Tropical `slope_changes` is the best Hurst parameter discriminator (H=0.3 vs H=0.7: d=15.5). Brownian motion signatures are invariant to 2x temporal subsampling (only 5 sig metrics) but break at 4x+ (38 sig).
+
+→ `investigations/1d/time_series.py`
+
+### Elementary cellular automata: Wolfram classes from spacetime geometry
+
+Twelve elementary CA rules spanning all four Wolfram complexity classes, analyzed as 2D spacetime fields with 80 spatial metrics. Class I (homogeneous) = 79 avg sig vs random, Class II (periodic) = 74, Class IV (complex) = 70, Class III (chaotic) = 65. All 6 class pairs distinguished (66-75 sig). Within Class IV, Rules 110 and 124 are nearly identical (only 2 sig metrics) — they are computationally equivalent via left-right reflection. `PersistentHomology2D:persistence_asymmetry` is the Class IV signature (d = 331-2013). Detection is scale-robust down to 32×32 fields.
+
+![Elementary CA](figures/elementary_ca.png)
+
+→ `investigations/2d/elementary_ca.py`
+
+### Ablation: 131 metrics → 15 effective dimensions
+
+An honest self-assessment: a 14-feature simple baseline (entropy, autocorrelation, spectral slope, permutation entropy, kurtosis) detects the same phenomena as the full framework — 9-12 significant features across all test cases. The 131 framework metrics collapse to ~15 independent dimensions at 95% explained variance, with 109 metrics >95% redundant with another metric. Exotic geometries contribute 79-89% of significant detections but are amplifiers, not discoverers of fundamentally new phenomena — with one critical exception: [surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves they capture nonlinear structure simple features provably cannot.
+
+→ `investigations/1d/ablation.py`
 
 ## Quick Start
 
@@ -239,6 +299,12 @@ Full catalog of all 31 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [collatz_deep.py](investigations/1d/collatz_deep.py) | Deep Collatz I | Sharp k=1→2 phase boundary, tropical slopes match theory |
 | [collatz_deep2.py](investigations/1d/collatz_deep2.py) | Deep Collatz II | 45 convergence-specific metrics, 5 geometry families go dark at k=2 |
 | [primes.py](investigations/1d/primes.py) | Prime numbers | 7/7 encodings, 21/21 pairwise. Primes vs Cramér model: 55 sig |
+| [primes_deep.py](investigations/1d/primes_deep.py) | Deep primes | 52 pure-primality metrics, model hierarchy, scale dependence |
+| [number_theory.py](investigations/1d/number_theory.py) | Arithmetic functions | All 8 detected (50-105 sig), zeta spacings vs GUE: 90 sig |
+| [number_theory_deep.py](investigations/1d/number_theory_deep.py) | Additive number theory | CFs, partitions, σ(n)/n. π CF geo_mean ≈ Khinchin K |
+| [time_series.py](investigations/1d/time_series.py) | Time series | 9 processes, Hurst detection, process class fingerprinting |
+| [surrogate.py](investigations/1d/surrogate.py) | Surrogate testing | Simple=0, exotic=204 vs IAAFT. Proves nonlinear detection |
+| [ablation.py](investigations/1d/ablation.py) | Ablation study | 131 metrics → 15 dimensions, exotic = amplifiers |
 
 ### 2D (spatial field analysis)
 
@@ -256,6 +322,7 @@ Full catalog of all 31 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [sandpile.py](investigations/2d/sandpile.py) | Self-organized criticality | SOC convergence |
 | [lenia.py](investigations/2d/lenia.py) | Continuous CA | 15/15 configs |
 | [stego_bitmatrix.py](investigations/2d/stego_bitmatrix.py) | 2D stego detection | Co-occurrence SS=14/15, diff grid LSBMR=14 sig |
+| [elementary_ca.py](investigations/2d/elementary_ca.py) | Elementary CA | Wolfram classes I-IV, R110≈R124, scale-robust to 32×32 |
 
 ## Statistical Methodology
 
@@ -281,7 +348,7 @@ See [docs/NEGATIVE_RESULTS.md](docs/NEGATIVE_RESULTS.md).
 
 ## Complete Results
 
-All 92 validated findings and 17 negative results from 34 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
+All validated findings and negative results across 42 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
 
 ## Dependencies
 
@@ -290,8 +357,9 @@ All 92 validated findings and 17 negative results from 34 investigations: [docs/
 - scipy
 - matplotlib
 
-**Optional** (3 of 20 investigations):
+**Optional**:
 - pycryptodome — for `ciphers.py`, `reduced_aes.py`, `ecb_penguin.py`
+- mpmath — for `number_theory.py` (Riemann zeta zeros)
 
 ## License
 
