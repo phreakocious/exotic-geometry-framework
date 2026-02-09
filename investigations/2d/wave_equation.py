@@ -233,7 +233,7 @@ def run_investigation():
     names = list(SOURCE_CONFIGS.keys())
 
     # Each vs shuffled
-    bonf_s = ALPHA / (len(METRIC_NAMES) * len(names))
+    bonf_s = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  Each source config vs SHUFFLED (Bonferroni α={bonf_s:.2e})")
     print(f"{'─' * 78}")
@@ -258,7 +258,7 @@ def run_investigation():
 
     # Pairwise
     n_pairs = len(names) * (len(names) - 1) // 2
-    bonf_p = ALPHA / (len(METRIC_NAMES) * n_pairs)
+    bonf_p = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  PAIRWISE comparisons (Bonferroni α={bonf_p:.2e})")
     print(f"{'─' * 78}")

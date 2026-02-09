@@ -108,7 +108,7 @@ def count_significant(metrics_a, metrics_b, metric_names, n_total_tests):
         if len(va) < 2 or len(vb) < 2:
             continue
         d = cohens_d(va, vb)
-        _, p = stats.ttest_ind(va, vb)
+        _, p = stats.ttest_ind(va, vb, equal_var=False)
         if abs(d) > 0.8 and p < alpha:
             sig += 1
     return sig

@@ -208,7 +208,7 @@ def main():
 
     # For each representation, compare each PRNG to system_random
     significant_findings = []
-    n_tests = len(prngs) * len(representations) * len(key_metrics)
+    n_tests = len(key_metrics)
     alpha = 0.05 / max(n_tests, 1)
 
     for rep in representations:
@@ -231,7 +231,7 @@ def main():
                 prng_vals = all_data[prng][rep][km]
 
                 d = cohens_d(prng_vals, ref_vals)
-                _, p = stats.ttest_ind(prng_vals, ref_vals)
+                _, p = stats.ttest_ind(prng_vals, ref_vals, equal_var=False)
                 sig = "***" if p < alpha and abs(d) > 0.8 else ""
 
                 if abs(d) > 0.8:
@@ -258,7 +258,7 @@ def main():
                     continue
                 prng_vals = all_data[prng][rep][km]
                 d = cohens_d(prng_vals, ref_vals)
-                _, p = stats.ttest_ind(prng_vals, ref_vals)
+                _, p = stats.ttest_ind(prng_vals, ref_vals, equal_var=False)
                 geom = km.split(':')[0]
                 key = (prng, rep, geom)
                 if key not in detection or abs(d) > abs(detection[key][0]):

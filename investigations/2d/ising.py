@@ -207,7 +207,7 @@ def run_ising(analyzer):
     print()
 
     # Each T vs T=∞
-    bonf = ALPHA / (len(METRIC_NAMES) * len(temperatures))
+    bonf = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  Each T vs T=∞  (Bonferroni α={bonf:.2e})")
     print(f"{'─' * 78}")
@@ -234,7 +234,7 @@ def run_ising(analyzer):
     print(f"\n{'─' * 78}")
     print(f"  ADJACENT temperature pairs")
     print(f"{'─' * 78}")
-    bonf_adj = ALPHA / (len(METRIC_NAMES) * (len(temperatures) - 1))
+    bonf_adj = ALPHA / len(METRIC_NAMES)
     for i in range(len(temperatures) - 1):
         T1, T2 = temperatures[i], temperatures[i+1]
         sig = 0
@@ -290,7 +290,7 @@ def run_noise(analyzer):
     names = list(generators.keys())
 
     # Each vs shuffled baseline
-    bonf_s = ALPHA / (len(METRIC_NAMES) * len(names))
+    bonf_s = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  Each type vs SHUFFLED baseline (Bonferroni α={bonf_s:.2e})")
     print(f"{'─' * 78}")
@@ -319,7 +319,7 @@ def run_noise(analyzer):
 
     # Pairwise
     n_pairs = len(names) * (len(names) - 1) // 2
-    bonf_p = ALPHA / (len(METRIC_NAMES) * n_pairs)
+    bonf_p = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  PAIRWISE comparisons (Bonferroni α={bonf_p:.2e})")
     print(f"{'─' * 78}")

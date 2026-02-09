@@ -174,7 +174,7 @@ def run_investigation():
         all_results[(img_name, 'random')] = rand_metrics
 
         # Compare ECB, CBC, CTR each vs random
-        bonf = ALPHA / (len(METRIC_NAMES) * 3)
+        bonf = ALPHA / len(METRIC_NAMES)
         for mode in ['ECB', 'CBC', 'CTR']:
             sig = 0
             best_d, best_m = 0, ""
@@ -335,7 +335,7 @@ if __name__ == "__main__":
     for img_name in test_images:
         ecb_sig = 0
         cbc_sig = 0
-        bonf = ALPHA / (len(METRIC_NAMES) * 3)
+        bonf = ALPHA / len(METRIC_NAMES)
         for m in METRIC_NAMES:
             a_ecb = np.array(all_results[(img_name, 'ECB')][m])
             a_cbc = np.array(all_results[(img_name, 'CBC')][m])

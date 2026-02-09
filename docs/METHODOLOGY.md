@@ -29,10 +29,12 @@ Both are valid detections, but the distinction matters for interpretation. For e
 
 The framework has two geometry sets that are used independently:
 
-- **1D (byte streams)**: 25 geometries, 131 metrics — used for all `investigations/1d/` and the classifier
+- **1D (byte streams)**: 24 geometries, ~131 metrics — used for all `investigations/1d/` and the classifier
 - **2D (spatial fields)**: 8 geometries, 80 metrics — used for `investigations/2d/` (images, cellular automata, etc.)
 
 A given investigation uses one set or the other, so the number of statistical tests per comparison is either ~131 or ~80. Without correction, we'd expect ~7 or ~4 false positives at alpha=0.05.
+
+**Important**: the Bonferroni divisor is the number of metrics, NOT the number of metrics times conditions. Each pairwise comparison is a separate family of tests.
 
 Bonferroni correction divides alpha by the number of tests:
 
@@ -82,7 +84,8 @@ for trial in range(N_TRIALS):
 # 3. Statistical comparison
 alpha = 0.05 / n_metrics  # Bonferroni
 for metric in all_metrics:
-    t, p = scipy.stats.ttest_ind(values_a[metric], values_b[metric])
+    t, p = scipy.stats.ttest_ind(values_a[metric], values_b[metric],
+                                  equal_var=False)  # Welch's t-test
     d = cohens_d(values_a[metric], values_b[metric])
     if p < alpha:
         # 4. Report with effect size
@@ -99,13 +102,14 @@ for significant_metric in significant_findings:
 
 A finding is reported as significant when ALL of these hold:
 1. p-value survives Bonferroni correction (p < 0.05/n_tests)
-2. Cohen's d indicates a meaningful effect size (typically |d| > 2)
-3. The direction of the effect makes physical/mathematical sense
-4. The finding is consistent across independent trials
+2. Cohen's d indicates a large effect size (|d| > 0.8, per Cohen's convention)
+3. The finding is consistent across independent trials
+
+Many of our effects far exceed this threshold — d > 10 is common, and d > 100 is not unusual for well-separated phenomena.
 
 ## Negative Results
 
-We report negative results with equal rigor. When no metric survives Bonferroni correction, that IS the finding — the data types are geometrically indistinguishable. The most important negative result: AES-CTR output is indistinguishable from true randomness across all 25 1D geometries, all preprocessing methods, and all combination strategies.
+We report negative results with equal rigor. When no metric survives Bonferroni correction, that IS the finding — the data types are geometrically indistinguishable. The most important negative result: AES-CTR output is indistinguishable from true randomness across all 24 1D geometries, all preprocessing methods, and all combination strategies.
 
 ## Geometric Signature Classifier
 

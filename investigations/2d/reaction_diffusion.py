@@ -170,7 +170,7 @@ def run_investigation():
     names = list(REGIMES.keys())
 
     # Each type vs shuffled baseline
-    bonf_s = ALPHA / (len(METRIC_NAMES) * len(names))
+    bonf_s = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  Each regime vs SHUFFLED baseline (Bonferroni α={bonf_s:.2e})")
     print(f"{'─' * 78}")
@@ -196,7 +196,7 @@ def run_investigation():
 
     # Pairwise comparisons
     n_pairs = len(names) * (len(names) - 1) // 2
-    bonf_p = ALPHA / (len(METRIC_NAMES) * n_pairs)
+    bonf_p = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  PAIRWISE comparisons (Bonferroni α={bonf_p:.2e})")
     print(f"{'─' * 78}")

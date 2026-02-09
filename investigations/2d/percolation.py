@@ -149,7 +149,7 @@ def run_investigation():
     probs = PROBABILITIES
 
     # Each vs shuffled
-    bonf_s = ALPHA / (len(METRIC_NAMES) * len(probs))
+    bonf_s = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  Each p vs SHUFFLED baseline (Bonferroni α={bonf_s:.2e})")
     print(f"{'─' * 78}")
@@ -178,7 +178,7 @@ def run_investigation():
     print(f"  ADJACENT pairwise comparisons")
     print(f"{'─' * 78}")
 
-    bonf_a = ALPHA / (len(METRIC_NAMES) * (len(probs) - 1))
+    bonf_a = ALPHA / len(METRIC_NAMES)
     pair_results = []
     for i in range(len(probs) - 1):
         p1, p2 = probs[i], probs[i+1]
@@ -203,7 +203,7 @@ def run_investigation():
 
     # All pairwise
     n_pairs = len(probs) * (len(probs) - 1) // 2
-    bonf_p = ALPHA / (len(METRIC_NAMES) * n_pairs)
+    bonf_p = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  ALL pairwise (Bonferroni α={bonf_p:.2e})")
     print(f"{'─' * 78}")

@@ -188,7 +188,7 @@ def run_investigation():
     print("done")
 
     # Each drop count vs shuffled
-    bonf_s = ALPHA / (len(METRIC_NAMES) * (len(DROP_COUNTS) + 1))
+    bonf_s = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  Each configuration vs SHUFFLED (Bonferroni α={bonf_s:.2e})")
     print(f"{'─' * 78}")
@@ -231,7 +231,7 @@ def run_investigation():
 
     # Pairwise drop counts
     n_pairs = len(DROP_COUNTS) * (len(DROP_COUNTS) - 1) // 2
-    bonf_p = ALPHA / (len(METRIC_NAMES) * n_pairs)
+    bonf_p = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  PAIRWISE drop counts (Bonferroni α={bonf_p:.2e})")
     print(f"{'─' * 78}")

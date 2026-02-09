@@ -127,7 +127,7 @@ def run_investigation():
     names = list(RULES.keys())
 
     # Each vs shuffled
-    bonf_s = ALPHA / (len(METRIC_NAMES) * len(names))
+    bonf_s = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  Each rule vs SHUFFLED baseline (Bonferroni α={bonf_s:.2e})")
     print(f"{'─' * 78}")
@@ -152,7 +152,7 @@ def run_investigation():
 
     # Pairwise
     n_pairs = len(names) * (len(names) - 1) // 2
-    bonf_p = ALPHA / (len(METRIC_NAMES) * n_pairs)
+    bonf_p = ALPHA / len(METRIC_NAMES)
     print(f"\n{'─' * 78}")
     print(f"  PAIRWISE comparisons (Bonferroni α={bonf_p:.2e})")
     print(f"{'─' * 78}")
@@ -197,7 +197,7 @@ def run_investigation():
         epoch_data[ep] = collect_metrics(analyzer, fields)
         print(f"  t={ep:4d}: density={np.mean([np.mean(f) for f in fields]):.3f}")
 
-    bonf_e = ALPHA / (len(METRIC_NAMES) * (len(epochs) - 1))
+    bonf_e = ALPHA / len(METRIC_NAMES)
     for i in range(len(epochs) - 1):
         e1, e2 = epochs[i], epochs[i+1]
         sig = 0

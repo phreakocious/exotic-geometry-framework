@@ -390,7 +390,7 @@ def main():
     print()
 
     baseline_type = 'random_uniform'
-    n_tests = (len(GENERATORS) - 1) * len(all_gm_pairs)
+    n_tests = len(all_gm_pairs)
     bonferroni_alpha = ALPHA / n_tests
     print(f"Bonferroni-corrected alpha: {ALPHA} / {n_tests} = {bonferroni_alpha:.2e}")
     print()
@@ -421,7 +421,7 @@ def main():
             if np.std(baseline_vals) < 1e-12 and np.std(test_vals) < 1e-12:
                 continue
 
-            t_stat, p_val = stats.ttest_ind(test_vals, baseline_vals)
+            t_stat, p_val = stats.ttest_ind(test_vals, baseline_vals, equal_var=False)
             d = cohens_d(test_vals, baseline_vals)
 
             if p_val < bonferroni_alpha and abs(d) >= 0.5:
@@ -472,7 +472,7 @@ def main():
             if np.std(cat1_vals) < 1e-12 and np.std(cat2_vals) < 1e-12:
                 continue
 
-            t_stat, p_val = stats.ttest_ind(cat1_vals, cat2_vals)
+            t_stat, p_val = stats.ttest_ind(cat1_vals, cat2_vals, equal_var=False)
             d = cohens_d(cat1_vals, cat2_vals)
             results.append((gname, mname, d, p_val))
 
@@ -541,7 +541,7 @@ def main():
         if np.std(bd_vals) < 1e-12 and np.std(td_vals) < 1e-12:
             continue
 
-        t_stat, p_val = stats.ttest_ind(bd_vals, td_vals)
+        t_stat, p_val = stats.ttest_ind(bd_vals, td_vals, equal_var=False)
         d = cohens_d(bd_vals, td_vals)
         backdoor_results.append((gname, mname, d, p_val))
 
@@ -577,7 +577,7 @@ def main():
         if np.std(bd_vals) < 1e-12 and np.std(xv_vals) < 1e-12:
             continue
 
-        t_stat, p_val = stats.ttest_ind(bd_vals, xv_vals)
+        t_stat, p_val = stats.ttest_ind(bd_vals, xv_vals, equal_var=False)
         d = cohens_d(bd_vals, xv_vals)
 
         if p_val < bonf_alpha and abs(d) >= 0.8:

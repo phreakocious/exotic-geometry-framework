@@ -123,7 +123,7 @@ def count_sig(clean_metrics, stego_metrics, n_metrics):
         if mn not in stego_metrics:
             continue
         d = cohens_d(stego_metrics[mn], clean_metrics[mn])
-        _, p = stats.ttest_ind(stego_metrics[mn], clean_metrics[mn])
+        _, p = stats.ttest_ind(stego_metrics[mn], clean_metrics[mn], equal_var=False)
         is_sig = p < alpha and abs(d) > 0.8
         if is_sig:
             sig += 1

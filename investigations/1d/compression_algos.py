@@ -205,7 +205,7 @@ def main():
     print("PART 3: Compressed Data vs True Random")
     print(f"{'='*70}")
 
-    n_tests = len(source_types) * len(algorithms) * len(key_metrics)
+    n_tests = len(key_metrics)
     alpha = 0.05 / max(n_tests, 1)
 
     significant = []
@@ -219,7 +219,7 @@ def main():
                 if len(all_data[src][alg][km]) < 2 or len(random_metrics[km]) < 2:
                     continue
                 d = cohens_d(all_data[src][alg][km], random_metrics[km])
-                _, p = stats.ttest_ind(all_data[src][alg][km], random_metrics[km])
+                _, p = stats.ttest_ind(all_data[src][alg][km], random_metrics[km], equal_var=False)
                 if abs(d) > 0.8 and p < alpha:
                     significant.append((src, alg, km, d, p))
 
@@ -239,7 +239,7 @@ def main():
 
     # For each source type, can we tell zlib from bz2 from lzma?
     comp_algs = ['zlib', 'bz2', 'lzma']
-    n_pair_tests = len(source_types) * 3 * len(key_metrics)  # 3 pairs
+    n_pair_tests = len(key_metrics)  # per comparison family
     alpha_pair = 0.05 / max(n_pair_tests, 1)
 
     alg_diffs = []
@@ -254,7 +254,7 @@ def main():
                 if len(all_data[src][a1][km]) < 2 or len(all_data[src][a2][km]) < 2:
                     continue
                 d = cohens_d(all_data[src][a1][km], all_data[src][a2][km])
-                _, p = stats.ttest_ind(all_data[src][a1][km], all_data[src][a2][km])
+                _, p = stats.ttest_ind(all_data[src][a1][km], all_data[src][a2][km], equal_var=False)
                 if abs(d) > abs(best_d):
                     best_d = d
                     best_km = km
@@ -275,7 +275,7 @@ def main():
 
     # For zlib compression, can we distinguish source types?
     alg = 'zlib'
-    n_src_tests = len(list(__import__('itertools').combinations(source_types, 2))) * len(key_metrics)
+    n_src_tests = len(key_metrics)
     alpha_src = 0.05 / max(n_src_tests, 1)
 
     print(f"\nUsing {alg} compression:\n")
@@ -293,7 +293,7 @@ def main():
                 if len(all_data[s1][alg][km]) < 2 or len(all_data[s2][alg][km]) < 2:
                     continue
                 d = cohens_d(all_data[s1][alg][km], all_data[s2][alg][km])
-                _, p = stats.ttest_ind(all_data[s1][alg][km], all_data[s2][alg][km])
+                _, p = stats.ttest_ind(all_data[s1][alg][km], all_data[s2][alg][km], equal_var=False)
                 if abs(d) > abs(best_d):
                     best_d = d
                     best_km = km

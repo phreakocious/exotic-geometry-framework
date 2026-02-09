@@ -92,7 +92,7 @@ def main():
         alpha = 0.05 / n_metrics
         for mn in clean_profile[0]:
             d = cohens_d(stego_profile[0][mn], clean_profile[0][mn])
-            _, p = stats.ttest_ind(stego_profile[0][mn], clean_profile[0][mn])
+            _, p = stats.ttest_ind(stego_profile[0][mn], clean_profile[0][mn], equal_var=False)
             if p < alpha and abs(d) > 0.8:
                 detections.append((mn, d, p))
                 

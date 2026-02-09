@@ -201,7 +201,7 @@ def main():
                     continue
                 vals = all_metrics[c][km]
                 d = cohens_d(vals, ref)
-                _, p = stats.ttest_ind(vals, ref)
+                _, p = stats.ttest_ind(vals, ref, equal_var=False)
                 if abs(d) > 0.8 and p < alpha:
                     print(f"  {c:<15} {km:<40} d={d:+.2f} p={p:.2e} ***")
                     sigs.append((c, km, d, p, pt_type))
@@ -235,7 +235,7 @@ def main():
         ecb_vals = ecb_metrics[km]
         ctr_vals = ctr_metrics[km]
         d = cohens_d(ecb_vals, ctr_vals)
-        _, p = stats.ttest_ind(ecb_vals, ctr_vals)
+        _, p = stats.ttest_ind(ecb_vals, ctr_vals, equal_var=False)
         if abs(d) > 0.5:
             print(f"  {km[:44]:<45} {np.mean(ecb_vals):>10.3f} {np.mean(ctr_vals):>10.3f} {d:>+8.2f} {p:>12.2e}")
             if abs(d) > 0.8:

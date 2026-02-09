@@ -323,9 +323,9 @@ def main():
     print("STEP 2: EACH COLLATZ ENCODING vs RANDOM")
     print(f"{'='*78}")
 
-    n_tests = len(encodings) * len(all_metric_names)
+    n_tests = len(all_metric_names)
     alpha = 0.05 / max(n_tests, 1)
-    print(f"\nBonferroni alpha: {alpha:.2e} ({n_tests} tests)")
+    print(f"\nBonferroni alpha: {alpha:.2e} ({n_tests} metrics)")
 
     for enc in encodings:
         sig_results = []
@@ -337,7 +337,7 @@ def main():
             if len(r_vals) < 2 or len(e_vals) < 2:
                 continue
             d = cohens_d(e_vals, r_vals)
-            _, p = stats.ttest_ind(e_vals, r_vals)
+            _, p = stats.ttest_ind(e_vals, r_vals, equal_var=False)
             if abs(d) > 0.8 and p < alpha:
                 sig_results.append((km, d, p))
 
@@ -358,7 +358,7 @@ def main():
     canonical = 'hailstone_large'
     structured = ['logistic', 'lcg', 'random_walk', 'syracuse_variant']
 
-    n_tests2 = len(structured) * len(all_metric_names)
+    n_tests2 = len(all_metric_names)
     alpha2 = 0.05 / max(n_tests2, 1)
     print(f"\nComparing {canonical} against each structured sequence")
     print(f"Bonferroni alpha: {alpha2:.2e}\n")
@@ -373,7 +373,7 @@ def main():
             if len(c_vals) < 2 or len(o_vals) < 2:
                 continue
             d = cohens_d(c_vals, o_vals)
-            _, p = stats.ttest_ind(c_vals, o_vals)
+            _, p = stats.ttest_ind(c_vals, o_vals, equal_var=False)
             if abs(d) > 0.8 and p < alpha2:
                 sig_results.append((km, d, p))
 
@@ -392,7 +392,7 @@ def main():
 
     import itertools
     enc_pairs = list(itertools.combinations(encodings, 2))
-    n_pair_tests = len(enc_pairs) * len(all_metric_names)
+    n_pair_tests = len(all_metric_names)
     alpha_pair = 0.05 / max(n_pair_tests, 1)
 
     pair_results = []
@@ -406,7 +406,7 @@ def main():
             if len(v1) < 2 or len(v2) < 2:
                 continue
             d = cohens_d(v1, v2)
-            _, p = stats.ttest_ind(v1, v2)
+            _, p = stats.ttest_ind(v1, v2, equal_var=False)
             if abs(d) > 0.8 and p < alpha_pair:
                 n_sig += 1
             if abs(d) > abs(best_d):
@@ -505,7 +505,7 @@ def main():
                     range_metrics[label][f"{r.geometry_name}:{mn}"].append(mv)
 
     range_labels = list(ranges.keys())
-    range_pair_tests = 6 * len(all_metric_names)  # C(4,2) * metrics
+    range_pair_tests = len(all_metric_names)
     alpha_range = 0.05 / max(range_pair_tests, 1)
 
     for i, r1 in enumerate(range_labels):
@@ -519,7 +519,7 @@ def main():
                 if len(v1) < 2 or len(v2) < 2:
                     continue
                 d = cohens_d(v1, v2)
-                _, p = stats.ttest_ind(v1, v2)
+                _, p = stats.ttest_ind(v1, v2, equal_var=False)
                 if abs(d) > 0.8 and p < alpha_range:
                     sig_count += 1
                 if abs(d) > abs(best_d):
@@ -548,7 +548,7 @@ def main():
         if len(v1) < 2 or len(v2) < 2:
             continue
         d = cohens_d(v1, v2)
-        _, p = stats.ttest_ind(v1, v2)
+        _, p = stats.ttest_ind(v1, v2, equal_var=False)
         if abs(d) > 0.8 and p < alpha_var:
             sig_var.append((km, d, p))
 
@@ -580,8 +580,8 @@ def main():
             if len(r_vals) < 2 or len(e_vals) < 2:
                 continue
             d = cohens_d(e_vals, r_vals)
-            _, p = stats.ttest_ind(e_vals, r_vals)
-            if abs(d) > 0.8 and p < 0.05 / max(len(encodings) * len(all_metric_names), 1):
+            _, p = stats.ttest_ind(e_vals, r_vals, equal_var=False)
+            if abs(d) > 0.8 and p < 0.05 / max(len(all_metric_names), 1):
                 sig_count += 1
         status = "DETECTED" if sig_count > 0 else "random-looking"
         print(f"  {enc:<24}: {sig_count:>3} sig metrics  → {status}")
@@ -637,7 +637,7 @@ def make_figure(all_metrics, all_metric_names, encodings, comparisons, pair_resu
     ax_det = fig.add_subplot(gs[0, 2:])
     _dark_ax(ax_det)
 
-    alpha = 0.05 / max(len(encodings) * len(all_metric_names), 1)
+    alpha = 0.05 / max(len(all_metric_names), 1)
     det_counts = []
     for enc in encodings:
         n_sig = 0
@@ -649,7 +649,7 @@ def make_figure(all_metrics, all_metric_names, encodings, comparisons, pair_resu
             if len(r_vals) < 2 or len(e_vals) < 2:
                 continue
             d = cohens_d(e_vals, r_vals)
-            _, p = stats.ttest_ind(e_vals, r_vals)
+            _, p = stats.ttest_ind(e_vals, r_vals, equal_var=False)
             if abs(d) > 0.8 and p < alpha:
                 n_sig += 1
         det_counts.append(n_sig)
@@ -820,7 +820,7 @@ def make_figure(all_metrics, all_metric_names, encodings, comparisons, pair_resu
         if len(v1) < 2 or len(v2) < 2:
             continue
         d = cohens_d(v1, v2)
-        _, p = stats.ttest_ind(v1, v2)
+        _, p = stats.ttest_ind(v1, v2, equal_var=False)
         if abs(d) > 0.8 and p < alpha_var:
             var_results.append((km, d, p))
     var_results.sort(key=lambda x: -abs(x[1]))

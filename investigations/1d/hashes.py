@@ -140,7 +140,7 @@ def main():
     print(f"{'Metric':<40} {'Hash':<10} {'d':>8} {'p':>12} {'Sig?':>6}")
     print("-" * 80)
 
-    n_comparisons = len(key_metrics) * (len(hash_funcs) - 1)
+    n_comparisons = len(key_metrics)  # Bonferroni per comparison family (per METHODOLOGY)
     alpha_bonferroni = 0.05 / n_comparisons
 
     significant_findings = []
@@ -156,7 +156,7 @@ def main():
                 continue
             hash_vals = all_metrics[hf][full_key]
             d = cohens_d(hash_vals, random_vals)
-            _, p = stats.ttest_ind(hash_vals, random_vals)
+            _, p = stats.ttest_ind(hash_vals, random_vals, equal_var=False)
             sig = "***" if p < alpha_bonferroni else ""
 
             if abs(d) > 0.5:  # medium+ effect size
@@ -171,7 +171,7 @@ def main():
 
     pairwise_sigs = []
     hash_only = [h for h in hash_funcs if h != 'random']
-    n_pairs = len(list(__import__('itertools').combinations(hash_only, 2))) * len(key_metrics)
+    n_pairs = len(key_metrics)  # Bonferroni per comparison family (per METHODOLOGY)
     alpha_pair = 0.05 / max(n_pairs, 1)
 
     for geom_name, metric_name in key_metrics.items():
@@ -183,7 +183,7 @@ def main():
             vals1 = all_metrics[h1][full_key]
             vals2 = all_metrics[h2][full_key]
             d = cohens_d(vals1, vals2)
-            _, p = stats.ttest_ind(vals1, vals2)
+            _, p = stats.ttest_ind(vals1, vals2, equal_var=False)
 
             if abs(d) > 0.8 and p < alpha_pair:
                 print(f"{full_key:<35} {h1:<10} {h2:<10} {d:>8.3f} {p:>12.2e}")

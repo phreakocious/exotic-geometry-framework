@@ -216,7 +216,7 @@ def main():
                         continue
 
             # Compare clean vs stego
-            n_tests = len(key_metrics) * len(embed_rates)
+            n_tests = len(key_metrics)
             alpha = 0.05 / max(n_tests, 1)
 
             found = False
@@ -229,7 +229,7 @@ def main():
                         continue
 
                     d = cohens_d(stego_metrics[rate][km], clean_metrics[km])
-                    _, p = stats.ttest_ind(stego_metrics[rate][km], clean_metrics[km])
+                    _, p = stats.ttest_ind(stego_metrics[rate][km], clean_metrics[km], equal_var=False)
 
                     if abs(d) > 0.8 and p < alpha:
                         if not found:

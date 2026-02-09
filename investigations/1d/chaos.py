@@ -246,7 +246,7 @@ def main():
     print("2. EACH MAP vs RANDOM")
     print(f"{'='*70}\n")
 
-    n_tests = (len(maps) - 1) * len(key_metrics)
+    n_tests = len(key_metrics)
     alpha = 0.05 / max(n_tests, 1)
 
     map_detections = defaultdict(list)
@@ -259,7 +259,7 @@ def main():
             if len(all_metrics['random'][km]) < 2 or len(all_metrics[m][km]) < 2:
                 continue
             d = cohens_d(all_metrics[m][km], all_metrics['random'][km])
-            _, p = stats.ttest_ind(all_metrics[m][km], all_metrics['random'][km])
+            _, p = stats.ttest_ind(all_metrics[m][km], all_metrics['random'][km], equal_var=False)
             if abs(d) > 0.8 and p < alpha:
                 map_detections[m].append((km, d, p))
 
@@ -278,7 +278,7 @@ def main():
 
     chaos_maps = [m for m in maps if m not in ('random',)]
     n_pairs = len(list(__import__('itertools').combinations(chaos_maps, 2)))
-    n_pair_tests = n_pairs * len(key_metrics)
+    n_pair_tests = len(key_metrics)
     alpha_pair = 0.05 / max(n_pair_tests, 1)
 
     pair_results = []
@@ -293,7 +293,7 @@ def main():
                 if len(all_metrics[m1][km]) < 2 or len(all_metrics[m2][km]) < 2:
                     continue
                 d = cohens_d(all_metrics[m1][km], all_metrics[m2][km])
-                _, p = stats.ttest_ind(all_metrics[m1][km], all_metrics[m2][km])
+                _, p = stats.ttest_ind(all_metrics[m1][km], all_metrics[m2][km], equal_var=False)
                 if abs(d) > abs(best_d):
                     best_d = d
                     best_km = km
@@ -349,7 +349,7 @@ def main():
                     all_different = False
                     break
                 d = abs(cohens_d(m_vals, all_metrics[m2][km]))
-                _, p = stats.ttest_ind(m_vals, all_metrics[m2][km])
+                _, p = stats.ttest_ind(m_vals, all_metrics[m2][km], equal_var=False)
                 if d < 0.8 or p >= alpha_pair:
                     all_different = False
                     break
