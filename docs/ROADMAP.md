@@ -17,11 +17,13 @@ Can exotic geometries detect structure in prime number sequences?
 - d(n) vs distribution-matched: 85 sig — massive sequential correlation in divisor function
 - Zeta spacings vs Wigner surmise: 90 sig — structure beyond GUE
 
-### 3. Continued Fractions (`investigations/1d/continued_fractions.py`)
-Partial quotients of mathematical constants.
-- π vs e vs √2 vs golden ratio vs random
-- Khinchin's constant: do partial quotients approach the universal mean?
-- Algebraic vs transcendental distinction
+### 3. Continued Fractions (`investigations/1d/continued_fractions.py`) — COMPLETE
+CF coefficients of 5 constants (√2, √3, e, π, ln 2) vs Gauss-Kuzmin surrogates.
+- π vs GK = 0 sig — CF coefficients are indistinguishable from iid Gauss-Kuzmin
+- ln 2 vs GK = 11 sig (weak sequential signal); e vs GK = 65; √2/√3 trivially different
+- π ordering = 0, ln 2 ordering = 0 — no detectable sequential dependence
+- π vs ln 2 = only 4 sig pairwise (both look GK-like); algebraic vs transcendental = 96-100
+- Khinchin check: π geo_mean = 2.6624 ≈ K = 2.6854
 
 ### 4. Deep DNA (`investigations/1d/dna_deep.py`)
 Follow the collatz_deep pattern: 5 directions probing the 291 findings.
@@ -54,6 +56,7 @@ Can preprocessing catch MT19937 or XorShift? 5 directions:
 - Stego: d = 1.06 (Fisher, LSB) — VERIFIED ✓, d = 1166 was FALSE ✗
 
 ## Completed
+- `investigations/1d/continued_fractions.py` — 5 constants, GK surrogates, π passes iid test ✓
 - `investigations/1d/chaos_deep.py` — Lyapunov correlation, bifurcation sweep ✓
 - `investigations/1d/prng_deep.py` — 5 directions: delay, bitplane, spatial, spectral, shuffle ✓
 - `investigations/1d/number_theory.py` — 8 arithmetic functions, 5 directions ✓

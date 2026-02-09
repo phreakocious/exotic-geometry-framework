@@ -1,6 +1,6 @@
 # Investigations
 
-27 self-contained investigation scripts demonstrating the framework across diverse domains.
+28 self-contained investigation scripts demonstrating the framework across diverse domains.
 
 ## Running
 
@@ -22,7 +22,7 @@ python investigations/2d/ecb_penguin.py
 
 Figures are saved to `figures/` (gitignored, generated on demand).
 
-## 1D Investigations (15)
+## 1D Investigations (16)
 
 | Script | Domain | Key Result | Dependencies |
 |--------|--------|------------|-------------|
@@ -42,6 +42,7 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/primes.py` | Prime number sequences (7 encodings) | 7/7 detected, 21/21 pairwise. Primes vs Cramér model: 55 sig. All ordering-dependent. | numpy, scipy |
 | `1d/primes_deep.py` | Deep prime gaps: what Cramér misses | 52 pure-primality metrics. Sieved Cramér closes gap 54→30. 31 always-sig across scales. | numpy, scipy |
 | `1d/number_theory.py` | Arithmetic functions (μ, λ, d, φ, Ω, Mertens, ζ zeros) | 8/8 detected. Mertens vs random walk: 37 sig (beyond RH). All ordering-dependent. | numpy, scipy, mpmath |
+| `1d/continued_fractions.py` | CF coefficients of √2, √3, e, π, ln 2 | π vs Gauss-Kuzmin = 0 sig (passes iid test). π ordering = 0. ln 2 vs GK = 11. | numpy, scipy, mpmath |
 
 ## 2D Investigations (12)
 

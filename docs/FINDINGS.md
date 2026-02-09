@@ -2,7 +2,7 @@
 
 All validated discoveries and negative results from 35 investigations.
 
-## Validated Positive Findings (92)
+## Validated Positive Findings (102)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -134,6 +134,20 @@ All validated discoveries and negative results from 35 investigations.
 | 39h | ALL 8 encodings are ordering-dependent | d(n) strongest (57 orig vs shuf), λ weakest (8) | `1d/number_theory.py` |
 | 39i | d(n) and Ω(n) detection stable across 4 decades of scale | 99-107 sig across 1K-1M | `1d/number_theory.py` |
 
+### Continued Fractions
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 40a | All 5 constants' CF coefficients detected as non-random | √3=100, √2=96, π=89, e=87, ln2=86 sig | `1d/continued_fractions.py` |
+| 40b | **π CF coefficients indistinguishable from iid Gauss-Kuzmin** — geometry confirms "almost all" applies to π | 0 sig vs GK surrogates | `1d/continued_fractions.py` |
+| 40c | ln 2 shows weak sequential signal beyond GK distribution | 11 sig vs GK | `1d/continued_fractions.py` |
+| 40d | e strongly distinguishable from GK (deterministic [1,2k,1] pattern) | 65 sig vs GK | `1d/continued_fractions.py` |
+| 40e | π and ln 2 have zero ordering dependence (orig vs shuffled) | π=0, ln2=0 sig | `1d/continued_fractions.py` |
+| 40f | √3 ordering = 48 sig (period-2 destroyed by shuffling); √2 = 0 (constant, perfect control) | validates methodology | `1d/continued_fractions.py` |
+| 40g | π vs ln 2 = only 4 sig pairwise (both look GK-like) | weakest pair among 10 | `1d/continued_fractions.py` |
+| 40h | Algebraic vs transcendental CFs: 96-100 sig pairwise | √2 vs π=98, √3 vs π=100 | `1d/continued_fractions.py` |
+| 40i | Khinchin's constant: π geo_mean=2.6624 ≈ K=2.6854, ln 2 geo_mean=2.6266 | both approach K | `1d/continued_fractions.py` |
+| 40j | √3 delay embedding peaks at τ=2, matching its period-2 CF structure | τ=2 → 103 sig (vs 101 at τ=1) | `1d/continued_fractions.py` |
+
 ### Preprocessing
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
@@ -159,7 +173,7 @@ All validated discoveries and negative results from 35 investigations.
 | 55 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
 | 56 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
-## Negative Results (18)
+## Negative Results (19)
 
 These are equally important — they define the boundaries of what geometric analysis can and cannot do.
 
@@ -185,6 +199,7 @@ These are equally important — they define the boundaries of what geometric ana
 | 15 | GoL ≈ HighLife | Near-identical rules (differ only in B6) |
 | 16 | Sandpile 10k ≈ 50k iterations | Both at SOC steady state |
 | 17 | Kruskal ≈ Aldous-Broder maze generation | Both produce uniform spanning trees |
+| 18 | **π CF coefficients indistinguishable from iid Gauss-Kuzmin** (0 sig, 0 ordering) | Geometry confirms "almost all" applies to π |
 
 ## Key Takeaway
 
@@ -195,5 +210,7 @@ The 2D spatial geometry battery (8 geometries, 80 metrics) demonstrates that gen
 The deep Collatz investigations (collatz_deep, collatz_deep2) demonstrate a particularly striking application: five specific geometry families (Fisher, Heisenberg, Sol, Spherical, Wasserstein) detect convergence-specific structure in 3n+1 that categorically vanishes in divergent variants. The convergence mechanism has a geometric character — information-geometric, nilpotent, solvable — that is absent, not merely attenuated, in divergent maps.
 
 The number theory investigations reveal that classical limit theorems leave substantial geometric structure unexplained. The Mertens function M(n) — whose random-walk behavior is equivalent to RH — has 37 metrics beyond what a random walk with matching step probabilities can produce. Zeta zero spacings differ from the GUE/Wigner prediction in 90 metrics. Even the divisor function d(n) has 85 metrics of sequential correlation destroyed by shuffling. These results suggest that exotic geometries detect multiplicative number-theoretic structure that standard probabilistic models do not capture.
+
+The continued fractions investigation provides a striking validation of Khinchin's theorem: π's CF coefficients are geometrically indistinguishable from iid Gauss-Kuzmin samples (0 sig, 0 ordering dependence), confirming that "almost all" applies to π as far as 131 exotic geometric metrics can detect. ln 2 shows a faint crack (11 sig vs GK), while algebraic constants are trivially distinguishable. The √2 control (constant sequence, 0 ordering sig) and random self-check (0 sig) validate the methodology.
 
 The RNG quality testing investigation (`rng.py`) provides a clean validation story: 10 generators spanning a quality gradient from cryptographic to historically broken. CRYPTO/GOOD generators return 0 significant metrics (self-check urandom vs urandom also 0), while RANDU (44 sig) and Middle-Square (78 sig) are massively detected. Geometric metrics outperform standard statistical tests by 11x on the worst generators. Delay embedding newly reveals XorShift128 (undetected raw), and RANDU is detectable from just 500 bytes. Different weaknesses have distinct geometric fingerprints — Penrose quasicrystal metrics detect lattice structure (d=-37), while Higher-Order Statistics catches nonlinear correlations.
