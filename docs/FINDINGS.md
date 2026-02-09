@@ -1,8 +1,8 @@
 # Complete Findings
 
-All validated discoveries and negative results from 36 investigations.
+All validated discoveries and negative results from 37 investigations.
 
-## Validated Positive Findings (108)
+## Validated Positive Findings (114)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -120,6 +120,12 @@ All validated discoveries and negative results from 36 investigations.
 | 38d | 14 metrics are pure sequential correlation in prime gaps | Lorentzian causal_order d=10.5 | `1d/primes_deep.py` |
 | 38e | Delay embedding does NOT amplify real-vs-Cramér signal | 47-52 sig across τ=1-10 vs 54 raw | `1d/primes_deep.py` |
 | 38f | Cramér gap shrinks with scale: 75 (1K) → 54 (1M) | 31 always-sig, 61 scale-dependent | `1d/primes_deep.py` |
+| 38g | 14 dist-matched survivors confirmed: pure sequential correlation in prime gaps | Lorentzian d=10.5, HOS:perm_entropy d=4.2 | `1d/primes_deep2.py` |
+| 38h | Prime gaps are time-irreversible (4 sig forward vs reversed) | Spiral:growth_rate d=+4.01 is strongest asymmetry detector | `1d/primes_deep2.py` |
+| 38i | 57% linear, 43% nonlinear sequential structure in prime gaps | IAAFT: 6 sig (nonlinear), block-shuffle: 3 sig | `1d/primes_deep2.py` |
+| 38j | mod6=1 vs mod6=5 gaps geometrically distinct (Lemke Oliver–Soundararajan) | 46 sig; Projective ℙ² d=−5.90 top discriminator | `1d/primes_deep2.py` |
+| 38k | Both residue classes retain independent sequential structure | mod6=1: 9 sig, mod6=5: 7 sig vs dist-match | `1d/primes_deep2.py` |
+| 38l | 7/14 survivors persist at ALL scales (1K through 1M) — fundamental | Lorentzian (3), Aperiodic (3), HOS:perm_entropy (1) | `1d/primes_deep2.py` |
 
 ### Number Theory
 | # | Finding | Effect Size | Investigation |
@@ -220,6 +226,8 @@ The framework detects genuine structure with large effect sizes (d = 7-266) whil
 The 2D spatial geometry battery (8 geometries, 80 metrics) demonstrates that genuinely different mathematical lenses — differential geometry (Surface), algebraic topology (PersistentHomology2D), complex analysis (Conformal2D), integral geometry (MinkowskiFunctional), scaling analysis (MultiscaleFractal), Hodge theory (HodgeLaplacian), and spectral analysis (SpectralPower) — each contribute unique discriminative power. On stego co-occurrence matrices, PVD detection jumps from 13/15 (SpatialField alone) to 49/80 (all 8 geometries). On 10 diverse field types, all 45 pairs are distinguished.
 
 The deep Collatz investigations (collatz_deep, collatz_deep2) demonstrate a particularly striking application: five specific geometry families (Fisher, Heisenberg, Sol, Spherical, Wasserstein) detect convergence-specific structure in 3n+1 that categorically vanishes in divergent variants. The convergence mechanism has a geometric character — information-geometric, nilpotent, solvable — that is absent, not merely attenuated, in divergent maps.
+
+The deep prime gap investigations (`primes_deep.py`, `primes_deep2.py`) trace the sequential structure of prime gaps to its roots. Of 131 metrics, 14 survive distribution-matching — detecting ordering that no marginal model explains. These 14 decompose into 57% linear (autocorrelation) and 43% nonlinear (IAAFT-surviving) components. Prime gaps are temporally irreversible (4 sig metrics forward vs reversed), consistent with the sieve's inherent directionality. Residue classes mod 6 are massively geometrically distinct (46 sig), with both classes retaining independent sequential structure — the Lemke Oliver–Soundararajan bias made geometric. Seven of the 14 survivors persist from primes near 1K through 1M, establishing them as fundamental features of prime distribution rather than small-prime artifacts.
 
 The number theory investigations reveal that classical limit theorems leave substantial geometric structure unexplained. The Mertens function M(n) — whose random-walk behavior is equivalent to RH — has 37 metrics beyond what a random walk with matching step probabilities can produce. Zeta zero spacings differ from the GUE/Wigner prediction in 90 metrics. Even the divisor function d(n) has 85 metrics of sequential correlation destroyed by shuffling. These results suggest that exotic geometries detect multiplicative number-theoretic structure that standard probabilistic models do not capture.
 
