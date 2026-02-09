@@ -1,6 +1,6 @@
 # Investigations
 
-23 self-contained investigation scripts demonstrating the framework across diverse domains.
+27 self-contained investigation scripts demonstrating the framework across diverse domains.
 
 ## Running
 
@@ -22,7 +22,7 @@ python investigations/2d/ecb_penguin.py
 
 Figures are saved to `figures/` (gitignored, generated on demand).
 
-## 1D Investigations (12)
+## 1D Investigations (15)
 
 | Script | Domain | Key Result | Dependencies |
 |--------|--------|------------|-------------|
@@ -39,8 +39,11 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/collatz.py` | Collatz (3n+1) sequences | 7/7 encodings detected. 21/21 pairwise. 3n+1 vs 5n+1: 71 sig. | numpy |
 | `1d/collatz_deep.py` | Deep Collatz I: phase transitions | Sharp k=1→2 boundary (86→35 sig). Tropical slopes match theory. | numpy, scipy |
 | `1d/collatz_deep2.py` | Deep Collatz II: convergence anatomy | 45 convergence-specific metrics. Composition order matters. 37 drift detectors. | numpy, scipy |
+| `1d/primes.py` | Prime number sequences (7 encodings) | 7/7 detected, 21/21 pairwise. Primes vs Cramér model: 55 sig. All ordering-dependent. | numpy, scipy |
+| `1d/primes_deep.py` | Deep prime gaps: what Cramér misses | 52 pure-primality metrics. Sieved Cramér closes gap 54→30. 31 always-sig across scales. | numpy, scipy |
+| `1d/number_theory.py` | Arithmetic functions (μ, λ, d, φ, Ω, Mertens, ζ zeros) | 8/8 detected. Mertens vs random walk: 37 sig (beyond RH). All ordering-dependent. | numpy, scipy, mpmath |
 
-## 2D Investigations (11)
+## 2D Investigations (12)
 
 All 2D scripts use `SpatialFieldGeometry` for native spatial analysis.
 
@@ -57,6 +60,7 @@ All 2D scripts use `SpatialFieldGeometry` for native spatial analysis.
 | `2d/growth_models.py` | DLA, Eden, random growth | 3/3 pairs. Eden anisotropy d=-178. | numpy |
 | `2d/sandpile.py` | Abelian sandpile (SOC) | 5/6 pairs. 10k ≈ 50k (both at SOC). | numpy |
 | `2d/lenia.py` | Lenia continuous cellular automata | 12/15 configs (3 died to density=0). | numpy, scipy |
+| `2d/stego_bitmatrix.py` | 2D stego via byte representations | Co-occurrence: SS 14/15 (d=−5.6). Diff grid: LSBMR 14 sig. Matrix embed: still invisible. | numpy, scipy |
 
 ## Investigation Template
 

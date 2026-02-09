@@ -1,8 +1,8 @@
 # Complete Findings
 
-All validated discoveries and negative results from 30 investigations across 8 rounds.
+All validated discoveries and negative results from 34 investigations.
 
-## Validated Positive Findings (62)
+## Validated Positive Findings (89)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -23,6 +23,9 @@ All validated discoveries and negative results from 30 investigations across 8 r
 | 9a | Matrix embedding (Hamming syndrome coding) invisible to all geometries | 0 sig at all rates, both carriers | `1d/stego_deep.py` |
 | 9b | Bitplane extraction does NOT improve stego detection (8x sample reduction) | 0 sig across all techniques with bitplane | `1d/stego_deep.py` |
 | 9c | Delay embedding amplifies detectable stego signal | PVD: 16 sig via DE2 at 50% rate | `1d/stego_deep.py` |
+| 9d | 2D co-occurrence matrix detects PVD and SS via spatial metrics alone | PVD: 13/15, SS: 14/15; tension_mean d=−5.6 | `2d/stego_bitmatrix.py` |
+| 9e | 2D diff grid amplifies LSBMR from near-invisible to solidly detected | 14 sig (up from 2–6 in 1D); Wasserstein d=−1.36 | `2d/stego_bitmatrix.py` |
+| 9f | 2D representation choice is critical — co-occurrence Σ=27, diff grid Σ=24, bitplane tiled Σ=0 | binary grids kill SpatialField metric variance | `2d/stego_bitmatrix.py` |
 
 ### PRNG Testing
 | # | Finding | Effect Size | Investigation |
@@ -84,30 +87,60 @@ All validated discoveries and negative results from 30 investigations across 8 r
 | 36e | Composition order matters: DE2→BP0 beats BP0→DE2 (86 vs 75 sig) | exceeds both individual baselines | `1d/collatz_deep2.py` |
 | 36f | 37 metrics track drift rate across (2k+1)n+1 with \|r\| > 0.8 | kurt_mean r=+0.986 | `1d/collatz_deep2.py` |
 
+### Prime Numbers
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 37a | All 7 prime encodings detected as non-random | 49-100 significant metrics | `1d/primes.py` |
+| 37b | 21/21 pairwise encoding distinctions | min 71 sig (last_digit vs binary), max 109 sig | `1d/primes.py` |
+| 37c | Prime gaps distinguishable from Cramér random model | 55 sig metrics | `1d/primes.py` |
+| 37d | Prime gaps distinguishable from semiprime gaps | 80 sig metrics | `1d/primes.py` |
+| 37e | All 7 encodings have ordering-dependent structure | orig vs shuf: 12-83 sig | `1d/primes.py` |
+| 37f | Gap geometry evolves with prime size | all 6 range pairs: 68-82 sig | `1d/primes.py` |
+| 37g | gap_pairs is richest encoding (100 sig vs random) | Torus chi2 d=441, Lorentzian d=307 | `1d/primes.py` |
+| 38a | 52 metrics detect pure primality (sig vs both Cramér AND random) | 2-adic mean_distance \|d\|=128 | `1d/primes_deep.py` |
+| 38b | Heisenberg and Algebraic geometries are 100% Cramér-sensitive | all sig metrics also distinguish from Cramér | `1d/primes_deep.py` |
+| 38c | Model hierarchy closes the gap: Cramér=54 → Even-gap=37 → Sieved=30 → Dist-matched=14 | progressive improvement | `1d/primes_deep.py` |
+| 38d | 14 metrics are pure sequential correlation in prime gaps | Lorentzian causal_order d=10.5 | `1d/primes_deep.py` |
+| 38e | Delay embedding does NOT amplify real-vs-Cramér signal | 47-52 sig across τ=1-10 vs 54 raw | `1d/primes_deep.py` |
+| 38f | Cramér gap shrinks with scale: 75 (1K) → 54 (1M) | 31 always-sig, 61 scale-dependent | `1d/primes_deep.py` |
+
+### Number Theory
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 39a | All 8 arithmetic function encodings detected as non-random | 50-105 sig metrics | `1d/number_theory.py` |
+| 39b | Even degenerate μ(n) (3 values) and λ(n) (2 values) strongly detected | μ=78, λ=71 sig metrics | `1d/number_theory.py` |
+| 39c | All 28 pairwise encoding distinctions | min 75 (μ vs λ), max 118 (ζ vs d) | `1d/number_theory.py` |
+| 39d | Mertens function has 37 metrics beyond random walk model | E8 diversity d=4.62, Clifford regularity d=-3.79 | `1d/number_theory.py` |
+| 39e | d(n) has 85 metrics beyond distribution-matched model | Cantor max_gap d=64.7; massive sequential correlation | `1d/number_theory.py` |
+| 39f | Ω(n) has 88 metrics beyond Erdős–Kac normal approximation | Heisenberg xy_spread d=-54.8 | `1d/number_theory.py` |
+| 39g | Zeta zero spacings have 90 metrics beyond Wigner surmise (GUE) | Fisher jeffreys d=-24.3, Torus entropy d=22.5 | `1d/number_theory.py` |
+| 39h | ALL 8 encodings are ordering-dependent | d(n) strongest (57 orig vs shuf), λ weakest (8) | `1d/number_theory.py` |
+| 39i | d(n) and Ω(n) detection stable across 4 decades of scale | 99-107 sig across 1K-1M | `1d/number_theory.py` |
+
 ### Preprocessing
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 37 | Delay embedding gives 52x improvement for lag detection | d: 0.17 → 9.1 | Delay embedding study |
-| 38 | FFT and raw analysis are complementary (17+20 exclusive pairs) | varies | Spectral study |
-| 39 | kurt_mean (4th order) is independent from all 23 geometries | max r = 0.22 | Higher-order study |
-| 40 | Permutation entropy: 33x better for recurrence detection | d = 250 vs 7.5 | Higher-order study |
+| 40 | Delay embedding gives 52x improvement for lag detection | d: 0.17 → 9.1 | Delay embedding study |
+| 41 | FFT and raw analysis are complementary (17+20 exclusive pairs) | varies | Spectral study |
+| 42 | kurt_mean (4th order) is independent from all 23 geometries | max r = 0.22 | Higher-order study |
+| 43 | Permutation entropy: 33x better for recurrence detection | d = 250 vs 7.5 | Higher-order study |
 
 ### 2D Spatial Field
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 41 | Ising model: all temperatures vs random distinguished | varies | `2d/ising.py` |
-| 42 | Ising: multiscale_coherence_4 peaks near T_c | scale-free structure | `2d/ising.py` |
-| 43 | Reaction-diffusion: 15/15 morphology pairs | d = 97 (tension_std) | `2d/reaction_diffusion.py` |
-| 44 | Percolation: 28/28 probability pairs | d = 261 (n_basins) | `2d/percolation.py` |
-| 45 | Cellular automata: 14/15 rule pairs | d = 78.5 (anisotropy) | `2d/cellular_automata.py` |
-| 46 | ECB penguin detected in 2D, CBC/CTR invisible | d = -283 | `2d/ecb_penguin.py` |
-| 47 | Maze algorithms: 15/15 pairs | d = 108.9 | `2d/mazes.py` |
-| 48 | Wave equation: 15/15 source configs | d = -496 | `2d/wave_equation.py` |
-| 49 | Voronoi tessellations: 10/10 point process pairs | d = -154 | `2d/voronoi.py` |
-| 50 | Growth models: 3/3 (DLA/Eden/random) | d = -178 | `2d/growth_models.py` |
-| 51 | Sandpile SOC: 5/6 pairs, convergence detected | d = 261 | `2d/sandpile.py` |
-| 52 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
-| 53 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
+| 44 | Ising model: all temperatures vs random distinguished | varies | `2d/ising.py` |
+| 45 | Ising: multiscale_coherence_4 peaks near T_c | scale-free structure | `2d/ising.py` |
+| 46 | Reaction-diffusion: 15/15 morphology pairs | d = 97 (tension_std) | `2d/reaction_diffusion.py` |
+| 47 | Percolation: 28/28 probability pairs | d = 261 (n_basins) | `2d/percolation.py` |
+| 48 | Cellular automata: 14/15 rule pairs | d = 78.5 (anisotropy) | `2d/cellular_automata.py` |
+| 49 | ECB penguin detected in 2D, CBC/CTR invisible | d = -283 | `2d/ecb_penguin.py` |
+| 50 | Maze algorithms: 15/15 pairs | d = 108.9 | `2d/mazes.py` |
+| 51 | Wave equation: 15/15 source configs | d = -496 | `2d/wave_equation.py` |
+| 52 | Voronoi tessellations: 10/10 point process pairs | d = -154 | `2d/voronoi.py` |
+| 53 | Growth models: 3/3 (DLA/Eden/random) | d = -178 | `2d/growth_models.py` |
+| 54 | Sandpile SOC: 5/6 pairs, convergence detected | d = 261 | `2d/sandpile.py` |
+| 55 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
+| 56 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
 ## Negative Results (17)
 
@@ -123,7 +156,7 @@ These are equally important — they define the boundaries of what geometric ana
 | 6 | Standard map ≈ random | Uniformly mixing on torus |
 | 7 | Arnold cat map ≈ random | Uniformly mixing on torus |
 | 8 | LSB steganography nearly invisible (d=1.06, 1 metric at 100% rate only) | Byte-level changes too small for most geometries |
-| 8a | Matrix embedding completely invisible to all geometries | Hamming coding minimizes changes below detection floor |
+| 8a | Matrix embedding completely invisible to all geometries (confirmed 1D and 2D) | d=0.00 across 131 metrics, 4 representations, all rates |
 | 8b | Bitplane extraction does not improve stego detection | 8x sample reduction destroys statistical power |
 | 9 | GBM indistinguishable from IID normal | Random walk is geometrically random |
 | 10 | Ornstein-Uhlenbeck ≈ IID normal | Mean-reversion too subtle for byte encoding |
@@ -140,3 +173,5 @@ These are equally important — they define the boundaries of what geometric ana
 The framework detects genuine structure with large effect sizes (d = 7-266) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly.
 
 The deep Collatz investigations (collatz_deep, collatz_deep2) demonstrate a particularly striking application: five specific geometry families (Fisher, Heisenberg, Sol, Spherical, Wasserstein) detect convergence-specific structure in 3n+1 that categorically vanishes in divergent variants. The convergence mechanism has a geometric character — information-geometric, nilpotent, solvable — that is absent, not merely attenuated, in divergent maps.
+
+The number theory investigations reveal that classical limit theorems leave substantial geometric structure unexplained. The Mertens function M(n) — whose random-walk behavior is equivalent to RH — has 37 metrics beyond what a random walk with matching step probabilities can produce. Zeta zero spacings differ from the GUE/Wigner prediction in 90 metrics. Even the divisor function d(n) has 85 metrics of sequential correlation destroyed by shuffling. These results suggest that exotic geometries detect multiplicative number-theoretic structure that standard probabilistic models do not capture.
