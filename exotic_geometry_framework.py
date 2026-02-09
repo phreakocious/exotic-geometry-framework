@@ -4547,8 +4547,8 @@ class GeometricClassifier:
                 iv, m, s = input_vec, means, stds
                 names = metric_names
 
-            # Filter out constant metrics (std < 1e-8): uninformative
-            mask = s >= 1e-8
+            # Filter out constant metrics (std < 1e-8) and NaN/Inf values
+            mask = (s >= 1e-8) & np.isfinite(iv) & np.isfinite(m) & np.isfinite(s)
             if not np.any(mask):
                 # All metrics constant — can't classify
                 rankings.append({
