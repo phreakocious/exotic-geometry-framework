@@ -164,6 +164,29 @@ Twelve elementary CA rules spanning all four Wolfram complexity classes, analyze
 
 → `investigations/2d/elementary_ca.py`
 
+### RNG quality testing: geometric fingerprints of PRNG weakness
+
+Ten generators spanning a quality gradient — from cryptographic (os.urandom, SHA-256 CTR) through good (PCG64, MT19937, SFC64) to weak (XorShift128, MINSTD) to bad (RANDU, LFSR-16, Middle-Square) — tested against an os.urandom reference. Self-check (urandom vs urandom) returns 0 significant metrics, validating the methodology.
+
+| Generator | Category | Sig metrics | Top detector |
+|-----------|----------|:-----------:|:-------------|
+| os.urandom | CRYPTO | 0 | — |
+| SHA-256 CTR | CRYPTO | 0 | — |
+| PCG64 | GOOD | 0 | — |
+| SFC64 | GOOD | 0 | — |
+| MT19937 | GOOD | 1 | S² × ℝ (borderline) |
+| XorShift128 | WEAK | 0 (raw), 2 (DE2) | Thurston height_drift |
+| MINSTD | WEAK | 1 | S² × ℝ |
+| RANDU | BAD | **44** | Penrose index_diversity d=-37 |
+| LFSR-16 | BAD | 2 | Higher-Order Stats |
+| Middle-Square | BAD | **78** | Penrose index_diversity d=-35 |
+
+Geometric metrics outperform standard statistical tests: RANDU has 44 geometric detections vs 4 standard, Middle-Square has 78 vs 7. Delay embedding (τ=2) newly reveals XorShift128 (0→2 sig) and amplifies Middle-Square (78→82). RANDU is detectable at just 500 bytes (41 sig). Different PRNG weaknesses have distinct geometric fingerprints — E8 Lattice, Higher-Order Statistics, Torus T², and Ammann-Beenker are the top weakness detectors.
+
+![RNG Quality](figures/rng.png)
+
+→ `investigations/1d/rng.py`
+
 ### Ablation: 131 metrics → 15 effective dimensions
 
 An honest self-assessment: a 14-feature simple baseline (entropy, autocorrelation, spectral slope, permutation entropy, kurtosis) detects the same phenomena as the full framework — 9-12 significant features across all test cases. The 131 framework metrics collapse to ~15 independent dimensions at 95% explained variance, with 109 metrics >95% redundant with another metric. Exotic geometries contribute 79-89% of significant detections but are amplifiers, not discoverers of fundamentally new phenomena — with one critical exception: [surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves they capture nonlinear structure simple features provably cannot.
@@ -286,7 +309,8 @@ Full catalog of all 31 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | Script | Domain | Key Result |
 |--------|--------|------------|
 | [hashes.py](investigations/1d/hashes.py) | Hash functions | 0 sig (validates methodology) |
-| [prng.py](investigations/1d/prng.py) | PRNG weakness | RANDU d=-19.89 |
+| [rng.py](investigations/1d/rng.py) | RNG quality testing | 10 generators: RANDU=44 sig, Middle-Square=78, CRYPTO/GOOD=0 |
+| [prng.py](investigations/1d/prng.py) | PRNG weakness (early) | RANDU d=-19.89 |
 | [ciphers.py](investigations/1d/ciphers.py) | Cipher modes | ECB d=19-146 |
 | [reduced_aes.py](investigations/1d/reduced_aes.py) | Reduced-round AES | Cliff at R=4 |
 | [stego.py](investigations/1d/stego.py) | Steganography | LSB correlation d=1.06 (Fisher) |
@@ -339,7 +363,8 @@ The framework produces zero false positives on validated random sources and corr
 Equally important: the framework's known limits.
 
 - **AES-CTR vs random**: Indistinguishable across all 24 geometries, preprocessings, and combination strategies. This is the fundamental limit.
-- **MT19937, XorShift32, MINSTD**: Pass all geometric tests (weaknesses are in higher dimensions than byte-level)
+- **XorShift128**: Undetected raw (0 sig), but delay embedding reveals 2 sig metrics via Thurston height_drift — borderline
+- **MT19937**: 1 borderline detection (S² × ℝ sphere_concentration). Essentially passes at byte level
 - **Standard map, Arnold cat map**: Uniformly mixing → look random
 - **Matrix embedding (Hamming syndrome coding)**: Invisible to all geometries at all rates — too few pixel changes
 - **LSB replacement/matching at sub-100% rates**: Detectable only at 100% embedding via raw bytes; bitplane extraction does not help

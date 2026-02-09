@@ -1,6 +1,6 @@
 # Complete Findings
 
-All validated discoveries and negative results from 34 investigations.
+All validated discoveries and negative results from 35 investigations.
 
 ## Validated Positive Findings (92)
 
@@ -37,6 +37,20 @@ All validated discoveries and negative results from 34 investigations.
 | 11 | E8 catches glibc LCG from raw bytes | d = -15.00 | `1d/prng.py` |
 | 12 | Tropical geometry is the second-best PRNG detector | d = -8 | `1d/prng.py` |
 | 13 | RANDU detectable at ALL bit planes | d > 10 for most planes | `1d/prng.py` |
+
+### RNG Quality Testing (10 generators, systematic)
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 13a | Self-check (urandom vs urandom) returns 0 sig — validates methodology | 0/131 | `1d/rng.py` |
+| 13b | CRYPTO (os.urandom, SHA-256 CTR) and GOOD (PCG64, SFC64) = 0 sig | 0/131 | `1d/rng.py` |
+| 13c | RANDU massively detected: 44 sig metrics, Penrose index_diversity d=-37 | 44/131 | `1d/rng.py` |
+| 13d | Middle-Square massively detected: 78 sig metrics | 78/131 | `1d/rng.py` |
+| 13e | Geometric metrics outperform standard: RANDU 44 vs 4, Middle-Square 78 vs 7 | 11x, 11x | `1d/rng.py` |
+| 13f | Delay embedding reveals XorShift128 (0→2 sig via Thurston height_drift) | DE2 amplification | `1d/rng.py` |
+| 13g | RANDU detectable at just 500 bytes (41 sig) | N=500 | `1d/rng.py` |
+| 13h | Middle-Square detectable at 500 bytes (72 sig) | N=500 | `1d/rng.py` |
+| 13i | E8, Higher-Order Stats, Torus T², Ammann-Beenker are top PRNG weakness detectors | heatmap | `1d/rng.py` |
+| 13j | Penrose index_diversity is single most discriminating metric | d=-37 (RANDU) | `1d/rng.py` |
 
 ### Chaotic Systems
 | # | Finding | Effect Size | Investigation |
@@ -145,16 +159,17 @@ All validated discoveries and negative results from 34 investigations.
 | 55 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
 | 56 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
-## Negative Results (17)
+## Negative Results (18)
 
 These are equally important — they define the boundaries of what geometric analysis can and cannot do.
 
 | # | Finding | Implication |
 |---|---------|-------------|
 | 1 | **AES-CTR indistinguishable from random** across ALL geometries, preprocessings, higher-order stats, and bit planes | Fundamental limit; AES works |
-| 2 | MT19937 passes all geometric tests | Mersenne Twister is geometrically random at byte level |
-| 3 | XorShift32 passes all geometric tests | Simple but sufficient for byte-level randomness |
-| 4 | MINSTD passes all geometric tests | Park-Miller is geometrically random |
+| 2 | MT19937 essentially passes (1 borderline detection: S² × ℝ sphere_concentration d=-1.27) | Byte-level structure is marginal |
+| 3 | XorShift128 undetected raw (0 sig), but DE2 reveals 2 metrics | Thurston height_drift exposed by delay embedding |
+| 4 | MINSTD nearly passes (1 sig: S² × ℝ; standard chi2+entropy catch 2) | Distributional bias caught by standard tests first |
+| 4a | SFC64 and PCG64 completely indistinguishable from os.urandom | Modern PRNGs are geometrically random |
 | 5 | RC4 stream looks random (even 24-bit key) | Stream cipher output is geometrically indistinguishable |
 | 6 | Standard map ≈ random | Uniformly mixing on torus |
 | 7 | Arnold cat map ≈ random | Uniformly mixing on torus |
@@ -180,3 +195,5 @@ The 2D spatial geometry battery (8 geometries, 80 metrics) demonstrates that gen
 The deep Collatz investigations (collatz_deep, collatz_deep2) demonstrate a particularly striking application: five specific geometry families (Fisher, Heisenberg, Sol, Spherical, Wasserstein) detect convergence-specific structure in 3n+1 that categorically vanishes in divergent variants. The convergence mechanism has a geometric character — information-geometric, nilpotent, solvable — that is absent, not merely attenuated, in divergent maps.
 
 The number theory investigations reveal that classical limit theorems leave substantial geometric structure unexplained. The Mertens function M(n) — whose random-walk behavior is equivalent to RH — has 37 metrics beyond what a random walk with matching step probabilities can produce. Zeta zero spacings differ from the GUE/Wigner prediction in 90 metrics. Even the divisor function d(n) has 85 metrics of sequential correlation destroyed by shuffling. These results suggest that exotic geometries detect multiplicative number-theoretic structure that standard probabilistic models do not capture.
+
+The RNG quality testing investigation (`rng.py`) provides a clean validation story: 10 generators spanning a quality gradient from cryptographic to historically broken. CRYPTO/GOOD generators return 0 significant metrics (self-check urandom vs urandom also 0), while RANDU (44 sig) and Middle-Square (78 sig) are massively detected. Geometric metrics outperform standard statistical tests by 11x on the worst generators. Delay embedding newly reveals XorShift128 (undetected raw), and RANDU is detectable from just 500 bytes. Different weaknesses have distinct geometric fingerprints — Penrose quasicrystal metrics detect lattice structure (d=-37), while Higher-Order Statistics catches nonlinear correlations.

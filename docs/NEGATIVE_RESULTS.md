@@ -18,15 +18,32 @@ This was verified exhaustively:
 
 Zero significant differences survived Bonferroni correction in any of these tests. This is the correct theoretical result for a secure block cipher in CTR mode, and it validates the framework's methodology: we detect real structure but don't hallucinate structure in properly randomized data.
 
-## PRNGs That Pass
+## PRNGs That Pass (or Nearly Pass)
 
-| PRNG | Why It Passes |
-|------|--------------|
-| **MT19937** (Mersenne Twister) | 623-dimensional equidistribution; byte-level analysis can't access the high-dimensional correlations |
-| **XorShift32** | Simple but sufficient scrambling for byte-level randomness |
-| **MINSTD** (Park-Miller) | Multiplicative LCG with good constant; high bits are well-mixed |
+A systematic study of 10 generators (`rng.py`) confirms that modern PRNGs are geometrically indistinguishable from os.urandom, while historical weak generators are massively detectable.
 
-Note: These PRNGs have known weaknesses detectable by other means (e.g., MT19937 fails TestU01's BigCrush). Our framework operates at the byte level and cannot access the dimensional structure where these weaknesses live.
+**Completely indistinguishable (0 sig):**
+
+| PRNG | Category | Why It Passes |
+|------|----------|--------------|
+| **PCG64** | GOOD | NumPy default, passes BigCrush; 0 sig across all 131 metrics |
+| **SFC64** | GOOD | Small Fast Chaotic; 0 sig |
+| **SHA-256 CTR** | CRYPTO | Hash-based; cryptographically indistinguishable by design |
+
+**Borderline (1 sig — essentially passes):**
+
+| PRNG | Category | Detection |
+|------|----------|-----------|
+| **MT19937** | GOOD | 1 metric (S² × ℝ sphere_concentration, d=-1.27). Not reproducible at other sequence lengths |
+| **MINSTD** | WEAK | 1 geometric metric; standard chi2 and entropy catch 2/11 — distributional bias is the weakness |
+
+**Undetected raw but revealed by delay embedding:**
+
+| PRNG | Category | Raw → DE2 |
+|------|----------|-----------|
+| **XorShift128** | WEAK | 0 → 2 sig. Thurston height_drift at both S² × ℝ and H² × ℝ (d=+1.10). Delay embedding creates phase-space pairs that expose linear correlations invisible in raw bytes |
+
+Note: The earlier `prng.py` tested XorShift32 (which passes); `rng.py` tests the 128-bit variant which is borderline. Our framework operates at the byte level and cannot access the high-dimensional structure where many PRNG weaknesses live (e.g., MT19937's 623-dimensional equidistribution failures).
 
 ## Chaotic Maps That Look Random
 
