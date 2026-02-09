@@ -131,10 +131,12 @@ Given an unknown byte stream, the classifier:
 
 ### Key findings
 
-The classifier reliably distinguishes 37 systems at 90% top-1 accuracy and 100% top-3 on held-out data. Two fundamental limits emerge:
+The classifier reliably distinguishes 38 systems at 85% top-1 accuracy and 99% top-3 on true held-out data (seeds never used during development). Each signature carries content-type attributes (entropy, distinct values, shuffle ratio) that describe what the classifier is actually detecting. Three fundamental limits emerge:
 
-- **High-entropy boundary (~7.0 bits/byte)**: Strong compression and encryption algorithms produce output above this threshold where all geometric structure is destroyed. Gzip, bzip2, xz, zstd, AES-CTR, SHA-256, and Mersenne Twister are all indistinguishable from each other. Only LZ4 (which stays below ~6.0) and Brotli retain enough structure for identification.
+- **High-entropy boundary (~7.0 bits/byte)**: Strong compression and encryption algorithms produce output above this threshold where all geometric structure is destroyed. Gzip, bzip2, xz, zstd, AES-CTR, SHA-256, and Mersenne Twister are all indistinguishable from each other. Only LZ4 (which stays below ~6.0 bits/byte) retains enough structure for identification.
 
-- **Text cluster**: All ASCII-based formats (XML, JSON, HTML, JavaScript, source code) share the same byte-frequency geometry dominated by the printable ASCII range. The geometry captures content type (text vs machine code vs compressed data) rather than format.
+- **Text cluster**: All ASCII-based formats (XML, JSON, HTML, JavaScript, source code) share the same byte-frequency geometry dominated by the printable ASCII range. A single "ASCII Text" signature captures this content type. The geometry detects content type (text vs machine code vs compressed data) rather than format.
+
+- **Ordering vs distribution**: Shuffle baselines reveal whether a signature relies on sequential structure (ordering-dependent, e.g. chaotic attractors) or value distribution (e.g. DNA base composition). Both are valid detections, but the distinction matters for interpretation.
 
 The strongest signature in the library is Mach-O Binary (compiled machine code): 93-96% match fraction, 95% confidence, z-scores of 0.15-0.24 across binaries from 84KB to 45MB. This identifies executables purely from the statistical geometry of their instruction bytes — no magic-byte headers needed.
