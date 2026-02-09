@@ -60,8 +60,25 @@ def main():
         print(f"  {rank:<4} {res['system']:<25} {res['median_z']:>9.3f} "
               f"{res['match_fraction']:>7.0%} {conf_str:>11}")
 
+    # High-entropy / ambiguous warning
+    top = results[0]
+    if top["median_z"] > 2.0 and top["match_fraction"] < 0.5:
+        print(f"\n  Note: Weak best match (z={top['median_z']:.1f}, {top['match_fraction']:.0%}).")
+        print(f"  No signature in the library is a strong match.")
+    elif top["confidence"] < 0.30 and len(results) >= 3:
+        # Check if top matches are clustered (high-entropy pack)
+        z3 = results[2]["median_z"]
+        spread = z3 - top["median_z"]
+        if spread < 0.5:
+            print(f"\n  Note: High-entropy data — top 3 matches clustered within "
+                  f"z={top['median_z']:.2f}-{z3:.2f}.")
+            print(f"  Likely compressed or encrypted. Classification is ambiguous.")
+        else:
+            gap = results[1]["median_z"] - top["median_z"]
+            print(f"\n  Note: Top two matches are close (gap={gap:.2f}).")
+            print(f"  Ambiguous between {top['system']} and {results[1]['system']}.")
+
     if args.verbose and results:
-        top = results[0]
         details = top.get("metric_details", [])
         if details:
             n_show = 5
