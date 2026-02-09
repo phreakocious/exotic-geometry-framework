@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import numpy as np
 from collections import defaultdict
 from scipy import stats
-from exotic_geometry_framework import GeometryAnalyzer, SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import importlib.util
@@ -135,7 +135,7 @@ def count_sig(clean_metrics, stego_metrics, n_metrics):
 # D1: REPRESENTATION SURVEY
 # =============================================================================
 
-def direction1_representations(geom):
+def direction1_representations(analyzer):
     """Test all 5 representations across all 6 techniques."""
     print("\n" + "─" * 70)
     print("D1: Representation Survey — Which 2D layout makes stego visible?")
@@ -154,9 +154,10 @@ def direction1_representations(geom):
         for trial in range(N_TRIALS):
             data = generate_carrier(carrier_type, trial, size=DATA_SIZE)
             grid = rep_fn(data)
-            res = geom.compute_metrics(grid)
-            for mn, mv in res.metrics.items():
-                clean[mn].append(mv)
+            res = analyzer.analyze(grid)
+            for r in res.results:
+                for mn, mv in r.metrics.items():
+                    clean[f"{r.geometry_name}:{mn}"].append(mv)
 
         n_metrics = len(clean)
 
@@ -167,9 +168,10 @@ def direction1_representations(geom):
                 carrier = generate_carrier(carrier_type, trial, size=DATA_SIZE)
                 stego_data = embed_fn(carrier, rate=1.0, seed=trial + 1000)
                 grid = rep_fn(stego_data)
-                res = geom.compute_metrics(grid)
-                for mn, mv in res.metrics.items():
-                    stego_m[mn].append(mv)
+                res = analyzer.analyze(grid)
+                for r in res.results:
+                    for mn, mv in r.metrics.items():
+                        stego_m[f"{r.geometry_name}:{mn}"].append(mv)
 
             sig, details = count_sig(clean, stego_m, n_metrics)
             results[(rep_name, tech_name)] = sig
@@ -198,7 +200,7 @@ def direction1_representations(geom):
 # D2: CO-OCCURRENCE DEEP DIVE
 # =============================================================================
 
-def direction2_cooccurrence(geom):
+def direction2_cooccurrence(analyzer):
     """Byte co-occurrence matrices on both carriers, detailed metric report."""
     print("\n" + "─" * 70)
     print("D2: Co-occurrence Deep Dive — Byte transitions as a 2D field")
@@ -216,9 +218,10 @@ def direction2_cooccurrence(geom):
         for trial in range(N_TRIALS):
             data = generate_carrier(carrier_type, trial, size=DATA_SIZE)
             cooc = repr_cooccurrence(data)
-            res = geom.compute_metrics(cooc)
-            for mn, mv in res.metrics.items():
-                clean[mn].append(mv)
+            res = analyzer.analyze(cooc)
+            for r in res.results:
+                for mn, mv in r.metrics.items():
+                    clean[f"{r.geometry_name}:{mn}"].append(mv)
 
         n_metrics = len(clean)
 
@@ -229,9 +232,10 @@ def direction2_cooccurrence(geom):
                 carrier = generate_carrier(carrier_type, trial, size=DATA_SIZE)
                 stego_data = embed_fn(carrier, rate=1.0, seed=trial + 1000)
                 cooc = repr_cooccurrence(stego_data)
-                res = geom.compute_metrics(cooc)
-                for mn, mv in res.metrics.items():
-                    stego_m[mn].append(mv)
+                res = analyzer.analyze(cooc)
+                for r in res.results:
+                    for mn, mv in r.metrics.items():
+                        stego_m[f"{r.geometry_name}:{mn}"].append(mv)
 
             sig, details = count_sig(clean, stego_m, n_metrics)
             results[(carrier_type, tech_name)] = sig
@@ -260,7 +264,7 @@ def direction2_cooccurrence(geom):
 # D3: SPATIAL FINGERPRINTS
 # =============================================================================
 
-def direction3_fingerprints(geom):
+def direction3_fingerprints(analyzer):
     """Per-metric Cohen's d heatmap: which spatial metrics detect which techniques?"""
     print("\n" + "─" * 70)
     print("D3: Spatial Fingerprints — Cohen's d per technique × metric")
@@ -283,9 +287,10 @@ def direction3_fingerprints(geom):
         for trial in range(N_TRIALS):
             data = generate_carrier(carrier_type, trial, size=DATA_SIZE)
             grid = rep_fn(data)
-            res = geom.compute_metrics(grid)
-            for mn, mv in res.metrics.items():
-                clean[mn].append(mv)
+            res = analyzer.analyze(grid)
+            for r in res.results:
+                for mn, mv in r.metrics.items():
+                    clean[f"{r.geometry_name}:{mn}"].append(mv)
 
         fingerprints[rep_name] = {}
 
@@ -296,9 +301,10 @@ def direction3_fingerprints(geom):
                 carrier = generate_carrier(carrier_type, trial, size=DATA_SIZE)
                 stego_data = embed_fn(carrier, rate=1.0, seed=trial + 1000)
                 grid = rep_fn(stego_data)
-                res = geom.compute_metrics(grid)
-                for mn, mv in res.metrics.items():
-                    stego_m[mn].append(mv)
+                res = analyzer.analyze(grid)
+                for r in res.results:
+                    for mn, mv in r.metrics.items():
+                        stego_m[f"{r.geometry_name}:{mn}"].append(mv)
 
             metric_ds = {}
             for mn in clean:
@@ -327,7 +333,7 @@ def direction3_fingerprints(geom):
 # D4: RATE SENSITIVITY
 # =============================================================================
 
-def direction4_rate(geom):
+def direction4_rate(analyzer):
     """Rate sensitivity for co-occurrence representation."""
     print("\n" + "─" * 70)
     print("D4: Rate Sensitivity — Minimum detectable embedding rate")
@@ -342,9 +348,10 @@ def direction4_rate(geom):
     for trial in range(N_TRIALS):
         data = generate_carrier(carrier_type, trial, size=DATA_SIZE)
         cooc = repr_cooccurrence(data)
-        res = geom.compute_metrics(cooc)
-        for mn, mv in res.metrics.items():
-            clean[mn].append(mv)
+        res = analyzer.analyze(cooc)
+        for r in res.results:
+            for mn, mv in r.metrics.items():
+                clean[f"{r.geometry_name}:{mn}"].append(mv)
 
     n_metrics = len(clean)
     results = {}   # (tech_name, rate) → sig_count
@@ -358,9 +365,10 @@ def direction4_rate(geom):
                 carrier = generate_carrier(carrier_type, trial, size=DATA_SIZE)
                 stego_data = embed_fn(carrier, rate=rate, seed=trial + 1000)
                 cooc = repr_cooccurrence(stego_data)
-                res = geom.compute_metrics(cooc)
-                for mn, mv in res.metrics.items():
-                    stego_m[mn].append(mv)
+                res = analyzer.analyze(cooc)
+                for r in res.results:
+                    for mn, mv in r.metrics.items():
+                        stego_m[f"{r.geometry_name}:{mn}"].append(mv)
 
             sig, _ = count_sig(clean, stego_m, n_metrics)
             results[(tech_name, rate)] = sig
@@ -468,12 +476,12 @@ def main():
     print(f"\nParameters: N_TRIALS={N_TRIALS}, DATA_SIZE={DATA_SIZE}")
     print(f"6 techniques, 4 representations, 5 directions\n")
 
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
-    d1 = direction1_representations(geom)
-    d2 = direction2_cooccurrence(geom)
-    d3 = direction3_fingerprints(geom)
-    d4 = direction4_rate(geom)
+    d1 = direction1_representations(analyzer)
+    d2 = direction2_cooccurrence(analyzer)
+    d3 = direction3_fingerprints(analyzer)
+    d4 = direction4_rate(analyzer)
     d5 = direction5_matrix_challenge()
 
     # ── SUMMARY ──

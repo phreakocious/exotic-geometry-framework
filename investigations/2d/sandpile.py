@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 import numpy as np
 from scipy import stats
-from exotic_geometry_framework import SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -28,14 +28,14 @@ N_TRIALS = 25
 ALPHA = 0.05
 GRID_SIZE = 64  # Smaller grid — sandpile simulation is iterative
 
-METRIC_NAMES = [
-    'tension_mean', 'tension_std', 'curvature_mean', 'curvature_std',
-    'anisotropy_mean', 'criticality_saddle_frac', 'criticality_extrema_frac',
-    'n_basins', 'basin_size_entropy', 'basin_depth_cv',
-    'coherence_score', 'multiscale_coherence_1',
-    'multiscale_coherence_2', 'multiscale_coherence_4',
-    'multiscale_coherence_8',
-]
+# Discover all metric names from 8 spatial geometries (80 metrics)
+_analyzer = GeometryAnalyzer().add_spatial_geometries()
+_dummy = _analyzer.analyze(np.random.rand(16, 16))
+METRIC_NAMES = []
+for _r in _dummy.results:
+    for _mn in sorted(_r.metrics.keys()):
+        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+del _analyzer, _dummy, _r, _mn
 
 DROP_COUNTS = [500, 2000, 10000, 50000]
 
@@ -125,14 +125,15 @@ def shuffle_field(field, rng):
     return flat.reshape(field.shape)
 
 
-def collect_metrics(geom, fields):
+def collect_metrics(analyzer, fields):
     out = {m: [] for m in METRIC_NAMES}
     for f in fields:
-        res = geom.compute_metrics(f)
-        for m in METRIC_NAMES:
-            v = res.metrics.get(m, float('nan'))
-            if not np.isnan(v):
-                out[m].append(v)
+        res = analyzer.analyze(f)
+        for r in res.results:
+            for mn, mv in r.metrics.items():
+                key = f"{r.geometry_name}:{mn}"
+                if key in out and np.isfinite(mv):
+                    out[key].append(mv)
     return out
 
 
@@ -141,7 +142,7 @@ def collect_metrics(geom, fields):
 # =============================================================================
 
 def run_investigation():
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
     print("=" * 78)
     print("ABELIAN SANDPILE — SELF-ORGANIZED CRITICALITY")
@@ -169,8 +170,8 @@ def run_investigation():
             if (trial + 1) % 5 == 0:
                 print(f"{trial+1}", end=" ", flush=True)
 
-        drop_data[n_drops] = collect_metrics(geom, fields)
-        shuffled_drop_data[n_drops] = collect_metrics(geom, shuf_fields)
+        drop_data[n_drops] = collect_metrics(analyzer, fields)
+        shuffled_drop_data[n_drops] = collect_metrics(analyzer, shuf_fields)
         means = [np.mean(f) for f in fields]
         print(f" mean_height={np.mean(means):.2f}")
 
@@ -182,8 +183,8 @@ def run_investigation():
     id_fields = [id_field.copy() for _ in range(N_TRIALS)]  # identical
     id_shuf_fields = [shuffle_field(id_field, np.random.default_rng(2000 + t))
                       for t in range(N_TRIALS)]
-    id_data = collect_metrics(geom, id_fields)
-    id_shuf_data = collect_metrics(geom, id_shuf_fields)
+    id_data = collect_metrics(analyzer, id_fields)
+    id_shuf_data = collect_metrics(analyzer, id_shuf_fields)
     print("done")
 
     # Each drop count vs shuffled
@@ -278,7 +279,7 @@ def make_figure(drop_data, example_fields, pair_results):
     n_drops_list = DROP_COUNTS
     n_cols = len(n_drops_list) + 1  # +1 for identity
 
-    fig = plt.figure(figsize=(18, 12), facecolor='black')
+    fig = plt.figure(figsize=(18, 30), facecolor='black')
     gs = gridspec.GridSpec(3, n_cols, figure=fig, height_ratios=[1.3, 1.0, 1.0],
                            hspace=0.45, wspace=0.35)
 
@@ -300,8 +301,9 @@ def make_figure(drop_data, example_fields, pair_results):
         spine.set_linewidth(2)
 
     # Row 1: Metrics vs drop count
-    plot_metrics = ['coherence_score', 'n_basins', 'curvature_mean',
-                    'tension_mean', 'multiscale_coherence_4']
+    plot_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
+                    'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
+                    'SpectralPower:spectral_slope']
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0']
 
     for j, metric in enumerate(plot_metrics):
@@ -313,7 +315,7 @@ def make_figure(drop_data, example_fields, pair_results):
         ax.set_xticks(range(len(n_drops_list)))
         ax.set_xticklabels([str(nd) for nd in n_drops_list], fontsize=7,
                            rotation=35, ha='right')
-        ax.set_title(metric.replace('_', ' '), fontsize=9, fontweight='bold')
+        ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=9, fontweight='bold')
         ax.tick_params(labelsize=7)
 
     # Row 2: Pairwise heatmap + summary
@@ -330,7 +332,7 @@ def make_figure(drop_data, example_fields, pair_results):
     ax_mat.set_xticks(range(n))
     ax_mat.set_yticks(range(n))
     ax_mat.set_xticklabels(labels, fontsize=8)
-    ax_mat.set_yticklabels(labels, fontsize=8)
+    ax_mat.set_yticklabels(labels, fontsize=6)
     for i in range(n):
         for j in range(n):
             if i != j:

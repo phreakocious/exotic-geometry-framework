@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 import numpy as np
 from scipy import stats
-from exotic_geometry_framework import SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -26,14 +26,14 @@ GRID_SIZE = 128
 N_STEPS = 10000
 Du, Dv = 1.0, 0.5
 
-METRIC_NAMES = [
-    'tension_mean', 'tension_std', 'curvature_mean', 'curvature_std',
-    'anisotropy_mean', 'criticality_saddle_frac', 'criticality_extrema_frac',
-    'n_basins', 'basin_size_entropy', 'basin_depth_cv',
-    'coherence_score', 'multiscale_coherence_1',
-    'multiscale_coherence_2', 'multiscale_coherence_4',
-    'multiscale_coherence_8',
-]
+# Discover all metric names from 8 spatial geometries (80 metrics)
+_analyzer = GeometryAnalyzer().add_spatial_geometries()
+_dummy = _analyzer.analyze(np.random.rand(16, 16))
+METRIC_NAMES = []
+for _r in _dummy.results:
+    for _mn in sorted(_r.metrics.keys()):
+        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+del _analyzer, _dummy, _r, _mn
 
 # Gray-Scott parameter regimes (Pearson/Karl Sims classification)
 REGIMES = {
@@ -124,7 +124,7 @@ def shuffle_field(field, rng):
 # =============================================================================
 
 def run_investigation():
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
     print("=" * 78)
     print("GRAY-SCOTT REACTION-DIFFUSION FINGERPRINTING")
@@ -149,16 +149,19 @@ def run_investigation():
 
             shuf = shuffle_field(field, np.random.default_rng(1000 + trial))
 
-            res = geom.compute_metrics(field)
-            res_shuf = geom.compute_metrics(shuf)
+            res = analyzer.analyze(field)
+            res_shuf = analyzer.analyze(shuf)
 
-            for m in METRIC_NAMES:
-                v = res.metrics.get(m, float('nan'))
-                vs = res_shuf.metrics.get(m, float('nan'))
-                if not np.isnan(v):
-                    regime_data[name][m].append(v)
-                if not np.isnan(vs):
-                    shuffled_data[name][m].append(vs)
+            for r in res.results:
+                for mn, mv in r.metrics.items():
+                    key = f"{r.geometry_name}:{mn}"
+                    if key in regime_data[name] and np.isfinite(mv):
+                        regime_data[name][key].append(mv)
+            for r in res_shuf.results:
+                for mn, mv in r.metrics.items():
+                    key = f"{r.geometry_name}:{mn}"
+                    if key in shuffled_data[name] and np.isfinite(mv):
+                        shuffled_data[name][key].append(mv)
 
             if (trial + 1) % 5 == 0:
                 print(f"{trial+1}", end=" ", flush=True)
@@ -233,7 +236,7 @@ def make_figure(regime_data, example_fields, pair_results):
 
     BG = '#181818'
     FG = '#e0e0e0'
-    fig = plt.figure(figsize=(18, 12), facecolor=BG)
+    fig = plt.figure(figsize=(18, 30), facecolor=BG)
     gs = gridspec.GridSpec(3, n, figure=fig, height_ratios=[1.3, 1.0, 1.0],
                            hspace=0.4, wspace=0.3)
 
@@ -254,8 +257,9 @@ def make_figure(regime_data, example_fields, pair_results):
         ax.set_yticks([])
 
     # Row 1: Key metrics as bar charts
-    compare_metrics = ['coherence_score', 'n_basins', 'anisotropy_mean',
-                       'curvature_mean', 'tension_mean', 'basin_size_entropy']
+    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
+                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
+                       'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope']
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0', '#795548']
 
     for j in range(min(n, len(compare_metrics))):
@@ -268,7 +272,7 @@ def make_figure(regime_data, example_fields, pair_results):
                       color=colors, alpha=0.85, edgecolor='#333')
         ax.set_xticks(range(n))
         ax.set_xticklabels(names, fontsize=7, rotation=30, ha='right', color=FG)
-        ax.set_title(metric.replace('_', ' '), fontsize=9, fontweight='bold', color=FG)
+        ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=9, fontweight='bold', color=FG)
 
     # Row 2: Pairwise distinguishability matrix
     ax_mat = fig.add_subplot(gs[2, :3])
@@ -282,7 +286,7 @@ def make_figure(regime_data, example_fields, pair_results):
     ax_mat.set_xticks(range(n))
     ax_mat.set_yticks(range(n))
     ax_mat.set_xticklabels(names, fontsize=8, rotation=30, ha='right', color=FG)
-    ax_mat.set_yticklabels(names, fontsize=8, color=FG)
+    ax_mat.set_yticklabels(names, fontsize=6, color=FG)
     for i in range(n):
         for j in range(n):
             if i != j:

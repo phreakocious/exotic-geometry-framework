@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import numpy as np
 from scipy import stats
 from Crypto.Cipher import AES
-from exotic_geometry_framework import SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -27,14 +27,14 @@ N_TRIALS = 25
 ALPHA = 0.05
 IMG_SIZE = 128  # 128×128 = 16384 bytes = 1024 AES blocks
 
-METRIC_NAMES = [
-    'tension_mean', 'tension_std', 'curvature_mean', 'curvature_std',
-    'anisotropy_mean', 'criticality_saddle_frac', 'criticality_extrema_frac',
-    'n_basins', 'basin_size_entropy', 'basin_depth_cv',
-    'coherence_score', 'multiscale_coherence_1',
-    'multiscale_coherence_2', 'multiscale_coherence_4',
-    'multiscale_coherence_8',
-]
+# Discover all metric names from 8 spatial geometries (80 metrics)
+_analyzer = GeometryAnalyzer().add_spatial_geometries()
+_dummy = _analyzer.analyze(np.random.rand(16, 16))
+METRIC_NAMES = []
+for _r in _dummy.results:
+    for _mn in sorted(_r.metrics.keys()):
+        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+del _analyzer, _dummy, _r, _mn
 
 
 # =============================================================================
@@ -119,7 +119,7 @@ def encrypt_and_reshape(img, mode, key, iv=None, nonce=None):
 # =============================================================================
 
 def run_investigation():
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
     test_images = {
         'half':   half_image(),
@@ -151,11 +151,12 @@ def run_investigation():
                 nonce = rng.bytes(8)
 
                 ct_2d = encrypt_and_reshape(img, mode, key, iv, nonce)
-                res = geom.compute_metrics(ct_2d)
-                for m in METRIC_NAMES:
-                    v = res.metrics.get(m, float('nan'))
-                    if not np.isnan(v):
-                        metrics[m].append(v)
+                res = analyzer.analyze(ct_2d)
+                for r in res.results:
+                    for mn, mv in r.metrics.items():
+                        mkey = f"{r.geometry_name}:{mn}"
+                        if mkey in metrics and np.isfinite(mv):
+                            metrics[mkey].append(mv)
 
             all_results[(img_name, mode)] = metrics
 
@@ -164,11 +165,12 @@ def run_investigation():
         for trial in range(N_TRIALS):
             rng = np.random.default_rng(1000 + trial)
             rand_img = rng.integers(0, 256, (IMG_SIZE, IMG_SIZE)).astype(np.float64)
-            res = geom.compute_metrics(rand_img)
-            for m in METRIC_NAMES:
-                v = res.metrics.get(m, float('nan'))
-                if not np.isnan(v):
-                    rand_metrics[m].append(v)
+            res = analyzer.analyze(rand_img)
+            for r in res.results:
+                for mn, mv in r.metrics.items():
+                    mkey = f"{r.geometry_name}:{mn}"
+                    if mkey in rand_metrics and np.isfinite(mv):
+                        rand_metrics[mkey].append(mv)
         all_results[(img_name, 'random')] = rand_metrics
 
         # Compare ECB, CBC, CTR each vs random
@@ -216,7 +218,7 @@ def run_investigation():
 
 def make_figure(all_results, test_images):
     print("\nGenerating figure...", flush=True)
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
     # Pick the circle image for the main visual
     img = test_images['circle']
@@ -232,7 +234,7 @@ def make_figure(all_results, test_images):
 
     BG = '#181818'
     FG = '#e0e0e0'
-    fig = plt.figure(figsize=(16, 12), facecolor=BG)
+    fig = plt.figure(figsize=(16, 30), facecolor=BG)
     gs = gridspec.GridSpec(4, 4, figure=fig, height_ratios=[1.3, 0.7, 1.0, 1.0],
                            hspace=0.45, wspace=0.35)
 
@@ -276,7 +278,8 @@ def make_figure(all_results, test_images):
              ha='center', fontsize=9, color='#999', style='italic')
 
     # Row 2: Metric bars — ECB vs CBC vs CTR vs Random for 'circle'
-    compare_metrics = ['coherence_score', 'n_basins', 'tension_mean', 'anisotropy_mean']
+    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
+                       'Surface:gaussian_curvature_mean', 'SpectralPower:spectral_slope']
     mode_colors = {'ECB': '#ff3333', 'CBC': '#4CAF50', 'CTR': '#2196F3', 'random': '#999999'}
     mode_list = ['ECB', 'CBC', 'CTR', 'random']
     mode_labels = ['ECB', 'CBC', 'CTR', 'Random']
@@ -291,7 +294,7 @@ def make_figure(all_results, test_images):
                color=colors, alpha=0.85, edgecolor='#333')
         ax.set_xticks(range(4))
         ax.set_xticklabels(mode_labels, fontsize=8, color=FG)
-        ax.set_title(metric.replace('_', ' '), fontsize=10, fontweight='bold', color=FG)
+        ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=10, fontweight='bold', color=FG)
 
     # Row 3: All four images — show ECB preserves structure across image types
     for j, img_name in enumerate(['half', 'bands', 'circle', 'blocks']):

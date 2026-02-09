@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 import numpy as np
 from scipy import stats
-from exotic_geometry_framework import SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 
 N_TRIALS = 25
 ALPHA = 0.05
@@ -105,14 +105,14 @@ def pink_noise_2d(H, W, rng=None):
 # HELPERS
 # =============================================================================
 
-METRIC_NAMES = [
-    'tension_mean', 'tension_std', 'curvature_mean', 'curvature_std',
-    'anisotropy_mean', 'criticality_saddle_frac', 'criticality_extrema_frac',
-    'n_basins', 'basin_size_entropy', 'basin_depth_cv',
-    'coherence_score', 'multiscale_coherence_1',
-    'multiscale_coherence_2', 'multiscale_coherence_4',
-    'multiscale_coherence_8',
-]
+# Discover all metric names from 8 spatial geometries (80 metrics)
+_analyzer = GeometryAnalyzer().add_spatial_geometries()
+_dummy = _analyzer.analyze(np.random.rand(16, 16))
+METRIC_NAMES = []
+for _r in _dummy.results:
+    for _mn in sorted(_r.metrics.keys()):
+        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+del _analyzer, _dummy, _r, _mn
 
 
 def cohens_d(a, b):
@@ -124,15 +124,16 @@ def cohens_d(a, b):
     return (np.mean(a) - np.mean(b)) / ps
 
 
-def collect_metrics(geom, fields):
-    """Run geometry on list of fields, return {metric: [values]}."""
+def collect_metrics(analyzer, fields):
+    """Run all 8 spatial geometries on list of fields, return {metric: [values]}."""
     out = {m: [] for m in METRIC_NAMES}
     for f in fields:
-        res = geom.compute_metrics(f)
-        for m in METRIC_NAMES:
-            v = res.metrics.get(m, float('nan'))
-            if not np.isnan(v):
-                out[m].append(v)
+        res = analyzer.analyze(f)
+        for r in res.results:
+            for mn, mv in r.metrics.items():
+                key = f"{r.geometry_name}:{mn}"
+                if key in out and np.isfinite(mv):
+                    out[key].append(mv)
     return out
 
 
@@ -146,7 +147,7 @@ def shuffle_field(field, rng):
 # PART 1: ISING MODEL
 # =============================================================================
 
-def run_ising(geom):
+def run_ising(analyzer):
     print("=" * 78)
     print("PART 1: ISING MODEL PHASE TRANSITION")
     print(f"T_c = {T_C:.5f}, field={FIELD_SIZE}x{FIELD_SIZE}, "
@@ -166,7 +167,7 @@ def run_ising(geom):
             spins = ising_equilibrate(FIELD_SIZE, FIELD_SIZE, T, N_SWEEPS, rng)
             fields.append(spins.copy())
             mags.append(abs(np.mean(spins)))
-        ising_data[T] = (collect_metrics(geom, fields), np.mean(mags))
+        ising_data[T] = (collect_metrics(analyzer, fields), np.mean(mags))
         print(f"|m|={np.mean(mags):.3f}")
 
     # T=∞ baseline
@@ -175,12 +176,13 @@ def run_ising(geom):
     for trial in range(N_TRIALS):
         rng = np.random.default_rng(42 + trial)
         fields_inf.append(rng.choice([-1.0, 1.0], size=(FIELD_SIZE, FIELD_SIZE)))
-    ising_data['inf'] = (collect_metrics(geom, fields_inf), 0.0)
+    ising_data['inf'] = (collect_metrics(analyzer, fields_inf), 0.0)
     print("|m|=0.000")
 
     # Temperature scan table
-    key_metrics = ['tension_mean', 'curvature_mean', 'anisotropy_mean',
-                   'n_basins', 'coherence_score', 'multiscale_coherence_4']
+    key_metrics = ['SpatialField:tension_mean', 'SpatialField:curvature_mean',
+                   'SpatialField:anisotropy_mean', 'SpatialField:n_basins',
+                   'SpatialField:coherence_score', 'SpatialField:multiscale_coherence_4']
     all_T = temperatures + ['inf']
 
     print(f"\n{'Metric':>25s}", end="")
@@ -258,7 +260,7 @@ def run_ising(geom):
 # PART 2: PROCEDURAL NOISE
 # =============================================================================
 
-def run_noise(geom):
+def run_noise(analyzer):
     print(f"\n{'=' * 78}")
     print("PART 2: PROCEDURAL NOISE FINGERPRINTING")
     print(f"Field={FIELD_SIZE}x{FIELD_SIZE}, N={N_TRIALS}")
@@ -281,8 +283,8 @@ def run_noise(geom):
             f = gen(rng)
             fields.append(f)
             shuf_fields.append(shuffle_field(f, np.random.default_rng(1000 + trial)))
-        noise_data[name] = collect_metrics(geom, fields)
-        shuf_data[name] = collect_metrics(geom, shuf_fields)
+        noise_data[name] = collect_metrics(analyzer, fields)
+        shuf_data[name] = collect_metrics(analyzer, shuf_fields)
         print("done")
 
     names = list(generators.keys())
@@ -356,10 +358,10 @@ def run_noise(geom):
 # =============================================================================
 
 def main():
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
-    ising_data = run_ising(geom)
-    noise_data, pair_results = run_noise(geom)
+    ising_data = run_ising(analyzer)
+    noise_data, pair_results = run_noise(analyzer)
 
     # Final summary
     print(f"\n{'=' * 78}")
@@ -396,7 +398,7 @@ def make_figure(ising_data):
     temperatures.sort()
     all_T = temperatures + ['inf']
 
-    fig = plt.figure(figsize=(16, 10), facecolor=BG)
+    fig = plt.figure(figsize=(16, 25), facecolor=BG)
     gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.4, wspace=0.35)
 
     def _dark_ax(ax):
@@ -411,11 +413,11 @@ def make_figure(ising_data):
 
     curve_metrics = [
         ('|Magnetization|', None),
-        ('tension_mean', 'Tension (gradient energy)'),
-        ('multiscale_coherence_4', 'Multi-scale coherence (4x)'),
-        ('n_basins', 'Basin count'),
-        ('curvature_mean', 'Curvature (Laplacian)'),
-        ('anisotropy_mean', 'Anisotropy (Hessian)'),
+        ('SpatialField:tension_mean', 'Tension (gradient energy)'),
+        ('SpatialField:multiscale_coherence_4', 'Multi-scale coherence (4x)'),
+        ('SpatialField:n_basins', 'Basin count'),
+        ('Surface:gaussian_curvature_mean', 'Gaussian curvature'),
+        ('SpectralPower:spectral_slope', 'Spectral slope'),
     ]
 
     T_arr = np.array(temperatures)
@@ -439,7 +441,7 @@ def make_figure(ising_data):
             ax.axhline(inf_mean, color='gray', linestyle='--', alpha=0.5, linewidth=1)
             ax.text(T_arr[-1] + 0.1, inf_mean, 'T=∞', fontsize=7, color='#999',
                     va='center')
-            ax.set_ylabel(metric.replace('_', ' '), fontsize=8, color=FG)
+            ax.set_ylabel(metric.split(':')[-1].replace('_', ' '), fontsize=8, color=FG)
 
         ax.axvline(T_C, color='#ff6600', linestyle='--', alpha=0.7, linewidth=1.5)
         ax.text(T_C, 0.97, ' $T_c$', color='#ff6600', fontsize=9,

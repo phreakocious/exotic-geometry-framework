@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 import numpy as np
 from scipy import stats, ndimage
-from exotic_geometry_framework import SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -25,14 +25,14 @@ N_TRIALS = 25
 ALPHA = 0.05
 GRID_SIZE = 128
 
-METRIC_NAMES = [
-    'tension_mean', 'tension_std', 'curvature_mean', 'curvature_std',
-    'anisotropy_mean', 'criticality_saddle_frac', 'criticality_extrema_frac',
-    'n_basins', 'basin_size_entropy', 'basin_depth_cv',
-    'coherence_score', 'multiscale_coherence_1',
-    'multiscale_coherence_2', 'multiscale_coherence_4',
-    'multiscale_coherence_8',
-]
+# Discover all metric names from 8 spatial geometries (80 metrics)
+_analyzer = GeometryAnalyzer().add_spatial_geometries()
+_dummy = _analyzer.analyze(np.random.rand(16, 16))
+METRIC_NAMES = []
+for _r in _dummy.results:
+    for _mn in sorted(_r.metrics.keys()):
+        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+del _analyzer, _dummy, _r, _mn
 
 # Occupation probabilities spanning the transition
 P_C = 0.5927
@@ -89,14 +89,15 @@ def shuffle_field(field, rng):
     return flat.reshape(field.shape)
 
 
-def collect_metrics(geom, fields):
+def collect_metrics(analyzer, fields):
     out = {m: [] for m in METRIC_NAMES}
     for f in fields:
-        res = geom.compute_metrics(f)
-        for m in METRIC_NAMES:
-            v = res.metrics.get(m, float('nan'))
-            if not np.isnan(v):
-                out[m].append(v)
+        res = analyzer.analyze(f)
+        for r in res.results:
+            for mn, mv in r.metrics.items():
+                key = f"{r.geometry_name}:{mn}"
+                if key in out and np.isfinite(mv):
+                    out[key].append(mv)
     return out
 
 
@@ -105,7 +106,7 @@ def collect_metrics(geom, fields):
 # =============================================================================
 
 def run_investigation():
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
     print("=" * 78)
     print("2D SITE PERCOLATION PHASE TRANSITION")
@@ -137,8 +138,8 @@ def run_investigation():
             if trial == 0:
                 example_fields[p] = field.copy()
 
-        prob_data[p] = collect_metrics(geom, fields)
-        shuffled_data[p] = collect_metrics(geom, shuf_fields)
+        prob_data[p] = collect_metrics(analyzer, fields)
+        shuffled_data[p] = collect_metrics(analyzer, shuf_fields)
         cluster_info[p] = (np.mean(nc_list), np.mean(largest_list),
                            np.mean(span_list))
         print(f"clusters={np.mean(nc_list):.0f}, "
@@ -252,7 +253,7 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
     probs = PROBABILITIES
     n = len(probs)
 
-    fig = plt.figure(figsize=(20, 14), facecolor='black')
+    fig = plt.figure(figsize=(20, 35), facecolor='black')
     gs = gridspec.GridSpec(4, n, figure=fig, height_ratios=[1.2, 0.8, 1.0, 1.0],
                            hspace=0.5, wspace=0.35)
 
@@ -300,9 +301,10 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
     ax_lg.tick_params(labelsize=8)
 
     # Row 2: Key SpatialFieldGeometry metrics vs p
-    plot_metrics = ['coherence_score', 'n_basins', 'curvature_mean', 'anisotropy_mean',
-                    'tension_mean', 'basin_size_entropy', 'multiscale_coherence_4',
-                    'criticality_extrema_frac']
+    plot_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
+                    'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
+                    'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope',
+                    'MinkowskiFunctional:euler_mean', 'MultiscaleFractal:box_counting_dim']
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3',
               '#9C27B0', '#00BCD4', '#FFEB3B', '#FF5722']
 
@@ -314,7 +316,7 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
         ax.errorbar(probs, means, yerr=stds, fmt='o-', color=colors[j],
                     markersize=4, capsize=2, linewidth=1.5)
         ax.axvline(P_C, color='#00FF00', linestyle='--', alpha=0.5, linewidth=1)
-        ax.set_title(metric.replace('_', ' '), fontsize=8, fontweight='bold')
+        ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=8, fontweight='bold')
         ax.tick_params(labelsize=6)
         if j == 0:
             ax.set_ylabel('Value', fontsize=7)
@@ -331,7 +333,7 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
     ax_mat.set_xticks(range(n))
     ax_mat.set_yticks(range(n))
     ax_mat.set_xticklabels(labels, fontsize=7, rotation=45, ha='right')
-    ax_mat.set_yticklabels(labels, fontsize=7)
+    ax_mat.set_yticklabels(labels, fontsize=5)
     for i in range(n):
         for j in range(n):
             if i != j:

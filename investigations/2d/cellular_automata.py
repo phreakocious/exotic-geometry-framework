@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 import numpy as np
 from scipy import stats
-from exotic_geometry_framework import SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -28,14 +28,14 @@ N_TRIALS = 25
 ALPHA = 0.05
 GRID_SIZE = 128
 
-METRIC_NAMES = [
-    'tension_mean', 'tension_std', 'curvature_mean', 'curvature_std',
-    'anisotropy_mean', 'criticality_saddle_frac', 'criticality_extrema_frac',
-    'n_basins', 'basin_size_entropy', 'basin_depth_cv',
-    'coherence_score', 'multiscale_coherence_1',
-    'multiscale_coherence_2', 'multiscale_coherence_4',
-    'multiscale_coherence_8',
-]
+# Discover all metric names from 8 spatial geometries (80 metrics)
+_analyzer = GeometryAnalyzer().add_spatial_geometries()
+_dummy = _analyzer.analyze(np.random.rand(16, 16))
+METRIC_NAMES = []
+for _r in _dummy.results:
+    for _mn in sorted(_r.metrics.keys()):
+        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+del _analyzer, _dummy, _r, _mn
 
 RULES = {
     'GoL':        (frozenset({3}), frozenset({2, 3})),
@@ -84,19 +84,20 @@ def shuffle_field(field, rng):
     rng.shuffle(flat)
     return flat.reshape(field.shape)
 
-def collect_metrics(geom, fields):
+def collect_metrics(analyzer, fields):
     out = {m: [] for m in METRIC_NAMES}
     for f in fields:
-        res = geom.compute_metrics(f)
-        for m in METRIC_NAMES:
-            v = res.metrics.get(m, float('nan'))
-            if not np.isnan(v):
-                out[m].append(v)
+        res = analyzer.analyze(f)
+        for r in res.results:
+            for mn, mv in r.metrics.items():
+                key = f"{r.geometry_name}:{mn}"
+                if key in out and np.isfinite(mv):
+                    out[key].append(mv)
     return out
 
 
 def run_investigation():
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
     N_STEPS = 200
 
     print("=" * 78)
@@ -118,8 +119,8 @@ def run_investigation():
             shuf_fields.append(shuffle_field(field, np.random.default_rng(1000 + trial)))
             if trial == 0:
                 example_fields[name] = field.copy()
-        rule_data[name] = collect_metrics(geom, fields)
-        shuffled_rule_data[name] = collect_metrics(geom, shuf_fields)
+        rule_data[name] = collect_metrics(analyzer, fields)
+        shuffled_rule_data[name] = collect_metrics(analyzer, shuf_fields)
         densities = [np.mean(f) for f in fields]
         print(f"density={np.mean(densities):.3f}")
 
@@ -193,7 +194,7 @@ def run_investigation():
             fields.append(f)
             if trial == 0:
                 epoch_examples[ep] = f.copy()
-        epoch_data[ep] = collect_metrics(geom, fields)
+        epoch_data[ep] = collect_metrics(analyzer, fields)
         print(f"  t={ep:4d}: density={np.mean([np.mean(f) for f in fields]):.3f}")
 
     bonf_e = ALPHA / (len(METRIC_NAMES) * (len(epochs) - 1))
@@ -234,7 +235,7 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
     names = list(RULES.keys())
     n = len(names)
 
-    fig = plt.figure(figsize=(18, 14), facecolor='black')
+    fig = plt.figure(figsize=(18, 35), facecolor='black')
     gs = gridspec.GridSpec(4, n, figure=fig, height_ratios=[1.2, 1.0, 1.0, 1.0],
                            hspace=0.45, wspace=0.3)
 
@@ -245,8 +246,9 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
         ax.set_xticks([])
         ax.set_yticks([])
 
-    compare_metrics = ['coherence_score', 'n_basins', 'curvature_mean',
-                       'anisotropy_mean', 'tension_mean', 'basin_size_entropy']
+    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
+                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
+                       'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope']
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0', '#00BCD4']
 
     for j in range(min(n, len(compare_metrics))):
@@ -258,7 +260,7 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
                color=colors, alpha=0.85, edgecolor='none')
         ax.set_xticks(range(n))
         ax.set_xticklabels(names, fontsize=7, rotation=35, ha='right')
-        ax.set_title(metric.replace('_', ' '), fontsize=9, fontweight='bold')
+        ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=9, fontweight='bold')
         ax.tick_params(labelsize=7)
 
     ax_mat = fig.add_subplot(gs[2, :3])
@@ -271,7 +273,7 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
     ax_mat.set_xticks(range(n))
     ax_mat.set_yticks(range(n))
     ax_mat.set_xticklabels(names, fontsize=8, rotation=35, ha='right')
-    ax_mat.set_yticklabels(names, fontsize=8)
+    ax_mat.set_yticklabels(names, fontsize=6)
     for i in range(n):
         for j in range(n):
             if i != j:
@@ -300,7 +302,7 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
         ax.set_xticks([])
         ax.set_yticks([])
 
-    evo_metrics = ['coherence_score', 'n_basins']
+    evo_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins']
     for j, metric in enumerate(evo_metrics):
         ax = fig.add_subplot(gs[3, 4 + j])
         means = [np.mean(epoch_data[ep][metric]) for ep in epochs]

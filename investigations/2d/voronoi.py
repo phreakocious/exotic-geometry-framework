@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 import numpy as np
 from scipy import stats
 from scipy.spatial import Voronoi
-from exotic_geometry_framework import SpatialFieldGeometry
+from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -34,14 +34,14 @@ ALPHA = 0.05
 GRID_SIZE = 128
 N_POINTS = 100  # approximate number of Voronoi cells
 
-METRIC_NAMES = [
-    'tension_mean', 'tension_std', 'curvature_mean', 'curvature_std',
-    'anisotropy_mean', 'criticality_saddle_frac', 'criticality_extrema_frac',
-    'n_basins', 'basin_size_entropy', 'basin_depth_cv',
-    'coherence_score', 'multiscale_coherence_1',
-    'multiscale_coherence_2', 'multiscale_coherence_4',
-    'multiscale_coherence_8',
-]
+# Discover all metric names from 8 spatial geometries (80 metrics)
+_analyzer = GeometryAnalyzer().add_spatial_geometries()
+_dummy = _analyzer.analyze(np.random.rand(16, 16))
+METRIC_NAMES = []
+for _r in _dummy.results:
+    for _mn in sorted(_r.metrics.keys()):
+        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+del _analyzer, _dummy, _r, _mn
 
 
 # =============================================================================
@@ -192,14 +192,15 @@ def shuffle_field(field, rng):
     return flat.reshape(field.shape)
 
 
-def collect_metrics(geom, fields):
+def collect_metrics(analyzer, fields):
     out = {m: [] for m in METRIC_NAMES}
     for f in fields:
-        res = geom.compute_metrics(f)
-        for m in METRIC_NAMES:
-            v = res.metrics.get(m, float('nan'))
-            if not np.isnan(v):
-                out[m].append(v)
+        res = analyzer.analyze(f)
+        for r in res.results:
+            for mn, mv in r.metrics.items():
+                key = f"{r.geometry_name}:{mn}"
+                if key in out and np.isfinite(mv):
+                    out[key].append(mv)
     return out
 
 
@@ -208,7 +209,7 @@ def collect_metrics(geom, fields):
 # =============================================================================
 
 def run_investigation():
-    geom = SpatialFieldGeometry()
+    analyzer = GeometryAnalyzer().add_spatial_geometries()
 
     print("=" * 78)
     print("VORONOI TESSELLATION FINGERPRINTING")
@@ -238,8 +239,8 @@ def run_investigation():
             if (trial + 1) % 5 == 0:
                 print(f"{trial+1}", end=" ", flush=True)
 
-        proc_data[name] = collect_metrics(geom, fields)
-        shuffled_data[name] = collect_metrics(geom, shuf_fields)
+        proc_data[name] = collect_metrics(analyzer, fields)
+        shuffled_data[name] = collect_metrics(analyzer, shuf_fields)
         print()
 
     names = list(POINT_PROCESSES.keys())
@@ -319,7 +320,7 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
     n = len(names)
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0']
 
-    fig = plt.figure(figsize=(16, 14), facecolor='black')
+    fig = plt.figure(figsize=(16, 35), facecolor='black')
     gs = gridspec.GridSpec(4, n, figure=fig, height_ratios=[1.3, 1.0, 1.0, 1.0],
                            hspace=0.45, wspace=0.3)
 
@@ -336,8 +337,9 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
         ax.set_yticks([])
 
     # Row 1: Key metrics
-    compare_metrics = ['coherence_score', 'n_basins', 'curvature_mean',
-                       'anisotropy_mean', 'basin_size_entropy']
+    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
+                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
+                       'SpectralPower:spectral_slope']
 
     for j in range(min(n, len(compare_metrics))):
         metric = compare_metrics[j]
@@ -349,7 +351,7 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
         ax.set_xticks(range(n))
         ax.set_xticklabels([nm.replace('_', '\n') for nm in names],
                            fontsize=6)
-        ax.set_title(metric.replace('_', ' '), fontsize=9, fontweight='bold')
+        ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=9, fontweight='bold')
         ax.tick_params(labelsize=7)
 
     # Row 2: Pairwise matrix
@@ -363,7 +365,7 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
     ax_mat.set_xticks(range(n))
     ax_mat.set_yticks(range(n))
     ax_mat.set_xticklabels(names, fontsize=7, rotation=35, ha='right')
-    ax_mat.set_yticklabels(names, fontsize=7)
+    ax_mat.set_yticklabels(names, fontsize=5)
     for i in range(n):
         for j in range(n):
             if i != j:
@@ -388,7 +390,7 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
     ax_ms = fig.add_subplot(gs[3, :3])
     scales = [1, 2, 4, 8]
     for i, name in enumerate(names):
-        means = [np.mean(proc_data[name][f'multiscale_coherence_{s}']) for s in scales]
+        means = [np.mean(proc_data[name][f'SpatialField:multiscale_coherence_{s}']) for s in scales]
         ax_ms.plot(scales, means, 'o-', color=colors[i], label=name.replace('_', ' '),
                    markersize=5, linewidth=1.5)
     ax_ms.set_xlabel('Scale', fontsize=9)
@@ -399,7 +401,7 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
 
     ax_tens = fig.add_subplot(gs[3, 3:])
     for i, name in enumerate(names):
-        vals = proc_data[name].get('tension_mean', [])
+        vals = proc_data[name].get('SpatialField:tension_mean', [])
         if vals:
             ax_tens.hist(vals, bins=12, alpha=0.5, color=colors[i],
                         label=name.replace('_', ' '), density=True)
