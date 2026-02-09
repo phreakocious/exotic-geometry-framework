@@ -27,7 +27,12 @@ Both are valid detections, but the distinction matters for interpretation. For e
 
 ## Bonferroni Correction
 
-With 24 geometries producing ~100 metrics, we perform ~100 statistical tests per comparison. Without correction, we'd expect ~5 false positives at alpha=0.05.
+The framework has two geometry sets that are used independently:
+
+- **1D (byte streams)**: 25 geometries, 131 metrics — used for all `investigations/1d/` and the classifier
+- **2D (spatial fields)**: 8 geometries, 80 metrics — used for `investigations/2d/` (images, cellular automata, etc.)
+
+A given investigation uses one set or the other, so the number of statistical tests per comparison is either ~131 or ~80. Without correction, we'd expect ~7 or ~4 false positives at alpha=0.05.
 
 Bonferroni correction divides alpha by the number of tests:
 
@@ -35,7 +40,7 @@ Bonferroni correction divides alpha by the number of tests:
 alpha_corrected = 0.05 / n_tests
 ```
 
-For 108 metrics: alpha = 0.000463. Only results surviving this threshold are reported.
+For 1D (131 metrics): alpha = 0.000382. For 2D (80 metrics): alpha = 0.000625. Only results surviving the relevant threshold are reported.
 
 This is conservative (some real effects may be missed), which is intentional — we prefer missed detections over false positives.
 
@@ -100,4 +105,32 @@ A finding is reported as significant when ALL of these hold:
 
 ## Negative Results
 
-We report negative results with equal rigor. When no metric survives Bonferroni correction, that IS the finding — the data types are geometrically indistinguishable. The most important negative result: AES-CTR output is indistinguishable from true randomness across all 24 geometries, all preprocessing methods, and all combination strategies.
+We report negative results with equal rigor. When no metric survives Bonferroni correction, that IS the finding — the data types are geometrically indistinguishable. The most important negative result: AES-CTR output is indistinguishable from true randomness across all 25 1D geometries, all preprocessing methods, and all combination strategies.
+
+## Geometric Signature Classifier
+
+Beyond pairwise statistical testing, the framework includes a signature-based classifier that identifies byte streams by their geometric fingerprint.
+
+### Training
+
+A signature is built by running the analysis pipeline across many trials (typically 50) of a system's output, recording the mean and standard deviation of every metric at multiple delay-embedding scales (tau = 1, 2, 5, 10). This produces a high-dimensional profile: 131 metrics x 4 scales = 524 dimensions.
+
+### Classification
+
+Given an unknown byte stream, the classifier:
+
+1. Computes the same 524-dimensional metric vector
+2. For each signature, computes per-metric z-scores: `|observed - mean| / std`
+3. Filters out constant metrics (`std < 1e-8`) and non-finite values
+4. Ranks signatures by **median z-score** (robust to outlier metrics)
+5. Reports **match fraction** (`% of metrics within 2 sigma`) and **gap-based confidence** (`(second_best - best) / second_best`)
+
+### Key findings
+
+The classifier reliably distinguishes 37 systems at 90% top-1 accuracy and 100% top-3 on held-out data. Two fundamental limits emerge:
+
+- **High-entropy boundary (~7.0 bits/byte)**: Strong compression and encryption algorithms produce output above this threshold where all geometric structure is destroyed. Gzip, bzip2, xz, zstd, AES-CTR, SHA-256, and Mersenne Twister are all indistinguishable from each other. Only LZ4 (which stays below ~6.0) and Brotli retain enough structure for identification.
+
+- **Text cluster**: All ASCII-based formats (XML, JSON, HTML, JavaScript, source code) share the same byte-frequency geometry dominated by the printable ASCII range. The geometry captures content type (text vs machine code vs compressed data) rather than format.
+
+The strongest signature in the library is Mach-O Binary (compiled machine code): 93-96% match fraction, 95% confidence, z-scores of 0.15-0.24 across binaries from 84KB to 45MB. This identifies executables purely from the statistical geometry of their instruction bytes — no magic-byte headers needed.
