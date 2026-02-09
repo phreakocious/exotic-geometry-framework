@@ -1,8 +1,8 @@
 # Complete Findings
 
-All validated discoveries and negative results from 37 investigations.
+All validated discoveries and negative results from 38 investigations.
 
-## Validated Positive Findings (114)
+## Validated Positive Findings (119)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -69,6 +69,11 @@ All validated discoveries and negative results from 37 investigations.
 | 21 | Viral DNA uniquely caught by Sol geometry | d = 6.2 | `1d/dna.py` |
 | 22 | Protein-coding DNA caught by S2xR sphere concentration | d = 7.2 | `1d/dna.py` |
 | 23 | E. coli vs shuffled E. coli: geometry sees DNA ordering | 7 significant metrics | `1d/dna.py` |
+| 23a | Globular proteins distinguishable from IDPs (53 sig metrics) | Symplectic d=+2.55, HOS d=+2.37 | `1d/proteins.py` |
+| 23b | Both globular and IDP sequences non-random vs uniform AA | glob=37, IDP=40 sig | `1d/proteins.py` |
+| 23c | Hydrophobicity encoding far superior to ordinal/MW for protein discrimination | 53 vs 25 vs 13 sig | `1d/proteins.py` |
+| 23d | Delay embedding tau=4 is peak among delays (alpha-helix period ~3.6) | 38 sig at tau=4 vs 37,35 | `1d/proteins.py` |
+| 23e | Glob-vs-IDP signal is overwhelmingly compositional, not sequential | glob vs shuffled = 1 sig only | `1d/proteins.py` |
 
 ### Neural Networks
 | # | Finding | Effect Size | Investigation |
@@ -189,7 +194,7 @@ All validated discoveries and negative results from 37 investigations.
 | 55 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
 | 56 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
-## Negative Results (21)
+## Negative Results (22)
 
 These are equally important — they define the boundaries of what geometric analysis can and cannot do.
 
@@ -218,6 +223,7 @@ These are equally important — they define the boundaries of what geometric ana
 | 18 | **π CF coefficients indistinguishable from iid Gauss-Kuzmin** (0 sig, 0 ordering) | Geometry confirms "almost all" applies to π |
 | 19 | **π digits indistinguishable from random in base-256 AND base-10** (0 sig vs random, 0 vs shuffled, 0 across positions 0K-48K, 0 under delay embedding τ=1-5) | Strong geometric evidence for normality of π |
 | 19a | **e and √2 digits also indistinguishable from random** (same battery: all 0 sig) | Evidence extends to e and √2 |
+| 20 | **Protein sequential ordering is negligible** — globular vs shuffled = 1 sig, IAAFT = 0 for both classes | Glob-vs-IDP is compositional (AA frequencies), not sequential |
 
 ## Key Takeaway
 
