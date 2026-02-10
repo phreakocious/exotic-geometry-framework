@@ -82,6 +82,39 @@ All validated discoveries and negative results from 38 investigations.
 | 25 | Backdoored weights detected by 15 metrics | d = 7.12 (Wasserstein) | `1d/nn_weights.py` |
 | 26 | Dense vs conv weights distinguished | d = 11.9 (Cantor) | `1d/nn_weights.py` |
 
+### Quantum Geometry
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 26a | Coherence (interference) massively detectable vs decoherent sum | 100 sig metrics, d ≈ 4000 (Clifford) | `1d/quantum_geometry.py` |
+| 26b | Box, Oscillator, Hydrogen, and Quantum Walk states distinct | 16.8 avg sig metrics | `1d/quantum_geometry.py` |
+| 26c | Energy levels (n) produce distinct geometric fingerprints | 12-17 sig vs ground state | `1d/quantum_geometry.py` |
+| 26d | Wavepacket dispersion detected as geometric evolution | 11-14 sig metrics across time | `1d/quantum_geometry.py` |
+
+### Memory Geometry
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 26e | Arrays, Linked Lists, Hash Tables, and Trees have distinct topologies | 77.5 avg sig metrics | `1d/memory_geometry.py` |
+| 26f | Sequential vs Random memory traces are massively distinguishable | 99 sig metrics | `1d/memory_geometry.py` |
+| 26g | Memory fragmentation (Array vs Linked List) detectable via geometry | 80 sig metrics, d ≈ 57 | `1d/memory_geometry.py` |
+| 26h | Data structure density (load factor) affects geometric signature | 97 sig metrics | `1d/memory_geometry.py` |
+
+### Esoteric Code (Esolangs)
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 26i | Malbolge is NOT random (distinguishable from high-entropy ASCII) | 52 sig metrics, d ≈ -30 | `1d/esoteric_code.py` |
+| 26j | Whitespace syntax creates "invisible" geometric structure | 63 sig metrics vs white noise | `1d/esoteric_code.py` |
+| 26k | Brainfuck loop depth (recursion) is geometrically measurable | 67 sig metrics (flat vs deep) | `1d/esoteric_code.py` |
+| 26l | Zalgo text corruption saturates geometric distance | 107 sig metrics at max intensity | `1d/esoteric_code.py` |
+
+### Binary Analysis
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 26a | x86-64, ARM64, WASM, and Java highly distinct | 91.0 avg sig metrics | `1d/binary_anatomy.py` |
+| 26b | Machine code has strong sequential structure | 47-49 sig metrics vs shuffled | `1d/binary_anatomy.py` |
+| 26c | Packed data distinguishable from encrypted data | 33 sig metrics | `1d/binary_anatomy.py` |
+| 26d | Control-flow flattening (obfuscation) massively detectable | 84 sig metrics vs raw x86 | `1d/binary_anatomy.py` |
+| 26e | Embedded high-entropy payloads (shellcode) detectable | 61 sig metrics | `1d/binary_anatomy.py` |
+
 ### Compression
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
