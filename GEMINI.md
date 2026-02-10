@@ -203,6 +203,8 @@ if __name__ == "__main__":
 9. **Print results as you go.** Each direction prints its findings before the figure.
 10. **No external API calls at runtime.** Download/cache data in a setup function if needed.
 11. **File placement:** 1D investigations go in `investigations/1d/`, 2D in `investigations/2d/`.
+12. **String literals:** Use `"\n"` for newlines in print statements, NOT actual newlines inside the string. Write `print("\n" + "=" * 60)` not `print("[newline]" + "=" * 60)`.
+13. **Summary must show actual values.** The `runner.print_summary()` call must include actual computed results (e.g., `f"Taxonomy: {pw.min():.0f}-{pw.max():.0f} sig"`), NOT placeholder text like "Taxonomy completed".
 
 ## Runner API Reference
 

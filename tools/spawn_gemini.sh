@@ -2,9 +2,8 @@
 #
 # spawn_gemini.sh — Spawn Gemini CLI to write an investigation.
 #
-# Uses a temp workspace with --include-directories to give Gemini
-# read access to the project but write access only to a sandbox.
-# The investigation file is copied back after completion.
+# Runs Gemini in the project directory (trusted, so write_file works).
+# Gemini writes ONLY to investigations/{mode}/ — the prompt constrains it.
 #
 # Usage:
 #   ./tools/spawn_gemini.sh "topic description"
@@ -27,70 +26,55 @@ done
 
 TOPIC="${1:-}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-SLUG=$(echo "$TOPIC" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '_' | head -c 40)
-SLUG="${SLUG:-autopick}"
-
-# Sandbox: Gemini writes here, we copy results back
-SANDBOX="/tmp/egf-sandbox/${SLUG}_${TIMESTAMP}"
-mkdir -p "${SANDBOX}/investigations/${MODE}"
-mkdir -p "${SANDBOX}/tools"
-
-# Copy only what Gemini needs to write into the sandbox
-# (it can READ the main project via --include-directories)
-cp "${PROJ_ROOT}/tools/investigation_runner.py" "${SANDBOX}/tools/"
-cp "${PROJ_ROOT}/tools/__init__.py" "${SANDBOX}/tools/"
-touch "${SANDBOX}/investigations/__init__.py"
-touch "${SANDBOX}/investigations/${MODE}/__init__.py"
 
 echo "================================================"
 echo "  Exotic Geometry — Gemini Investigation Spawner"
 echo "================================================"
 echo "  Topic:    ${TOPIC:-<Gemini will choose>}"
 echo "  Mode:     ${MODE}"
-echo "  Sandbox:  ${SANDBOX}"
-echo "  Project:  ${PROJ_ROOT} (read-only via --include-directories)"
+echo "  Project:  ${PROJ_ROOT}"
 echo "================================================"
 
 # Build the prompt
 if [[ -n "$TOPIC" ]]; then
     PROMPT="You are writing a new investigation for the Exotic Geometry Framework.
 
-READ the file GEMINI.md (located in the included directory ${PROJ_ROOT}) FIRST — it contains all the rules, the Runner API, and a complete template.
+READ the file GEMINI.md FIRST — it contains all the rules, the Runner API, and a complete template.
 
-You can also read existing investigations in ${PROJ_ROOT}/investigations/ for reference.
+You can also read existing investigations in investigations/ for reference.
 
 Topic: ${TOPIC}
 Mode: ${MODE} (use Runner(name, mode='${MODE}'))
 
 Write the investigation script to: investigations/${MODE}/<descriptive_name>.py
-(This is inside your current working directory: ${SANDBOX})
 
 CRITICAL RULES (from GEMINI.md):
 - Every direction must produce 3+ data points for the figure. NO single-bar panels.
 - All generators must use rng for independent trials (no deterministic outputs).
 - Use runner.compare() for all statistics. 25 trials always.
 - Design directions as: taxonomy (heatmap), multi-condition bars, parameter sweeps (line), or scale tests (line).
-- Import the Runner: sys.path.insert(0, '${PROJ_ROOT}') then from tools.investigation_runner import Runner
+
+ONLY write files under investigations/${MODE}/. Do not modify any other files.
 
 Write the file, then stop. Do not run it."
 else
     PROMPT="You are writing a new investigation for the Exotic Geometry Framework.
 
-READ the file GEMINI.md (located in the included directory ${PROJ_ROOT}) FIRST — it contains all the rules, the Runner API, and a complete template.
+READ the file GEMINI.md FIRST — it contains all the rules, the Runner API, and a complete template.
 
-Check existing investigations in ${PROJ_ROOT}/investigations/ to avoid duplicates, then choose an interesting new topic.
+Check existing investigations in investigations/ to avoid duplicates, then choose an interesting new topic.
 
 Mode: ${MODE} (use Runner(name, mode='${MODE}'))
 
 Write the investigation script to: investigations/${MODE}/<descriptive_name>.py
-(This is inside your current working directory: ${SANDBOX})
 
 CRITICAL RULES (from GEMINI.md):
 - Every direction must produce 3+ data points for the figure. NO single-bar panels.
 - All generators must use rng for independent trials (no deterministic outputs).
 - Use runner.compare() for all statistics. 25 trials always.
 - Design directions as: taxonomy (heatmap), multi-condition bars, parameter sweeps (line), or scale tests (line).
-- Import the Runner: sys.path.insert(0, '${PROJ_ROOT}') then from tools.investigation_runner import Runner
+
+ONLY write files under investigations/${MODE}/. Do not modify any other files.
 
 Write the file, then stop. Do not run it."
 fi
@@ -98,14 +82,13 @@ fi
 LOGFILE="${PROJ_ROOT}/tools/gemini_${TIMESTAMP}.log"
 
 echo ""
-echo "Launching Gemini CLI (sandbox + included project dir)..."
+echo "Launching Gemini CLI..."
 echo "Log: ${LOGFILE}"
 echo ""
 
-cd "$SANDBOX"
+cd "$PROJ_ROOT"
 gemini \
     --yolo \
-    --include-directories "$PROJ_ROOT" \
     --prompt "$PROMPT" \
     2>&1 | tee "$LOGFILE"
 
@@ -114,25 +97,14 @@ echo "================================================"
 echo "  Gemini finished"
 echo "================================================"
 
-# Copy investigation files back to main project
-COPIED=0
-for f in "${SANDBOX}"/investigations/${MODE}/*.py; do
+# List any new investigation files
+echo "New investigation files:"
+for f in investigations/${MODE}/*.py; do
     [[ -f "$f" ]] || continue
     fname=$(basename "$f")
-    # Skip __init__.py
     [[ "$fname" == "__init__.py" ]] && continue
-    echo "Copying: $fname → ${PROJ_ROOT}/investigations/${MODE}/"
-    cp "$f" "${PROJ_ROOT}/investigations/${MODE}/${fname}"
-    COPIED=$((COPIED + 1))
+    echo "  $f"
 done
 
-if [[ $COPIED -eq 0 ]]; then
-    echo "No investigation files created. Check log: ${LOGFILE}"
-else
-    echo ""
-    echo "$COPIED file(s) copied to project."
-fi
-
 echo ""
-echo "Sandbox: ${SANDBOX}"
 echo "Log: ${LOGFILE}"
