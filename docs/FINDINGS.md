@@ -230,14 +230,18 @@ All validated discoveries and negative results from 67 investigations.
 ### Structure Atlas (56 sources, 13 domains)
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 57 | 56 data sources from 13 domains mapped into 141-metric structure space | 7.7 effective dimensions, PC1+2 = 40.6% | `1d/structure_atlas.py` |
-| 58 | Cross-domain twins: EEG Eyes Closed ↔ Bearing Outer (d=0.084), EEG Seizure ↔ Speech (d=0.18) | cosine distance in PCA space | `1d/structure_atlas.py` |
+| 57 | 56 data sources from 13 domains mapped into 141-metric structure space | 7.7 effective dimensions, PC1+2 = 40.7% | `1d/structure_atlas.py` |
+| 58 | Cross-domain twins: EEG Eyes Closed ↔ Bearing Outer (d=0.084), NASDAQ ↔ Accel Stairs (d=0.16), Kepler Non-planet ↔ Accel Sit (d=0.17) | cosine distance in z-scored metric space | `1d/structure_atlas.py` |
+| 58a | Synthetic DNA ↔ DNA Chimp (d=0.001) — synthetic generator essentially nails real chimp DNA | closest pair across all 56 sources | `1d/structure_atlas.py` |
+| 58b | fBm H=0.3 ↔ fBm H=0.7 (d=0.002) — two Hurst exponents geometrically indistinguishable | despite Hurst parameter being a key discriminator in 1-on-1 tests | `1d/structure_atlas.py` |
 | 59 | DNA (synthetic and real) forms isolated cluster (d=0.001-0.05 within, d>0.4 to everything else) | 4 bio sources, uniquely distinctive | `1d/structure_atlas.py` |
-| 60 | White Noise ≈ AES Encrypted (d=0.005) — pseudo-random cluster confirmed | Cluster 5: chaos + noise + AES + gzip + Pi | `1d/structure_atlas.py` |
+| 60 | White Noise ≈ AES Encrypted (d=0.074) — pseudo-random cluster confirmed | Cluster 5: chaos + noise + AES + gzip + Pi | `1d/structure_atlas.py` |
 | 61 | Surrogate decomposition: ECG Supraventr. most sequential (87/141 metrics disrupted by shuffling) | White Noise/AES = 0 disrupted | `1d/structure_atlas.py` |
-| 62 | Financial returns time-asymmetric at 12K bytes (Nikkei: 18 metrics disrupted by reversal) | absent at 2K bytes | `1d/structure_atlas.py` |
-| 63 | Executable Binary goes from 8→79 sequential metrics when chunk size increases 2K→12K | 10x improvement with more data | `1d/structure_atlas.py` |
-| 64 | Multi-scale: ECG/DNA detectable at all scales (92-100 sig at 256-4096 bytes) | NYSE: 50→66 (grows with scale) | `1d/structure_atlas.py` |
+| 61a | Pi (base 256) has more metrics disrupted by rolling (69) than by shuffling (45) | positional structure beyond sequential autocorrelation | `1d/structure_atlas.py` |
+| 61b | Chaos maps are time-asymmetric: Henon (26 rev), Logistic (25), Tent (23) metrics disrupted by reversal | consistent with iterative map's forward direction | `1d/structure_atlas.py` |
+| 62 | Financial returns time-asymmetric at 12K bytes (Nikkei: 18, NYSE: 17, NASDAQ: 15 metrics disrupted by reversal) | markets have geometric time arrow | `1d/structure_atlas.py` |
+| 63 | 54% of all nearest-neighbor pairs (90/168) cross domain boundaries | structure space reflects universal motifs, not domain | `1d/structure_atlas.py` |
+| 64 | Multi-scale: ECG Normal detectable at all scales (92-100 sig at 256-4096 bytes), DNA Human rock-solid (91-95) | NYSE: 50→66 (grows with scale), White Noise: 0 at all scales | `1d/structure_atlas.py` |
 
 ### Bearing Fault Diagnosis
 | # | Finding | Effect Size | Investigation |
@@ -308,7 +312,7 @@ These are equally important — they define the boundaries of what geometric ana
 
 ## Key Takeaway
 
-The framework detects genuine structure with large effect sizes (d = 7-266) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly. The Structure Atlas investigation (`structure_atlas.py`) mapped 56 data sources from 13 domains into the 141-metric structure space and found it has 7.7 effective dimensions — the framework's metrics, despite numbering 141, span a compact but sufficient space to classify diverse real-world data. Cross-domain structural twins (e.g., EEG eyes-closed signals and bearing vibration data sharing nearly identical geometric profiles) reveal that the framework captures universal structural motifs rather than domain-specific artifacts.
+The framework detects genuine structure with large effect sizes (d = 7-266) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly. The Structure Atlas investigation (`structure_atlas.py`) mapped 56 data sources from 13 domains into the 141-metric structure space and found it has 7.7 effective dimensions (PC1+2 = 40.7%) — the framework's metrics, despite numbering 141, span a compact but sufficient space to classify diverse real-world data. 54% of all nearest-neighbor pairs cross domain boundaries, revealing that the framework captures universal structural motifs rather than domain-specific artifacts. Cross-domain twins (EEG Eyes Closed ↔ Bearing Outer d=0.084, NASDAQ ↔ Accel Stairs d=0.16) share geometric profiles despite having nothing in common physically.
 
 The 2D spatial geometry battery (8 geometries, 80 metrics) demonstrates that genuinely different mathematical lenses — differential geometry (Surface), algebraic topology (PersistentHomology2D), complex analysis (Conformal2D), integral geometry (MinkowskiFunctional), scaling analysis (MultiscaleFractal), Hodge theory (HodgeLaplacian), and spectral analysis (SpectralPower) — each contribute unique discriminative power. On stego co-occurrence matrices, PVD detection jumps from 13/15 (SpatialField alone) to 49/80 (all 8 geometries). On 10 diverse field types, all 45 pairs are distinguished.
 

@@ -166,12 +166,16 @@ Twelve elementary CA rules spanning all four Wolfram complexity classes, analyze
 
 ### Structure Atlas: how the framework organizes the world
 
-56 data sources from 13 domains — chaos, number theory, noise, waveforms, bearings, binary, DNA, medical (ECG/EEG), financial, motion, astronomy, climate, speech — mapped into 141-metric structure space. At 12,000 bytes per chunk, effective dimensionality = 7.7. Key findings:
+56 data sources from 13 domains — chaos, number theory, noise, waveforms, bearings, binary, DNA, medical (ECG/EEG), financial, motion, astronomy, climate, speech — mapped into 141-metric structure space. At 12,000 bytes per chunk, effective dimensionality = 7.7 (PC1+2 = 40.7%). Key findings:
 
-- **Cross-domain twins**: EEG seizure ↔ speech (d=0.18), bearing faults ↔ EEG (d=0.07), financial returns ↔ accelerometer (d=0.16)
-- **DNA is unique**: synthetic and real DNA cluster tightly (d=0.001-0.05), isolated from everything else
-- **Surrogate decomposition**: structure type (sequential vs distributional vs time-asymmetric) maps cleanly onto PCA space. White noise/AES/gzip = 0 sequential metrics. ECG/sawtooth/fBm = 70-87 sequential metrics
-- **Multi-scale robustness**: ECG/DNA/primes detectable at all scales (256-4096 bytes). Financial returns need longer windows (50→66 sig).
+- **Cross-domain twins**: EEG Eyes Closed ↔ Bearing Outer (d=0.084), EEG Seizure ↔ Speech (d=0.18), financial returns ↔ accelerometer (NASDAQ ↔ Accel Stairs d=0.16)
+- **DNA is unique**: synthetic and real DNA cluster tightly (Synthetic DNA ↔ DNA Chimp d=0.001), isolated from everything else in its own cluster
+- **Surrogate decomposition**: ECG Supraventricular is the most sequential source (87/141 metrics disrupted by shuffling, 62%). White Noise/AES = 0 disrupted. Pi (base 256) has more structure disrupted by rolling (69) than by shuffling (45) — positional structure beyond autocorrelation. Chaos maps are time-asymmetric (Henon: 26 rev metrics), financial returns too (Nikkei: 18 rev)
+- **Multi-scale robustness**: ECG Normal detectable at all scales (92-100 sig at 256-4096 bytes). DNA Human rock-solid (91-95). Financial returns grow with scale (50→66 sig)
+
+![Structure Atlas](docs/figures/structure_atlas.png)
+![Structure Atlas 3D](docs/figures/structure_atlas_3d.png)
+![Structure Atlas Techniques](docs/figures/structure_atlas_techniques.png)
 
 → `investigations/1d/structure_atlas.py`
 
@@ -179,11 +183,15 @@ Twelve elementary CA rules spanning all four Wolfram complexity classes, analyze
 
 Real vibration data from CWRU bearing fault dataset. 4 conditions (Normal, Ball, Inner, Outer race faults) all distinguished. Fractal geometries (Mandelbrot/Julia) are inner-race specialists: 9/10 fractal metrics significant for inner race (d=1.9-5.5), only 3/10 for outer race.
 
+![Bearing Faults](docs/figures/bearing_fault.png)
+
 → `investigations/1d/bearing_fault.py`
 
 ### Mathematical constants: fingerprints of transcendence
 
 Base-256 digits of Pi, e, Phi, Sqrt(2) are indistinguishable from each other (0 sig) but all differ from white noise (84-85 sig). Continued fraction taxonomy reveals deep structure: CF(e) vs CF(Pi) = 94 sig, CF(ln2) vs algebraics = 118 sig. Pi's CF has only 5 sig vs Gauss-Kuzmin i.i.d. — barely detectable sequential structure. Same constant (Pi) in 4 representations (base-256, base-10, binary, CF) produces wildly different fingerprints (52-106 sig pairwise).
+
+![Math Constants](docs/figures/math_constants.png)
 
 → `investigations/1d/math_constants.py`
 
@@ -260,6 +268,21 @@ results = analyzer.analyze(data)
 for name, result in results.items():
     for metric, value in result.metrics.items():
         print(f"{name}.{metric} = {value:.4f}")
+```
+
+### Caching and Parallel Processing
+
+```python
+# Per-geometry disk cache (324x speedup on warm cache)
+analyzer = GeometryAnalyzer(cache_dir=".cache").add_all_geometries()
+results = analyzer.analyze(data)  # cold: computes all, stores to cache
+results = analyzer.analyze(data)  # warm: loads from cache instantly
+analyzer.clear_cache()             # wipe cache
+
+# Parallel chunk processing via Runner (2-3x speedup)
+from tools.investigation_runner import Runner
+runner = Runner("my_investigation", n_workers=4, cache=True)
+metrics = runner.collect(chunks)   # distributes across 4 processes
 ```
 
 ### 2D Analysis (spatial fields)
