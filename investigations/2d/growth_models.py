@@ -300,7 +300,7 @@ def make_figure(model_data, example_fields, pair_results):
     n = len(names)
     model_colors = {'DLA': '#FF9800', 'Eden': '#4CAF50', 'Random': '#2196F3'}
 
-    fig = plt.figure(figsize=(16, 30), facecolor='black')
+    fig = plt.figure(figsize=(16, 20), facecolor='black')
     gs = gridspec.GridSpec(3, 3, figure=fig, height_ratios=[1.3, 1.0, 1.0],
                            hspace=0.45, wspace=0.35)
 
@@ -342,15 +342,6 @@ def make_figure(model_data, example_fields, pair_results):
         ax.set_xticklabels(names, fontsize=9)
         ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=10, fontweight='bold')
         ax.tick_params(labelsize=8)
-
-    ax_txt = fig.add_subplot(gs[2, 2])
-    ax_txt.axis('off')
-    lines = ['Pairwise Results:\n']
-    for n1, n2, sig, bm, bd in pair_results:
-        lines.append(f'{n1:8s} vs {n2:8s}: {sig:2d} sig')
-        lines.append(f'  best: {bm} d={bd:+.1f}\n')
-    ax_txt.text(0.05, 0.95, '\n'.join(lines), transform=ax_txt.transAxes,
-               fontsize=8, fontfamily='monospace', va='top', color='#cccccc')
 
     fig.suptitle('Growth Model Fingerprinting: DLA vs Eden vs Random',
                  fontsize=14, fontweight='bold', color='white', y=0.98)

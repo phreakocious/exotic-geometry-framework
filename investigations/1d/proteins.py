@@ -884,7 +884,7 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
                   color=FG)
 
     # ── Panel 5: D5 — Helical periodicity ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
     taus = d5['taus']
     tau_vals = [d5['tau_results'][t] for t in taus]
@@ -913,50 +913,6 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
 
     ax5.set_title('D5: Helical Periodicity', fontsize=11, fontweight='bold',
                   color=FG)
-
-    # ── Panel 6: Summary ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.set_facecolor(BG)
-    ax6.axis('off')
-
-    n_total = len(metric_names)
-    lines = [
-        "Protein Sequence Geometry — Summary",
-        "",
-        "D1: Detection (hydrophobicity)",
-        f"  Glob vs Random:    {d1['n_glob_rand']:>3} / {n_total} sig",
-        f"  IDP vs Random:     {d1['n_idp_rand']:>3} / {n_total} sig",
-        f"  Glob vs IDP:       {d1['n_glob_idp']:>3} / {n_total} sig",
-        f"  Glob vs Shuffled:  {d1['n_glob_shuf']:>3} / {n_total} sig",
-        "",
-        "D2: Best encoding",
-    ]
-    for e in ['ordinal', 'hydrophobicity', 'molecular_weight']:
-        marker = " *" if e == d2['best_encoding'] else ""
-        lines.append(f"  {e:<18} {d2['enc_results'].get(e,0):>3} sig{marker}")
-    lines += [
-        "",
-        "D3: Beyond composition",
-        f"  Glob vs shuffled:    {d3['n_glob_shuf']:>3} sig",
-        f"  Glob vs dist-match:  {d3['n_glob_dist']:>3} sig",
-        f"  IDP vs shuffled:     {d3['n_idp_shuf']:>3} sig",
-        f"  IDP vs dist-match:   {d3['n_idp_dist']:>3} sig",
-        "",
-        "D4: Linear vs nonlinear",
-        f"  Glob vs IAAFT: {d4['n_glob_iaaft']:>3} sig (nonlinear)",
-        f"  IDP vs IAAFT:  {d4['n_idp_iaaft']:>3} sig (nonlinear)",
-        "",
-        "D5: Delay embedding",
-        f"  Raw:   {d5['raw_sig']:>3} sig",
-    ]
-    for t in d5['taus']:
-        lines.append(f"  tau={t}: {d5['tau_results'][t]:>3} sig")
-
-    text = "\n".join(lines)
-    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=7.5,
-             verticalalignment='top', fontfamily='monospace', color=FG,
-             bbox=dict(boxstyle='round,pad=0.5', facecolor='#222',
-                       edgecolor='#444'))
 
     fig.suptitle('Protein Sequence Geometry: Can Folding Potential Be Detected in 1D?',
                  fontsize=15, fontweight='bold', color=FG, y=0.98)

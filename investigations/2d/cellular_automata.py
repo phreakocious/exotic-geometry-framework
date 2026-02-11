@@ -235,7 +235,7 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
     names = list(RULES.keys())
     n = len(names)
 
-    fig = plt.figure(figsize=(18, 35), facecolor='black')
+    fig = plt.figure(figsize=(18, 24), facecolor='black')
     gs = gridspec.GridSpec(4, n, figure=fig, height_ratios=[1.2, 1.0, 1.0, 1.0],
                            hspace=0.45, wspace=0.3)
 
@@ -263,7 +263,7 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
         ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=9, fontweight='bold')
         ax.tick_params(labelsize=7)
 
-    ax_mat = fig.add_subplot(gs[2, :3])
+    ax_mat = fig.add_subplot(gs[2, :])
     mat = np.zeros((n, n))
     for n1, n2, sig, _, _ in pair_results:
         i1, i2 = names.index(n1), names.index(n2)
@@ -284,15 +284,6 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
     cb = plt.colorbar(im, ax=ax_mat, shrink=0.8)
     cb.ax.yaxis.set_tick_params(color='white')
     plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='white')
-
-    ax_txt = fig.add_subplot(gs[2, 3:])
-    ax_txt.axis('off')
-    lines = ['Best discriminator per pair:\n']
-    pair_sorted = sorted(pair_results, key=lambda x: -x[2])
-    for n1, n2, sig, bm, bd in pair_sorted:
-        lines.append(f'{n1:12s} vs {n2:12s}: {sig:2d}  {bm}')
-    ax_txt.text(0.05, 0.95, '\n'.join(lines), transform=ax_txt.transAxes,
-               fontsize=7, fontfamily='monospace', va='top', color='#cccccc')
 
     epochs = [10, 50, 200, 1000]
     for i, ep in enumerate(epochs):

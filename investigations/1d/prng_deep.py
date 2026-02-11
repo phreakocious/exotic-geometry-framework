@@ -400,10 +400,10 @@ def make_figure(taus, d1_res, d2_res, d3_res, d4_res, d5_res):
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 22), facecolor='#181818')
-    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.3)
+    fig = plt.figure(figsize=(18, 7), facecolor='#181818')
+    gs = gridspec.GridSpec(1, 2, figure=fig, wspace=0.3)
 
-    # --- (0,0) D1: Multiscale Delay ---
+    # --- D1: Multiscale Delay ---
     ax1 = fig.add_subplot(gs[0, 0])
     _dark_ax(ax1)
     for gname in d1_res:
@@ -415,56 +415,8 @@ def make_figure(taus, d1_res, d2_res, d3_res, d4_res, d5_res):
     ax1.set_title('D1: Detection vs Delay Tau', fontsize=11, fontweight='bold')
     ax1.legend(fontsize=8, facecolor='#333', edgecolor='#666')
 
-    # --- (0,1) D2: Bitplane LSB vs MSB ---
-    ax2 = fig.add_subplot(gs[0, 1])
-    _dark_ax(ax2)
-    gens = list(d2_res.keys())
-    x = np.arange(len(gens))
-    p0 = [d2_res[g][0] for g in gens]
-    p7 = [d2_res[g][7] for g in gens]
-    ax2.bar(x - 0.2, p0, 0.4, label='Plane 0 (LSB)', color='#E91E63', alpha=0.8)
-    ax2.bar(x + 0.2, p7, 0.4, label='Plane 7 (MSB)', color='#2196F3', alpha=0.8)
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(gens)
-    ax2.set_ylim(bottom=0, top=max(max(p0 + p7), 5) * 1.15)
-    ax2.set_ylabel('Significant metrics', fontsize=9)
-    ax2.set_title('D2: Bitplane Detection (LSB vs MSB)', fontsize=11, fontweight='bold')
-    ax2.legend(fontsize=8, facecolor='#333', edgecolor='#666')
-
-    # --- (1,0) D3: 2D Spatial detections ---
-    ax3 = fig.add_subplot(gs[1, 0])
-    _dark_ax(ax3)
-    gens3 = list(d3_res.keys())
-    x3 = np.arange(len(gens3))
-    vals3 = [d3_res[g]['n_sig'] for g in gens3]
-    colors3 = ['#FF9800', '#00BCD4', '#8BC34A']
-    ax3.bar(x3, vals3, 0.6, color=colors3[:len(gens3)], alpha=0.85)
-    ax3.set_xticks(x3)
-    ax3.set_xticklabels(gens3)
-    ymax3 = max(max(vals3), 5) * 1.15
-    ax3.set_ylim(bottom=0, top=ymax3)
-    ax3.set_ylabel('Significant spatial metrics', fontsize=9)
-    ax3.set_title('D3: 2D Spatial Analysis (bytes → image)', fontsize=11, fontweight='bold')
-    for i, v in enumerate(vals3):
-        ax3.text(i, v + ymax3 * 0.03, str(v), ha='center', fontsize=10, fontweight='bold', color='white')
-
-    # --- (1,1) D4: Spectral vs Raw ---
-    ax4 = fig.add_subplot(gs[1, 1])
-    _dark_ax(ax4)
-    gens4 = list(d4_res.keys())
-    spec_vals = [d4_res[g] for g in gens4]
-    raw_vals = [d1_res[g][1] for g in gens4]
-    ax4.bar(np.arange(len(gens4)) - 0.2, raw_vals, 0.4, label='Raw', color='#4CAF50', alpha=0.8)
-    ax4.bar(np.arange(len(gens4)) + 0.2, spec_vals, 0.4, label='Spectral', color='#9C27B0', alpha=0.8)
-    ax4.set_xticks(np.arange(len(gens4)))
-    ax4.set_xticklabels(gens4)
-    ax4.set_ylim(bottom=0, top=max(max(raw_vals + spec_vals), 5) * 1.15)
-    ax4.set_ylabel('Significant metrics', fontsize=9)
-    ax4.set_title('D4: Raw vs Spectral Detection', fontsize=11, fontweight='bold')
-    ax4.legend(fontsize=8, facecolor='#333', edgecolor='#666')
-
-    # --- (2,0) D5: Shuffle test ---
-    ax5 = fig.add_subplot(gs[2, 0])
+    # --- D5: Shuffle test ---
+    ax5 = fig.add_subplot(gs[0, 1])
     _dark_ax(ax5)
     gens5 = list(d5_res.keys())
     x5 = np.arange(len(gens5))
@@ -479,30 +431,6 @@ def make_figure(taus, d1_res, d2_res, d3_res, d4_res, d5_res):
     ax5.set_title('D5: Determinism Detection (Shuffle Test)', fontsize=11, fontweight='bold')
     for i, v in enumerate(vals5):
         ax5.text(i, v + ymax5 * 0.03, str(v), ha='center', fontsize=10, fontweight='bold', color='white')
-
-    # --- (2,1) Summary text ---
-    ax6 = fig.add_subplot(gs[2, 1])
-    _dark_ax(ax6)
-    ax6.axis('off')
-    lines = ['SUMMARY', '']
-    for gname in ['MT19937', 'XorShift128', 'MINSTD']:
-        best_tau_sig = max(d1_res.get(gname, {0: 0}).values())
-        best_tau = [t for t, v in d1_res.get(gname, {}).items() if v == best_tau_sig]
-        best_tau = best_tau[0] if best_tau else '?'
-        spatial = d3_res.get(gname, {}).get('n_sig', '-')
-        spec = d4_res.get(gname, '-')
-        shuf = d5_res.get(gname, {}).get('n_sig', '-')
-        lines.append(f'{gname}:')
-        lines.append(f'  D1 best: {best_tau_sig} sig (tau={best_tau})')
-        lines.append(f'  D3 spatial: {spatial} sig')
-        lines.append(f'  D4 spectral: {spec} sig')
-        lines.append(f'  D5 shuffle: {shuf} sig')
-        lines.append('')
-    shuf_ur = d5_res.get('urandom', {}).get('n_sig', '-')
-    lines.append(f'urandom self-check (D5): {shuf_ur} sig')
-    ax6.text(0.05, 0.95, '\n'.join(lines), transform=ax6.transAxes,
-             fontsize=9, fontfamily='monospace', verticalalignment='top',
-             color='white')
 
     fig.suptitle('Deep PRNG Analysis: Catching the Indistinguishable',
                  fontsize=15, fontweight='bold', color='white', y=0.98)

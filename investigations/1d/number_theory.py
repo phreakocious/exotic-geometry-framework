@@ -809,7 +809,7 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     ax4.legend(fontsize=7, facecolor='#222', edgecolor='#444', labelcolor=FG)
 
     # ── Panel 5 (bottom-center): D5 — Scale sensitivity ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
 
     range_names = d5['range_names']
@@ -830,49 +830,6 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     ax5.set_ylabel('Sig metrics vs random', color=FG, fontsize=9)
     ax5.set_title('D5: Scale Sensitivity', fontsize=11, fontweight='bold', color=FG)
     ax5.legend(fontsize=7, facecolor='#222', edgecolor='#444', labelcolor=FG)
-
-    # ── Panel 6 (bottom-right): Summary ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.set_facecolor(BG)
-    ax6.axis('off')
-
-    lines = [
-        "Arithmetic Functions — Key Findings",
-        "",
-        "D1: Encodings vs Random",
-    ]
-    for enc in ENCODINGS:
-        v = d1['results'][enc]
-        lines.append(f"  {enc:<18} {v:>3} sig")
-
-    lines.append("")
-    lines.append("D3: Classical Baselines (vs Real)")
-    for model_name, _ in d3['models']:
-        v = d3['model_results'][model_name]['vs_real']
-        lines.append(f"  {model_name:<18} {v:>3} sig")
-
-    lines.append("")
-    lines.append("D4: Ordering vs Distribution")
-    n_ordering = sum(1 for enc in ENCODINGS if d4['results'][enc]['orig_vs_shuf'] > 5)
-    n_distrib = sum(1 for enc in ENCODINGS
-                    if d4['results'][enc]['orig_vs_rand'] > 5
-                    and d4['results'][enc]['orig_vs_shuf'] <= 5)
-    lines.append(f"  {n_ordering} ordering-dependent")
-    lines.append(f"  {n_distrib} purely distributional")
-
-    lines.append("")
-    lines.append("D5: Scale Evolution")
-    for enc in focus_enc:
-        line = f"  {enc[:12]}:"
-        for rn in range_names:
-            v = d5['scale_results'][(rn, enc)]
-            line += f" {v}"
-        lines.append(line)
-
-    text = "\n".join(lines)
-    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=7.5,
-             verticalalignment='top', fontfamily='monospace', color=FG,
-             bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Classical Arithmetic Functions: Exotic Geometry Analysis',
                  fontsize=15, fontweight='bold', color=FG, y=0.98)

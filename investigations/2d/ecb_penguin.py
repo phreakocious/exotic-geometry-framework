@@ -234,7 +234,7 @@ def make_figure(all_results, test_images):
 
     BG = '#181818'
     FG = '#e0e0e0'
-    fig = plt.figure(figsize=(16, 30), facecolor=BG)
+    fig = plt.figure(figsize=(16, 22), facecolor=BG)
     gs = gridspec.GridSpec(4, 4, figure=fig, height_ratios=[1.3, 0.7, 1.0, 1.0],
                            hspace=0.45, wspace=0.35)
 

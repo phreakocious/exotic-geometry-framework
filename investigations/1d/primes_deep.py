@@ -776,7 +776,7 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
              bbox=dict(boxstyle='round,pad=0.3', facecolor='#222', edgecolor='#444'))
 
     # ── Panel 5 (bottom-center): D5 — Venn categories ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
 
     cat_names = ['pure_primality', 'cramer_specific', 'universal', 'cramer_captured']
@@ -794,47 +794,6 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     for i, v in enumerate(cat_vals):
         ax5.text(i, v + 0.5, str(v), ha='center', color=FG, fontsize=9,
                  fontweight='bold')
-
-    # ── Panel 6 (bottom-right): Summary ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.set_facecolor(BG)
-    ax6.axis('off')
-
-    n_total = len(metric_names)
-    lines = [
-        "Deep Prime Gap Geometry — Summary",
-        "",
-        "D5: Metric Venn Diagram",
-        f"  Real vs Cramér:  {d5['counts']['real_vs_cramer']:>3} / {n_total} sig",
-        f"  Real vs Random:  {d5['counts']['real_vs_random']:>3} / {n_total} sig",
-        f"  Cramér vs Rand:  {d5['counts']['cramer_vs_random']:>3} / {n_total} sig",
-        "",
-    ]
-    for c, l in zip(cat_names, ['Pure primality', 'Cramér-specific',
-                                'Universal', 'Cramér-captured']):
-        lines.append(f"  {l:<18} {len(d5['categories'][c]):>3}")
-
-    lines.append("")
-    lines.append("D2: Model Hierarchy (vs Real)")
-    for m in d2['model_order']:
-        lines.append(f"  {m:<18} {d2['model_vs_real'][m]:>3} sig")
-
-    lines.append("")
-    lines.append("D3: Delay Embedding")
-    lines.append(f"  Raw baseline:    {d3['raw_sig']:>3} sig")
-    peak_tau = max(d3['taus'], key=lambda t: d3['tau_sig'][t])
-    lines.append(f"  Peak τ={peak_tau}:       {d3['tau_sig'][peak_tau]:>3} sig")
-
-    lines.append("")
-    lines.append("D4: Scale Evolution")
-    for rn in d4['range_names']:
-        lines.append(f"  {rn:<12} {d4['scale_results'][rn]:>3} sig")
-    lines.append(f"  Always-sig:   {len(d4['always_sig']):>3}")
-
-    text = "\n".join(lines)
-    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=7.5,
-             verticalalignment='top', fontfamily='monospace', color=FG,
-             bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Deep Prime Gap Geometry: What Structure Does Cramér Miss?',
                  fontsize=15, fontweight='bold', color=FG, y=0.98)

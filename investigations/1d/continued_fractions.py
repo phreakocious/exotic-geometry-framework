@@ -477,7 +477,7 @@ def make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus)
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 22), facecolor=BG)
+    fig = plt.figure(figsize=(20, 16), facecolor=BG)
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.30)
 
     colors = {'sqrt2': '#E91E63', 'sqrt3': '#FF9800', 'e': '#4CAF50',
@@ -562,7 +562,7 @@ def make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus)
         ax.text(i, v + 0.3, str(v), ha='center', color=FG, fontsize=9, fontweight='bold')
 
     # ── (2,0) D5: Sig vs τ line plot ──
-    ax = _dark_ax(fig.add_subplot(gs[2, 0]))
+    ax = _dark_ax(fig.add_subplot(gs[2, :]))
     for name in CONSTANTS:
         label = CONST_LABELS[name]
         sig_vals = [d5_results[name][tau] for tau in taus]
@@ -575,43 +575,6 @@ def make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus)
     ax.set_title('D5: Delay Embedding', fontsize=11, fontweight='bold', color=FG)
     ax.legend(fontsize=8, facecolor='#222', edgecolor='#444', labelcolor=FG,
               loc='best')
-
-    # ── (2,1) Summary text panel ──
-    ax = fig.add_subplot(gs[2, 1])
-    ax.set_facecolor(BG)
-    ax.axis('off')
-
-    lines = [
-        "Continued Fraction Geometry — Summary",
-        "",
-        "D1: Detection Baseline (vs random)",
-    ]
-    for name in CONSTANTS:
-        lines.append(f"  {CONST_LABELS[name]:5s}  {d1_results[name]:3d} sig")
-
-    lines.append("")
-    lines.append("D2: Beyond Gauss-Kuzmin (vs GK surrogates)")
-    for name in CONSTANTS:
-        lines.append(f"  {CONST_LABELS[name]:5s}  {d2_results[name]:3d} sig")
-    lines.append("  → sig > 0 = sequential structure beyond marginal")
-
-    lines.append("")
-    lines.append("D4: Ordering Dependence (orig vs shuffled)")
-    for name in CONSTANTS:
-        lines.append(f"  {CONST_LABELS[name]:5s}  {d4_results[name]:3d} sig")
-    lines.append(f"  rand   {d4_results['random']:3d} sig (self-check)")
-
-    lines.append("")
-    lines.append("D5: Peak delay τ per constant")
-    for name in CONSTANTS:
-        peak_tau = max(taus, key=lambda t: d5_results[name][t])
-        peak_sig = d5_results[name][peak_tau]
-        lines.append(f"  {CONST_LABELS[name]:5s}  τ={peak_tau} → {peak_sig} sig")
-
-    text = "\n".join(lines)
-    ax.text(0.05, 0.95, text, transform=ax.transAxes, fontsize=8,
-            verticalalignment='top', fontfamily='monospace', color=FG,
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Continued Fraction Geometry: Sequential Structure Beyond Gauss-Kuzmin',
                  fontsize=14, fontweight='bold', color=FG, y=0.995)

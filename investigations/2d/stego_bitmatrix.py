@@ -643,7 +643,7 @@ def make_figure(d1, d2, d3, d4, d5):
                   fontsize=10, fontweight='bold', color=FG)
 
     # ── Panel E: D5 — Matrix Embed Challenge ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
 
     d5_techs = ['Matrix Embed', 'LSBMR', 'PVD']
@@ -668,53 +668,6 @@ def make_figure(d1, d2, d3, d4, d5):
 
     ax5.set_title('D5: Full Analyzer on 2D Reps\n(texture, 100%)',
                   fontsize=10, fontweight='bold', color=FG)
-
-    # ── Panel F: Summary ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    _dark_ax(ax6)
-    ax6.axis('off')
-
-    # Best representation from D1
-    rep_totals = {r: sum(d1['results'][(r, t)] for t in tech_names) for r in rep_names}
-    best_rep = max(rep_totals, key=rep_totals.get)
-
-    # Matrix Embed status
-    me_detected = any(d5['results'].get((rep, 'Matrix Embed'), 0) > 0
-                      for rep in ['Byte Grid', 'Diff Grid'])
-
-    # Best rate for co-occurrence
-    best_rates = {}
-    for tech in tech_names:
-        best_rates[tech] = 'never'
-        for r in rates:
-            if d4['results'].get((tech, r), 0) > 0:
-                best_rates[tech] = f'{r:.0%}'
-                break
-
-    summary_lines = [
-        "Key Findings:",
-        "",
-        f"Best 2D repr: {best_rep} ({rep_totals[best_rep]} sig)",
-        f"Matrix Embed: {'CRACKED' if me_detected else 'still invisible'}",
-        "",
-        "Min detectable rate (co-occurrence):",
-    ] + [
-        f"  {tech[:16]:<18} {best_rates[tech]}"
-        for tech in tech_names
-    ] + [
-        "",
-        "Binary bit grids kill metric variance.",
-        "Co-occurrence preserves byte-pair",
-        "transition statistics as a smooth 2D",
-        "field amenable to spatial analysis.",
-    ]
-
-    for i, line in enumerate(summary_lines):
-        weight = 'bold' if i == 0 else 'normal'
-        size = 11 if i == 0 else 9
-        ax6.text(0.05, 0.97 - i * 0.058, line, transform=ax6.transAxes,
-                 fontsize=size, fontweight=weight, color=FG,
-                 verticalalignment='top', fontfamily='monospace')
 
     fig.suptitle('2D Bit-Matrix Steganalysis — Deep Investigation',
                  fontsize=14, fontweight='bold', color=FG, y=0.98)

@@ -398,7 +398,7 @@ def make_figure(ising_data):
     temperatures.sort()
     all_T = temperatures + ['inf']
 
-    fig = plt.figure(figsize=(16, 25), facecolor=BG)
+    fig = plt.figure(figsize=(16, 16), facecolor=BG)
     gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.4, wspace=0.35)
 
     def _dark_ax(ax):

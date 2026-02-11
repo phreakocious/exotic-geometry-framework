@@ -279,7 +279,7 @@ def make_figure(drop_data, example_fields, pair_results):
     n_drops_list = DROP_COUNTS
     n_cols = len(n_drops_list) + 1  # +1 for identity
 
-    fig = plt.figure(figsize=(18, 30), facecolor='black')
+    fig = plt.figure(figsize=(18, 20), facecolor='black')
     gs = gridspec.GridSpec(3, n_cols, figure=fig, height_ratios=[1.3, 1.0, 1.0],
                            hspace=0.45, wspace=0.35)
 
@@ -320,7 +320,7 @@ def make_figure(drop_data, example_fields, pair_results):
 
     # Row 2: Pairwise heatmap + summary
     n = len(n_drops_list)
-    ax_mat = fig.add_subplot(gs[2, :3])
+    ax_mat = fig.add_subplot(gs[2, :])
     mat = np.zeros((n, n))
     for d1, d2, sig, _, _ in pair_results:
         i1 = n_drops_list.index(d1)
@@ -343,15 +343,6 @@ def make_figure(drop_data, example_fields, pair_results):
     cb = plt.colorbar(im, ax=ax_mat, shrink=0.8)
     cb.ax.yaxis.set_tick_params(color='white')
     plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='white')
-
-    ax_txt = fig.add_subplot(gs[2, 3:])
-    ax_txt.axis('off')
-    lines = ['Pairwise results:\n']
-    for d1, d2, sig, bm, bd in pair_results:
-        lines.append(f'{d1:6d} vs {d2:6d}: {sig:2d} sig')
-        lines.append(f'  best: {bm} d={bd:+.1f}')
-    ax_txt.text(0.05, 0.95, '\n'.join(lines), transform=ax_txt.transAxes,
-               fontsize=8, fontfamily='monospace', va='top', color='#cccccc')
 
     fig.suptitle('Abelian Sandpile: Self-Organized Criticality',
                  fontsize=14, fontweight='bold', color='white', y=0.98)

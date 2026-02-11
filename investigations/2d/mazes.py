@@ -414,7 +414,7 @@ def make_figure(algo_data, example_fields, pair_results):
     n = len(names)
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0', '#00BCD4']
 
-    fig = plt.figure(figsize=(18, 35), facecolor='black')
+    fig = plt.figure(figsize=(18, 24), facecolor='black')
     gs = gridspec.GridSpec(4, n, figure=fig, height_ratios=[1.2, 1.0, 1.0, 1.0],
                            hspace=0.45, wspace=0.3)
 
@@ -444,7 +444,7 @@ def make_figure(algo_data, example_fields, pair_results):
         ax.tick_params(labelsize=7)
 
     # Row 2: Pairwise matrix
-    ax_mat = fig.add_subplot(gs[2, :3])
+    ax_mat = fig.add_subplot(gs[2, :])
     mat = np.zeros((n, n))
     for n1, n2, sig, _, _ in pair_results:
         i1, i2 = names.index(n1), names.index(n2)
@@ -465,16 +465,6 @@ def make_figure(algo_data, example_fields, pair_results):
     cb = plt.colorbar(im, ax=ax_mat, shrink=0.8)
     cb.ax.yaxis.set_tick_params(color='white')
     plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='white')
-
-    # Summary text
-    ax_txt = fig.add_subplot(gs[2, 3:])
-    ax_txt.axis('off')
-    pair_sorted = sorted(pair_results, key=lambda x: -x[2])
-    lines = ['Best discriminator per pair:\n']
-    for n1, n2, sig, bm, bd in pair_sorted:
-        lines.append(f'{n1:14s} vs {n2:14s}: {sig:2d}  {bm}')
-    ax_txt.text(0.05, 0.95, '\n'.join(lines), transform=ax_txt.transAxes,
-               fontsize=6.5, fontfamily='monospace', va='top', color='#cccccc')
 
     # Row 3: Anisotropy profile — Binary Tree should stand out
     ax_aniso = fig.add_subplot(gs[3, :3])

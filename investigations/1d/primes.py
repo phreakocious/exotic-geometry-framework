@@ -732,7 +732,7 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     ax4.legend(fontsize=7, facecolor='#222', edgecolor='#444', labelcolor=FG)
 
     # ── Panel 5 (bottom-center): D5 — Range sensitivity ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
 
     range_names = list(d5['range_metrics'].keys())
@@ -762,44 +762,6 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
                  verticalalignment='top', horizontalalignment='right',
                  fontfamily='monospace', color='#aaa',
                  bbox=dict(boxstyle='round,pad=0.3', facecolor='#222', edgecolor='#444'))
-
-    # ── Panel 6 (bottom-right): Summary ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.set_facecolor(BG)
-    ax6.axis('off')
-
-    lines = [
-        "Prime Sequences — Key Findings",
-        "",
-        "D1: Encodings vs Random",
-    ]
-    for enc in ENCODINGS:
-        v = d1['results'][enc]
-        lines.append(f"  {enc:<18} {v:>3} sig")
-
-    lines.append("")
-    lines.append("D3: Primes vs Near-Primes")
-    for c in ['cramer_model', 'semiprime_gaps', 'composite_mod256']:
-        v = d3['gap_results'].get(c, 0)
-        lines.append(f"  vs {c:<18} {v:>3} sig")
-
-    lines.append("")
-    lines.append("D4: Ordering vs Distribution")
-    n_ordering = sum(1 for enc in ENCODINGS if d4['results'][enc]['orig_vs_shuf'] > 5)
-    n_distrib = sum(1 for enc in ENCODINGS
-                    if d4['results'][enc]['orig_vs_rand'] > 5 and d4['results'][enc]['orig_vs_shuf'] <= 5)
-    lines.append(f"  {n_ordering} ordering-dependent")
-    lines.append(f"  {n_distrib} purely distributional")
-
-    lines.append("")
-    lines.append("D5: Range Evolution")
-    for i, rn in enumerate(range_names):
-        lines.append(f"  {rn:<12} {range_vs_rand[i]:>3} sig vs rand")
-
-    text = "\n".join(lines)
-    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=7.5,
-             verticalalignment='top', fontfamily='monospace', color=FG,
-             bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Prime Number Sequences: Exotic Geometry Analysis',
                  fontsize=15, fontweight='bold', color=FG, y=0.98)

@@ -253,7 +253,7 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
     probs = PROBABILITIES
     n = len(probs)
 
-    fig = plt.figure(figsize=(20, 35), facecolor='black')
+    fig = plt.figure(figsize=(20, 24), facecolor='black')
     gs = gridspec.GridSpec(4, n, figure=fig, height_ratios=[1.2, 0.8, 1.0, 1.0],
                            hspace=0.5, wspace=0.35)
 
@@ -322,7 +322,7 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
             ax.set_ylabel('Value', fontsize=7)
 
     # Row 3: Pairwise distinguishability heatmap + summary
-    ax_mat = fig.add_subplot(gs[3, :4])
+    ax_mat = fig.add_subplot(gs[3, :])
     mat = np.zeros((n, n))
     for p1, p2, sig, _, _ in all_pairs:
         i1, i2 = probs.index(p1), probs.index(p2)
@@ -344,18 +344,6 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
     cb = plt.colorbar(im, ax=ax_mat, shrink=0.8)
     cb.ax.yaxis.set_tick_params(color='white')
     plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='white')
-
-    # Summary text
-    ax_txt = fig.add_subplot(gs[3, 4:])
-    ax_txt.axis('off')
-    pairs_sorted = sorted(all_pairs, key=lambda x: -x[2])
-    lines = ['Pairwise results (sorted by sig count):\n']
-    for p1, p2, sig, bm, bd in pairs_sorted[:15]:
-        l1 = f"{p1:.4f}" if p1 == P_C else f"{p1:.2f}"
-        l2 = f"{p2:.4f}" if p2 == P_C else f"{p2:.2f}"
-        lines.append(f'p={l1} vs p={l2}: {sig:2d} sig  {bm}')
-    ax_txt.text(0.05, 0.95, '\n'.join(lines), transform=ax_txt.transAxes,
-               fontsize=7, fontfamily='monospace', va='top', color='#cccccc')
 
     fig.suptitle(f'Site Percolation Phase Transition (p_c ≈ {P_C})',
                  fontsize=14, fontweight='bold', color='white', y=0.98)

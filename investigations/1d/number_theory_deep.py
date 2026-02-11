@@ -560,9 +560,9 @@ def make_figure(all_data, random_data, d1_results, d4_results):
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 24), facecolor='#181818')
-    gs = gridspec.GridSpec(4, 2, figure=fig, hspace=0.4, wspace=0.3,
-                           height_ratios=[1.0, 1.0, 1.0, 1.2])
+    fig = plt.figure(figsize=(20, 14), facecolor='#181818')
+    gs = gridspec.GridSpec(2, 2, figure=fig, hspace=0.4, wspace=0.3,
+                           height_ratios=[1.0, 1.2])
 
     names = list(ENCODINGS.keys())
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3',
@@ -586,36 +586,8 @@ def make_figure(all_data, random_data, d1_results, d4_results):
     ax.set_ylabel('Sig metrics (orig vs shuf)', fontsize=9)
     ax.set_title('D4: Ordering dependence', fontsize=11, fontweight='bold')
 
-    # D2: CF comparison — key metrics box plot
-    cf_names = ['cf_sqrt2', 'cf_e', 'cf_pi']
-    key_metrics = ['Tropical:slope', '2-adic:mean_distance',
-                   'Fisher Information:det_fisher', 'Heisenberg (Nil):path_length']
-
-    for j, metric in enumerate(key_metrics[:2]):
-        ax = _dark_ax(fig.add_subplot(gs[1, j]))
-        box_data = []
-        box_labels = []
-        for cfn in cf_names + ['random']:
-            if cfn == 'random':
-                vals = random_data.get(metric, [])
-            else:
-                vals = all_data[cfn].get(metric, [])
-            box_data.append(vals if vals else [0])
-            box_labels.append(cfn.replace('cf_', ''))
-
-        bp = ax.boxplot(box_data, patch_artist=True, showfliers=False)
-        cf_colors = ['#E91E63', '#4CAF50', '#2196F3', '#666666']
-        for patch, c in zip(bp['boxes'], cf_colors):
-            patch.set_facecolor(c)
-            patch.set_alpha(0.7)
-        for element in ['whiskers', 'caps', 'medians']:
-            plt.setp(bp[element], color='#cccccc')
-        ax.set_xticklabels(box_labels, fontsize=8)
-        short = metric.split(':')[-1].replace('_', ' ')
-        ax.set_title(f'D2: CF — {short}', fontsize=10, fontweight='bold')
-
     # Pairwise matrix for all 8 encodings
-    ax = _dark_ax(fig.add_subplot(gs[2, :]))
+    ax = _dark_ax(fig.add_subplot(gs[1, :]))
     n = len(names)
     mat = np.zeros((n, n))
     for i, n1 in enumerate(names):
@@ -638,27 +610,6 @@ def make_figure(all_data, random_data, d1_results, d4_results):
                        color='white' if mat[i,j] > mat.max()/2 else '#aaa')
     ax.set_title('All pairwise comparisons (sig metrics)', fontsize=11, fontweight='bold')
     plt.colorbar(im, ax=ax, shrink=0.6)
-
-    # Key metric comparison across all encodings
-    ax = _dark_ax(fig.add_subplot(gs[3, :]))
-    compare_metrics = ['Tropical:slope', 'Fisher Information:det_fisher',
-                       'Heisenberg (Nil):path_length', '2-adic:mean_distance']
-    x = np.arange(len(names))
-    width = 0.2
-    metric_colors = ['#E91E63', '#4CAF50', '#2196F3', '#FF9800']
-    for k, metric in enumerate(compare_metrics):
-        means = []
-        stds = []
-        for name in names:
-            vals = all_data[name].get(metric, [0])
-            means.append(np.mean(vals))
-            stds.append(np.std(vals))
-        ax.bar(x + k * width, means, width, yerr=stds, capsize=2,
-               color=metric_colors[k], alpha=0.8, label=metric.split(':')[-1])
-    ax.set_xticks(x + 1.5 * width)
-    ax.set_xticklabels(names, fontsize=7, rotation=45, ha='right')
-    ax.legend(fontsize=7, facecolor='#333', edgecolor='#666', loc='upper right')
-    ax.set_title('Key metrics across all encodings', fontsize=11, fontweight='bold')
 
     fig.suptitle('Additive & Structural Number Theory: Geometric Signatures',
                  fontsize=14, fontweight='bold', color='white', y=0.995)

@@ -976,7 +976,7 @@ def make_figure(d1, d2, d3, d4, d5):
                loc='lower right')
 
     # ── Bottom-center: D5 — Tree encoding results ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
 
     tree_names = list(d5['encoding_results'].keys())
@@ -1007,53 +1007,6 @@ def make_figure(d1, d2, d3, d4, d5):
         ax5_ins.set_yticks([])
         for spine in ax5_ins.spines.values():
             spine.set_edgecolor('#444')
-
-    # ── Bottom-right: Summary text panel ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.set_facecolor(BG)
-    ax6.axis('off')
-
-    lines = [
-        "Deep Collatz II — Key Findings",
-        "",
-        "D1: 2-adic Valuation",
-    ]
-    for enc, n_sig in d1['encoding_results'].items():
-        if enc == 'v2_syracuse_5n1':
-            lines.append(f"  syracuse(5n+1): {n_sig} sig")
-        else:
-            lines.append(f"  {enc}: {n_sig} sig")
-    lines.append(f"  Mean v₂: 3n+1={np.mean(d1['v2_3n1']):.2f}, "
-                 f"5n+1={np.mean(d1['v2_5n1']):.2f}")
-
-    lines.append("")
-    lines.append("D2: Phase Anatomy")
-    lines.append(f"  Conv-specific: {len(d2['categories']['convergence_specific'])}")
-    lines.append(f"  Universal:     {len(d2['categories']['universal'])}")
-    lines.append(f"  Div-specific:  {len(d2['categories']['divergence_specific'])}")
-
-    lines.append("")
-    lines.append("D3: Cross-Scale Composition")
-    for name, n_sig in d3['comp_results'].items():
-        lines.append(f"  {name}: {n_sig} sig")
-
-    lines.append("")
-    lines.append("D4: Drift Detectors")
-    lines.append(f"  {len(d4['detectors'])} metrics track drift")
-    if d4['detectors']:
-        top = d4['detectors'][0]
-        short = top[0].split(':')[1]
-        lines.append(f"  Best: {short} (r={top[1]:+.3f})")
-
-    lines.append("")
-    lines.append("D5: Inverse Tree")
-    for enc, n_sig in d5['encoding_results'].items():
-        lines.append(f"  {enc}: {n_sig} sig")
-
-    text = "\n".join(lines)
-    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=8.5,
-             verticalalignment='top', fontfamily='monospace', color=FG,
-             bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Deep Collatz Geometric Exploration II',
                  fontsize=15, fontweight='bold', color=FG, y=0.98)
