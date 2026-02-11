@@ -693,7 +693,7 @@ def make_figure(d1_results, d2_results, d3_results, d4_pi, d4_goldbach,
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 22), facecolor=BG)
+    fig = plt.figure(figsize=(20, 16), facecolor=BG)
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.30)
 
     colors = {'pi': '#2196F3', 'e': '#4CAF50', 'sqrt2': '#E91E63'}
@@ -849,7 +849,7 @@ def make_figure(d1_results, d2_results, d3_results, d4_pi, d4_goldbach,
                 fontsize=7, fontfamily='monospace')
 
     # ── (2,0) Goldbach comet scatter ──
-    ax = _dark_ax(fig.add_subplot(gs[2, 0]))
+    ax = _dark_ax(fig.add_subplot(gs[2, :]))
     # Plot actual g(2n) vs n for visual inspection
     plot_n = min(10000, GOLDBACH_LIMIT // 2)
     ns = np.arange(100, plot_n)
@@ -866,47 +866,6 @@ def make_figure(d1_results, d2_results, d3_results, d4_pi, d4_goldbach,
             transform=ax.transAxes, fontsize=9, ha='right', color='#FF9800',
             fontfamily='monospace')
 
-    # ── (2,1) Summary text panel ──
-    ax = fig.add_subplot(gs[2, 1])
-    ax.set_facecolor(BG)
-    ax.axis('off')
-
-    lines = [
-        "SUMMARY",
-        "",
-        "π Normality: CONSISTENT",
-        "─" * 44,
-        "π, e, √2 digits are indistinguishable from",
-        "random in base-256, base-10, across digit",
-        "positions 0K-48K, and under delay embedding",
-        "at τ = 1, 2, 3, 5.",
-        "",
-        "0 significant metrics out of 131 across",
-        "ALL tests. Combined with the CF result",
-        "(π CF coefficients pass iid Gauss-Kuzmin),",
-        "this is strong geometric evidence for the",
-        "normality of π.",
-        "",
-        "Goldbach's Comet: STRUCTURED",
-        "─" * 44,
-        f"  vs random:        {d3_results['vs_random']:3d} sig  (massive)",
-        f"  vs Hardy-Littlewood: {d3_results['vs_hl']:3d} sig  (beyond HL)",
-        f"  vs shuffled:      {d3_results['vs_shuffled']:3d} sig  (sequential)",
-        f"  vs dist-matched:  {d3_results['vs_distmatch']:3d} sig  (correlations)",
-        "",
-        "HL predicts g(2n) with r=0.992 but",
-        f"{d3_results['vs_hl']} metrics detect structure beyond",
-        "the prediction. E8 Lattice and Higher-Order",
-        "Statistics are the primary detectors.",
-        "",
-        "Scale evolution: g(2n) structure is robust",
-        "across ranges (n=100 to n=200K).",
-    ]
-
-    text = "\n".join(lines)
-    ax.text(0.05, 0.95, text, transform=ax.transAxes, fontsize=8,
-            verticalalignment='top', fontfamily='monospace', color=FG,
-            bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Unsolved Problems: Normality of π & Goldbach\'s Comet',
                  fontsize=14, fontweight='bold', color=FG, y=0.995)

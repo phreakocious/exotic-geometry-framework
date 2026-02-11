@@ -236,7 +236,7 @@ def make_figure(regime_data, example_fields, pair_results):
 
     BG = '#181818'
     FG = '#e0e0e0'
-    fig = plt.figure(figsize=(18, 30), facecolor=BG)
+    fig = plt.figure(figsize=(18, 20), facecolor=BG)
     gs = gridspec.GridSpec(3, n, figure=fig, height_ratios=[1.3, 1.0, 1.0],
                            hspace=0.4, wspace=0.3)
 
@@ -275,7 +275,7 @@ def make_figure(regime_data, example_fields, pair_results):
         ax.set_title(metric.split(':')[-1].replace('_', ' '), fontsize=9, fontweight='bold', color=FG)
 
     # Row 2: Pairwise distinguishability matrix
-    ax_mat = fig.add_subplot(gs[2, :3])
+    ax_mat = fig.add_subplot(gs[2, :])
     _dark_ax(ax_mat)
     mat = np.zeros((n, n))
     for n1, n2, sig, _, _ in pair_results:
@@ -295,17 +295,6 @@ def make_figure(regime_data, example_fields, pair_results):
                            color='white' if mat[i,j] > 8 else 'black')
     ax_mat.set_title('Pairwise significant metrics', fontsize=10, fontweight='bold', color=FG)
     plt.colorbar(im, ax=ax_mat, shrink=0.8)
-
-    # Best discriminator per pair
-    ax_txt = fig.add_subplot(gs[2, 3:])
-    ax_txt.set_facecolor(BG)
-    ax_txt.axis('off')
-    lines = ['Best discriminator per pair:\n']
-    pair_results_sorted = sorted(pair_results, key=lambda x: -x[2])
-    for n1, n2, sig, bm, bd in pair_results_sorted:
-        lines.append(f'{n1:8s} vs {n2:8s}: {sig:2d} sig  {bm}  d={bd:+.1f}')
-    ax_txt.text(0.05, 0.95, '\n'.join(lines), transform=ax_txt.transAxes,
-               fontsize=7.5, fontfamily='monospace', va='top', color=FG)
 
     fig.suptitle('Gray-Scott Reaction-Diffusion: Morphology Fingerprinting',
                  fontsize=14, fontweight='bold', y=0.98, color=FG)

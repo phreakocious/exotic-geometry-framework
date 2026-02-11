@@ -335,9 +335,9 @@ def make_figure(all_data, random_data, pair_matrix, evo_data, analyzer):
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 28), facecolor='#181818')
-    gs = gridspec.GridSpec(5, 4, figure=fig, hspace=0.45, wspace=0.35,
-                           height_ratios=[1.2, 0.8, 0.8, 1.0, 0.8])
+    fig = plt.figure(figsize=(20, 22), facecolor='#181818')
+    gs = gridspec.GridSpec(4, 4, figure=fig, hspace=0.45, wspace=0.35,
+                           height_ratios=[1.2, 0.8, 0.8, 1.0])
 
     # Row 0: Example spacetime diagrams (one per class)
     examples = {
@@ -460,38 +460,6 @@ def make_figure(all_data, random_data, pair_matrix, evo_data, analyzer):
     ax.set_ylabel('Sig metrics vs h=32', fontsize=9)
     ax.set_title('D5: Temporal evolution', fontsize=11, fontweight='bold')
     ax.legend(fontsize=8, facecolor='#333', edgecolor='#666')
-
-    # Row 4: Key metric comparisons across classes
-    key_metrics = [
-        'SpectralPower:spectral_slope',
-        'MultiscaleFractal:box_dimension',
-        'PersistentHomology2D:persistence_entropy',
-        'SpatialField:coherence_score',
-    ]
-    for j, metric in enumerate(key_metrics):
-        ax = _dark_ax(fig.add_subplot(gs[4, j]))
-        vals_by_class = {}
-        for cls in ['I', 'II', 'III', 'IV']:
-            all_vals = []
-            for rule in WOLFRAM_CLASSES[cls]:
-                name = f"R{rule}"
-                if name in all_data and metric in all_data[name]:
-                    all_vals.extend(all_data[name][metric])
-            vals_by_class[cls] = all_vals
-
-        positions = range(4)
-        box_data = [vals_by_class[c] for c in classes]
-        bp = ax.boxplot(box_data, positions=list(positions), patch_artist=True,
-                       widths=0.6, showfliers=False)
-        for patch, cls in zip(bp['boxes'], classes):
-            patch.set_facecolor(class_colors[cls])
-            patch.set_alpha(0.7)
-        for element in ['whiskers', 'caps', 'medians']:
-            plt.setp(bp[element], color='#cccccc')
-        ax.set_xticks(list(positions))
-        ax.set_xticklabels([f'Class {c}' for c in classes], fontsize=8)
-        short_name = metric.split(':')[-1].replace('_', ' ')
-        ax.set_title(short_name, fontsize=9, fontweight='bold')
 
     fig.suptitle('Elementary Cellular Automata: Spatial Geometry of Spacetime Diagrams',
                  fontsize=14, fontweight='bold', color='white', y=0.995)

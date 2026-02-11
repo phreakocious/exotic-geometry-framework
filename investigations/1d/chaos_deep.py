@@ -415,7 +415,7 @@ def make_figure(r_vals, d1_results, correlations, lyaps,
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 22), facecolor='#181818')
+    fig = plt.figure(figsize=(20, 16), facecolor='#181818')
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.3)
 
     # (0,0) D1: Bifurcation + Lyapunov
@@ -475,7 +475,7 @@ def make_figure(r_vals, d1_results, correlations, lyaps,
     ax4.set_ylabel('Significant metrics', fontsize=9)
 
     # (2,0) D5: Volume proxies vs r
-    ax5 = _dark_ax(fig.add_subplot(gs[2, 0]))
+    ax5 = _dark_ax(fig.add_subplot(gs[2, :]))
     occ_r = sorted(occupied.keys())
     occ_vals = [occupied[r] for r in occ_r]
     ax5.plot(occ_r, occ_vals, 's-', color='#FF5722', linewidth=2, label='Occupied fraction')
@@ -494,31 +494,6 @@ def make_figure(r_vals, d1_results, correlations, lyaps,
     else:
         ax5.set_title('D5: Phase Space Occupied Fraction', fontsize=11, fontweight='bold')
     ax5.legend(fontsize=7, facecolor='#333', edgecolor='#666', loc='upper left')
-
-    # (2,1) Summary text panel
-    ax6 = _dark_ax(fig.add_subplot(gs[2, 1]))
-    ax6.axis('off')
-    n_lyap_strong = len([c for m, c in correlations if abs(c) > 0.8])
-    best_m, best_c = correlations[0]
-    n_vol_strong = len([x for x in volume_corrs if abs(x[1]) > 0.8])
-    summary_lines = [
-        "DEEP CHAOS ANALYSIS — SUMMARY",
-        "",
-        f"D1: 21 r-values swept (3.50–4.00), {N_TRIALS} trials each",
-        f"D2: {n_lyap_strong} metrics with |r| > 0.8 vs Lyapunov",
-        f"    Best: {best_m} (r={best_c:+.4f})",
-        f"D3: Corr dim: {corr_dims.get(3.5, (0,0))[0]:.2f} (r=3.5) → "
-        f"{corr_dims.get(4.0, (0,0))[0]:.2f} (r=4.0)",
-        f"    {len(d3_findings)} spatial metrics distinguish periodic vs chaotic",
-        f"D4: Byte={n_byte}, Unit={n_unit} sig metrics at r=3.57",
-        f"    Unit-only: {len(unit_only)}, Byte-only: {len(byte_only)}",
-        f"D5: {n_vol_strong} metrics with |ρ| > 0.8 vs occupied fraction",
-    ]
-    if volume_corrs:
-        summary_lines.append(f"    Best proxy: {volume_corrs[0][0]} (ρ={volume_corrs[0][1]:+.3f})")
-    ax6.text(0.05, 0.95, '\n'.join(summary_lines), transform=ax6.transAxes,
-             fontsize=9, verticalalignment='top', fontfamily='monospace',
-             color='#cccccc', linespacing=1.5)
 
     fig.suptitle('Deep Chaos Analysis: Dynamics & Geometry',
                  fontsize=15, fontweight='bold', color='white', y=0.98)

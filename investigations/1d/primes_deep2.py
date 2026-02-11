@@ -831,7 +831,7 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
                   fontweight='bold', color=FG)
 
     # ── Panel 5 (bottom-center): D5 — Scale stability ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
 
     scale_names = d5['scale_names']
@@ -873,48 +873,6 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
              bbox=dict(boxstyle='round,pad=0.3', facecolor='#222', edgecolor='#444'))
 
     ax5.set_title('D5: Scale Stability', fontsize=11, fontweight='bold', color=FG)
-
-    # ── Panel 6 (bottom-right): Summary ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.set_facecolor(BG)
-    ax6.axis('off')
-
-    n_total = len(metric_names)
-    lines = [
-        "Deep Prime Gap Sequential Structure",
-        "",
-        "D1: Dist-Matched Survivors",
-        f"  Real vs Random:       {d1['n_vs_random']:>3} / {n_total} sig",
-        f"  Real vs Cramér:       {d1['n_vs_cramer']:>3} / {n_total} sig",
-        f"  Real vs Dist-matched: {d1['n_vs_dist']:>3} / {n_total} sig",
-        "",
-        "D2: Arrow of Time",
-        f"  Real fwd vs rev:   {d2['n_real_fwd_rev']:>3} sig",
-        f"  Cramér fwd vs rev: {d2['n_cramer_fwd_rev']:>3} sig",
-        "",
-        "D3: Surrogate Hierarchy",
-        f"  vs Full shuffle:   {d3['n_vs_full_shuf']:>3} sig (all ordering)",
-        f"  vs Block-shuffle:  {d3['n_vs_block_shuf']:>3} sig (long-range)",
-        f"  vs IAAFT:          {d3['n_vs_iaaft']:>3} sig (nonlinear)",
-        "",
-        "D4: Residue Classes (mod 6)",
-        f"  mod6=1 vs mod6=5:    {d4['n_mod1_vs_mod5']:>3} sig",
-        f"  mod6=1 vs dist-match:{d4['n_mod1_vs_dist1']:>3} sig",
-        f"  mod6=5 vs dist-match:{d4['n_mod5_vs_dist5']:>3} sig",
-        "",
-        "D5: Scale Stability",
-    ]
-    for s in d5['scale_names']:
-        n_persist = sum(1 for km in d1['survivor_names']
-                        if d5['scale_survivor_status'][s][km][1])
-        lines.append(f"  {s:<12} {d5['scale_results'][s]:>3} sig, "
-                     f"{n_persist}/{len(d1['survivor_names'])} survive")
-    lines.append(f"  Always-sig: {len(d5['always_sig'])}/{len(d1['survivor_names'])}")
-
-    text = "\n".join(lines)
-    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=7.5,
-             verticalalignment='top', fontfamily='monospace', color=FG,
-             bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Deep Prime Gap Sequential Structure: Beyond Distribution-Matching',
                  fontsize=15, fontweight='bold', color=FG, y=0.98)

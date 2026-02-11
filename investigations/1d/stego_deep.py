@@ -917,7 +917,7 @@ def make_figure(d1, d2, d3, d4, d5):
                ncol=2)
 
     # ── Bottom-center: D5 — Geometry × Technique heatmap ──
-    ax5 = fig.add_subplot(gs[1, 1])
+    ax5 = fig.add_subplot(gs[1, 1:])
     _dark_ax(ax5)
 
     hm5 = d5['heatmap']
@@ -950,72 +950,6 @@ def make_figure(d1, d2, d3, d4, d5):
 
     ax5.set_title('D5: Geometry × Technique (texture, raw)', fontsize=11,
                   fontweight='bold', color=FG)
-
-    # ── Bottom-right: Summary text panel ──
-    ax6 = fig.add_subplot(gs[1, 2])
-    ax6.set_facecolor(BG)
-    ax6.axis('off')
-
-    d4_transforms = ['DE2', 'BP0', 'BP0→DE2', 'DE2→BP0']
-    lines = [
-        "Stego Deep — Key Findings",
-        "",
-        "D1: Raw Byte (texture, 100%)",
-    ]
-    for tech in tech_names:
-        v = d1['results'].get((tech, 'natural_texture'), 0)
-        lines.append(f"  {tech:<18} {v:>3} sig")
-
-    lines.append("")
-    lines.append("D2: Bitplane 0 (all techniques)")
-    bp0_total = sum(d2['results_bp0'].get((t, c), 0)
-                    for t in tech_names for c in CARRIERS)
-    lines.append(f"  Total: {bp0_total} (bitplane blind)")
-
-    lines.append("")
-    lines.append("D3: Min Rate (texture, raw)")
-    rates_all = d3['rates'] + [1.0]
-    for tech in tech_names:
-        min_rate = None
-        for r in rates_all:
-            if r == 1.0:
-                v = d1['results'].get((tech, 'natural_texture'), 0)
-            else:
-                v = d3['results'].get((tech, r, 'natural_texture'), 0)
-            if v > 0 and min_rate is None:
-                min_rate = r
-        if min_rate is not None:
-            lines.append(f"  {tech:<18} {min_rate:>5.0%}")
-        else:
-            lines.append(f"  {tech:<18}  n/a")
-
-    lines.append("")
-    lines.append("D4: Best Transform (photo, 50%)")
-    for tech in tech_names:
-        best_tr = None
-        best_val = 0
-        for tr in d4_transforms:
-            v = d4['results'].get((tech, tr), 0)
-            if v > best_val:
-                best_val = v
-                best_tr = tr
-        if best_tr:
-            lines.append(f"  {tech:<18} {best_tr}={best_val}")
-        else:
-            lines.append(f"  {tech:<18} none")
-
-    lines.append("")
-    lines.append("D5: Top Geometries (texture)")
-    for i in range(min(5, len(d5['geom_names']))):
-        name = d5['geom_names'][i]
-        total = d5['heatmap'][i].sum()
-        if total > 0:
-            lines.append(f"  {name:<28} {total:>2}")
-
-    text = "\n".join(lines)
-    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=7.5,
-             verticalalignment='top', fontfamily='monospace', color=FG,
-             bbox=dict(boxstyle='round,pad=0.5', facecolor='#222', edgecolor='#444'))
 
     fig.suptitle('Advanced Steganography Detection via Exotic Geometries',
                  fontsize=15, fontweight='bold', color=FG, y=0.98)

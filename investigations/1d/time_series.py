@@ -431,9 +431,9 @@ def make_figure(all_data, random_data, d1_results, d4_results, hurst_data):
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 24), facecolor='#181818')
-    gs = gridspec.GridSpec(4, 2, figure=fig, hspace=0.45, wspace=0.3,
-                           height_ratios=[1.0, 1.0, 1.0, 1.0])
+    fig = plt.figure(figsize=(20, 18), facecolor='#181818')
+    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.45, wspace=0.3,
+                           height_ratios=[1.0, 1.0, 1.0])
 
     names = list(SIGNALS.keys())
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3',
@@ -509,27 +509,6 @@ def make_figure(all_data, random_data, d1_results, d4_results, hurst_data):
                        color='white' if mat[i,j] > mat.max()/2 else '#aaa')
     ax.set_title('All pairwise comparisons (sig metrics)', fontsize=11, fontweight='bold')
     plt.colorbar(im, ax=ax, shrink=0.6)
-
-    # Key metrics across signals
-    ax = _dark_ax(fig.add_subplot(gs[3, :]))
-    key_metrics = ['Tropical:slope', 'Fisher Information:det_fisher',
-                   'Heisenberg (Nil):path_length', 'Wasserstein:transport_cost']
-    x = np.arange(len(names))
-    width = 0.2
-    metric_colors = ['#E91E63', '#4CAF50', '#2196F3', '#FF9800']
-    for k, metric in enumerate(key_metrics):
-        means = []
-        errs = []
-        for name in names:
-            vals = all_data[name].get(metric, [0])
-            means.append(np.mean(vals))
-            errs.append(np.std(vals))
-        ax.bar(x + k * width, means, width, yerr=errs, capsize=2,
-               color=metric_colors[k], alpha=0.8, label=metric.split(':')[-1])
-    ax.set_xticks(x + 1.5 * width)
-    ax.set_xticklabels(names, fontsize=6, rotation=45, ha='right')
-    ax.legend(fontsize=7, facecolor='#333', edgecolor='#666', loc='upper right')
-    ax.set_title('Key metrics across all signals', fontsize=11, fontweight='bold')
 
     fig.suptitle('Time Series: Geometric Signatures of Stochastic Processes',
                  fontsize=14, fontweight='bold', color='white', y=0.995)

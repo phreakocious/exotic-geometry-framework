@@ -272,7 +272,7 @@ def make_figure(config_data, example_fields, pair_results):
     n = len(names)
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0', '#00BCD4']
 
-    fig = plt.figure(figsize=(18, 35), facecolor='black')
+    fig = plt.figure(figsize=(18, 24), facecolor='black')
     gs = gridspec.GridSpec(4, n, figure=fig, height_ratios=[1.3, 0.8, 1.0, 1.0],
                            hspace=0.45, wspace=0.3)
 
@@ -315,7 +315,7 @@ def make_figure(config_data, example_fields, pair_results):
         ax.tick_params(labelsize=7)
 
     # Row 3: Pairwise matrix + summary
-    ax_mat = fig.add_subplot(gs[3, :3])
+    ax_mat = fig.add_subplot(gs[3, :])
     mat = np.zeros((n, n))
     for n1, n2, sig, _, _ in pair_results:
         i1, i2 = names.index(n1), names.index(n2)
@@ -336,15 +336,6 @@ def make_figure(config_data, example_fields, pair_results):
     cb = plt.colorbar(im, ax=ax_mat, shrink=0.8)
     cb.ax.yaxis.set_tick_params(color='white')
     plt.setp(plt.getp(cb.ax.axes, 'yticklabels'), color='white')
-
-    ax_txt = fig.add_subplot(gs[3, 3:])
-    ax_txt.axis('off')
-    pair_sorted = sorted(pair_results, key=lambda x: -x[2])
-    lines = ['Pairwise results:\n']
-    for n1, n2, sig, bm, bd in pair_sorted:
-        lines.append(f'{n1:10s} vs {n2:10s}: {sig:2d}  d={bd:+.1f}')
-    ax_txt.text(0.05, 0.95, '\n'.join(lines), transform=ax_txt.transAxes,
-               fontsize=7, fontfamily='monospace', va='top', color='#cccccc')
 
     fig.suptitle('Lenia: Continuous Cellular Automata Fingerprinting',
                  fontsize=14, fontweight='bold', color='white', y=0.98)
