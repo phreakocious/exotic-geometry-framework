@@ -1,12 +1,12 @@
 # Geometry Catalog
 
-The framework implements 24 one-dimensional geometries and 1 two-dimensional spatial field geometry. Each embeds byte sequences into a different mathematical space and computes structure-sensitive metrics.
+The framework implements 26 one-dimensional geometries and 8 two-dimensional spatial geometries (80 metrics). Each embeds byte sequences into a different mathematical space and computes structure-sensitive metrics.
 
-## 1D Geometries (24 total)
+## 1D Geometries (26 total)
 
 ### Tier 1: Core Geometries (6 independent)
 
-These capture most of the framework's discriminative power. The remaining 18 are largely redundant with these.
+These capture most of the framework's discriminative power. The remaining 20 are largely redundant with these.
 
 | # | Geometry | Space | Key Metric | What It Detects | Best d |
 |---|----------|-------|------------|-----------------|--------|
@@ -30,24 +30,26 @@ These capture most of the framework's discriminative power. The remaining 18 are
 | 13 | Heisenberg (bias) | Nil geometry (uncentered) | `path_length` | Raw correlation accumulation |
 | 14 | AmmannBeenker | 8-fold quasicrystal | `square_diag_ratio` | Octagonal symmetry |
 | 15 | HigherOrder | 3rd/4th moment space | `kurt_mean` | Non-Gaussian tails |
+| 16 | Fractal (Mandelbrot) | Mandelbrot set escape dynamics | `interior_fraction` | Escape behavior, set boundary structure |
+| 17 | Fractal (Julia) | Julia set stability | `connectedness` | Julia set topology, stability |
 
 ### Tier 3: Redundant (included for completeness)
 
 | # | Geometry | Redundant With | Correlation |
 |---|----------|---------------|-------------|
-| 16 | Symplectic | Cantor | r > 0.85 |
-| 17 | H2xR | Hyperbolic | r > 0.95 |
-| 18 | S2xR | Spherical | r = 0.999 |
-| 19 | SL(2,R) | Hyperbolic | r > 0.90 |
-| 20 | Projective | Tropical | r = 0.980 |
-| 21 | 2-adic | E8/Fisher | r > 0.85 |
-| 22 | Persistent Homology | Torus | r = 0.964 |
-| 23 | Spiral | Fisher | r > 0.85 |
-| 24 | EinsteinHat | Penrose | balance r = 1.000 |
+| 18 | Symplectic | Cantor | r > 0.85 |
+| 19 | H2xR | Hyperbolic | r > 0.95 |
+| 20 | S2xR | Spherical | r = 0.999 |
+| 21 | SL(2,R) | Hyperbolic | r > 0.90 |
+| 22 | Projective | Tropical | r = 0.980 |
+| 23 | 2-adic | E8/Fisher | r > 0.85 |
+| 24 | Persistent Homology | Torus | r = 0.964 |
+| 25 | Spiral | Fisher | r > 0.85 |
+| 26 | EinsteinHat | Penrose | balance r = 1.000 |
 
 ### Redundancy Summary
 
-The 24 geometries collapse to ~6 independent dimensions of information. The correlation structure was established by computing all metrics across 8 diverse data types and measuring Pearson correlations. Key clusters:
+The 26 geometries collapse to ~7 independent dimensions of information (participation ratio = 7.0 from meta-investigation). The correlation structure was established by computing all metrics across 8 diverse data types and measuring Pearson correlations. Key clusters:
 
 - **Uniformity cluster**: E8, Fisher, Lorentzian, Torus, 2-adic, Persistent Homology
 - **Value spread cluster**: Heisenberg, Sol, Hyperbolic, Spherical
@@ -57,11 +59,11 @@ The 24 geometries collapse to ~6 independent dimensions of information. The corr
 
 Note: High aggregate correlation does NOT mean identical metrics. Adversarial examples can break r=0.998 correlations (e.g., sorting data drops E8 alignment by d=-73 while Fisher trace is unchanged). Keep both when the domain warrants it.
 
-## 2D Spatial Field Geometry
+## 2D Spatial Geometries (8 total, 80 metrics)
 
-`SpatialFieldGeometry` analyzes 2D arrays (fields, images, simulation grids) natively rather than flattening to 1D.
+`SpatialFieldGeometry` analyzes 2D arrays (fields, images, simulation grids) natively rather than flattening to 1D. Seven additional 2D geometries provide complementary perspectives.
 
-### Metrics (15 total)
+### SpatialFieldGeometry Metrics (15)
 
 | Metric | What It Measures |
 |--------|-----------------|
@@ -89,6 +91,20 @@ Note: High aggregate correlation does NOT mean identical metrics. Adversarial ex
 | Cellular automata | `anisotropy_mean` (d=78) | Rule symmetry affects directional structure |
 | Growth models | `anisotropy_mean` (d=-178) | DLA branching vs Eden compactness |
 | Ising model | `multiscale_coherence_4` | Peaks near T_c (scale-free structure) |
+
+### Additional 2D Geometries (7 more, 65 additional metrics)
+
+| Geometry | Metrics | What It Measures |
+|----------|:-------:|-----------------|
+| **Surface** | 9 | Gaussian/mean curvature, shape index, Gauss-Bonnet theorem, metric area |
+| **PersistentHomology2D** | 10 | Sublevel/superlevel persistence via union-find (33ms@64×64) |
+| **Conformal2D** | 10 | Cauchy-Riemann residual, Riesz transform (FFT), isotropy, Liouville energy |
+| **MinkowskiFunctional** | 10 | Excursion set area, boundary length, Euler characteristic at multiple thresholds |
+| **MultiscaleFractal** | 9 | Box-counting dimension, lacunarity, Hurst exponent (68ms@64×64) |
+| **HodgeLaplacian** | 9 | Laplacian/Dirichlet/biharmonic energy, Poisson recovery, gradient coherence |
+| **SpectralPower** | 8 | Spectral slope β, centroid, entropy, anisotropy, kurtosis |
+
+All 2D geometries use max_field_size=128, validate_data reshapes 1D→square, downsample via block averaging.
 
 ## Preprocessing Utilities
 

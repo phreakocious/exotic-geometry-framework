@@ -1,6 +1,6 @@
 # Investigations
 
-28 self-contained investigation scripts demonstrating the framework across diverse domains.
+67 self-contained investigation scripts demonstrating the framework across diverse domains.
 
 ## Running
 
@@ -22,7 +22,7 @@ python investigations/2d/ecb_penguin.py
 
 Figures are saved to `figures/` (gitignored, generated on demand).
 
-## 1D Investigations (16)
+## 1D Investigations (48)
 
 | Script | Domain | Key Result | Dependencies |
 |--------|--------|------------|-------------|
@@ -43,8 +43,34 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/primes_deep.py` | Deep prime gaps: what Cramér misses | 52 pure-primality metrics. Sieved Cramér closes gap 54→30. 31 always-sig across scales. | numpy, scipy |
 | `1d/number_theory.py` | Arithmetic functions (μ, λ, d, φ, Ω, Mertens, ζ zeros) | 8/8 detected. Mertens vs random walk: 37 sig (beyond RH). All ordering-dependent. | numpy, scipy, mpmath |
 | `1d/continued_fractions.py` | CF coefficients of √2, √3, e, π, ln 2 | π vs Gauss-Kuzmin = 0 sig (passes iid test). π ordering = 0. ln 2 vs GK = 11. | numpy, scipy, mpmath |
+| `1d/rng.py` | RNG quality testing | 10 generators: RANDU=44 sig, Middle-Square=78 | numpy |
+| `1d/noise_robustness.py` | Noise robustness | 2-4x more noise-tolerant than standard tests | numpy |
+| `1d/noise_deep.py` | Deep noise analysis | IAAFT surrogate decomposition | numpy, scipy |
+| `1d/seti.py` | SETI signal detection | Chaotic modulation at -20dB | numpy |
+| `1d/ai_text.py` | AI text detection | Byte-level text geometry | numpy |
+| `1d/text_geometry.py` | Text structure | Order-2 Markov fools geometry | numpy |
+| `1d/binary_anatomy.py` | ISA taxonomy | x86/ARM/WASM/JVM: 85-101 sig pairwise | numpy |
+| `1d/quantum_geometry.py` | Quantum wavefunctions | Coherence d≈4000, energy levels | numpy |
+| `1d/memory_geometry.py` | Data structure topology | Arrays/lists/trees: 77 avg sig | numpy |
+| `1d/esoteric_code.py` | Esolangs | Brainfuck/Whitespace/Malbolge: 92 avg sig | numpy |
+| `1d/sorting_algorithms.py` | Sorting traces | Memory access fingerprints | numpy |
+| `1d/music_theory.py` | Music theory | Harmonic structure | numpy |
+| `1d/network_protocols.py` | Network protocols | Protocol fingerprinting | numpy |
+| `1d/time_series.py` | Time series | 9 processes, Hurst detection | numpy, scipy |
+| `1d/primes_deep2.py` | Deep primes II | 14 dist-matched survivors, time-irreversibility | numpy, scipy |
+| `1d/proteins.py` | Protein sequences | Globular vs IDP: 53 sig | numpy |
+| `1d/unsolved.py` | Goldbach's comet | g(2n) vs Hardy-Littlewood: 17 sig beyond HL | numpy, scipy, mpmath |
+| `1d/metric_characterization.py` | Metric analysis | Per-metric sensitivity profiling | numpy |
+| `1d/structure_vs_chaos.py` | Structure vs chaos | Boundary analysis | numpy |
+| `1d/julia_sweep.py` | Julia set sweep | Parameter space geometry | numpy |
+| `1d/bearing_fault.py` | Bearing faults (CWRU) | 4 conditions, fractal specialization | numpy, scipy |
+| `1d/bearing_fault_baseline.py` | Bearing baseline | Exotic vs standard features | numpy, scipy, scikit-learn |
+| `1d/bearing_fault_ml.py` | Bearing ML | SVM classifier on geometry | numpy, scikit-learn |
+| `1d/structure_atlas.py` | Structure Atlas | 56 sources, 13 domains, 7.7D space | numpy, scipy, h5py |
+| `1d/math_constants.py` | Math constants | CF taxonomy, representation fingerprints | numpy, mpmath |
+| `1d/mandelbrot_sensor_test.py` | Mandelbrot test | Fractal geometry validation | numpy |
 
-## 2D Investigations (12)
+## 2D Investigations (19)
 
 2D scripts use the spatial geometry battery. `add_spatial_geometries()` provides 8 geometries (80 metrics): SpatialField, Surface, PersistentHomology2D, Conformal2D, MinkowskiFunctional, MultiscaleFractal, HodgeLaplacian, SpectralPower.
 
@@ -62,6 +88,13 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `2d/sandpile.py` | Abelian sandpile (SOC) | 5/6 pairs. 10k ≈ 50k (both at SOC). | numpy |
 | `2d/lenia.py` | Lenia continuous cellular automata | 12/15 configs (3 died to density=0). | numpy, scipy |
 | `2d/stego_bitmatrix.py` | 2D stego via byte representations | Co-occurrence: SS 14/15 (d=−5.6). Diff grid: LSBMR 14 sig. Matrix embed: still invisible. | numpy, scipy |
+| `2d/elementary_ca.py` | Elementary CA | Wolfram classes I-IV, R110≈R124 | numpy |
+| `2d/meta_geometry.py` | Meta-investigation | 7D signature space, metric redundancy | numpy, scipy |
+| `2d/rule_space.py` | CA rule space | Rule parameter sweep | numpy |
+| `2d/strange_attractors.py` | Strange attractors | 2D attractor geometry | numpy |
+| `2d/mandelbrot.py` | Mandelbrot 2D | Set boundary phase transition | numpy |
+| `2d/stego_bitplane_delta.py` | Stego bitplane delta | Alternative 2D stego representation | numpy |
+| `2d/reaction_diffusion_patterns.py` | RD patterns | Extended reaction-diffusion | numpy, scipy |
 
 ## Investigation Template
 

@@ -63,3 +63,24 @@ Can preprocessing catch MT19937 or XorShift? 5 directions:
 - `investigations/1d/primes_deep.py` — 5 directions probing what Cramér misses ✓
 - `investigations/1d/stego_deep.py` — 6 techniques, 5 directions ✓
 - Doc cleanup: false d=1166 claim corrected across 6 files ✓
+- `investigations/1d/bearing_fault.py` — CWRU bearing fault diagnosis, fractal geometry specialization ✓
+- `investigations/1d/structure_atlas.py` — 56-source atlas, 13 domains, surrogate decomposition, multi-scale ✓
+- `investigations/1d/math_constants.py` — Rewritten: base-256 digits, CF taxonomy, Gauss-Kuzmin null, representation fingerprints ✓
+- `investigations/1d/binary_anatomy.py` — ISA taxonomy (x86/ARM/WASM/JVM) ✓
+- `investigations/1d/quantum_geometry.py` — Quantum wavefunctions ✓
+- `investigations/1d/memory_geometry.py` — Data structure topology ✓
+- `investigations/1d/esoteric_code.py` — Esolang fingerprinting ✓
+- `investigations/1d/sorting_algorithms.py` — Sort memory access traces ✓
+- `investigations/1d/music_theory.py` — Musical structure ✓
+- `investigations/1d/network_protocols.py` — Protocol fingerprinting ✓
+- Mandelbrot + Julia fractal geometries added to framework (10 new metrics) ✓
+- Runner module (`tools/investigation_runner.py`) — shared boilerplate ✓
+- Gemini CLI integration (`tools/spawn_gemini.sh`) ✓
+- Meta-investigation: 7D signature space, 98.7% metric redundancy ✓
+
+## Next Steps
+- Phase 2 datasets: GTZAN music genres, ESC-50 environmental sounds, TESS emotional speech
+- Lean mode: pruned ~40-metric fast path using meta-investigation redundancy analysis
+- Re-harvest classifier signatures with working Mandelbrot/Julia metrics
+- Structure Atlas at even larger scales (24K, 48K bytes)
+- BBP partial sums investigation (Pi convergence dynamics)
