@@ -1,6 +1,8 @@
 figures/*.png
 __pycache__/
 .venv/
+.venv312/
+.cache/
 .DS_Store
 *.pyc
 *.pyo

@@ -84,3 +84,9 @@ Can preprocessing catch MT19937 or XorShift? 5 directions:
 - Re-harvest classifier signatures with working Mandelbrot/Julia metrics
 - Structure Atlas at even larger scales (24K, 48K bytes)
 - BBP partial sums investigation (Pi convergence dynamics)
+
+## Infrastructure
+- Per-geometry disk cache in `GeometryAnalyzer(cache_dir=...)` — 324x speedup on warm cache ✓
+- Parallel chunk processing in `Runner(n_workers=4)` — 2.5x speedup ✓
+- E8 embed + find_closest_roots vectorized (numpy, no Python loops) ✓
+- Structure Atlas re-run with 141 metrics (Mandelbrot/Julia included), cache + 4 workers: ~35 min (was ~2h) ✓

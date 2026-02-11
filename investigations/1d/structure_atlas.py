@@ -1130,7 +1130,9 @@ def direction_7(runner, domains):
         results[name] = {}
         for scale in SCALES:
             # Build a temporary analyzer for this scale
-            analyzer = GeometryAnalyzer().add_all_geometries()
+            cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     '..', '..', '.cache')
+            analyzer = GeometryAnalyzer(cache_dir=cache_dir).add_all_geometries()
             rngs = [np.random.default_rng(42 + i) for i in range(15)]  # fewer trials for speed
 
             # Generate real and noise chunks at this scale
@@ -1553,7 +1555,8 @@ def make_figure_techniques(names, domains, coords, varexp, surr_results, scale_r
 # ==============================================================
 
 def main():
-    runner = Runner("Structure Atlas", mode="1d", data_size=DATA_SIZE)
+    runner = Runner("Structure Atlas", mode="1d", data_size=DATA_SIZE,
+                     cache=True, n_workers=4)
 
     profiles, profiles_std, domains = direction_1(runner)
     names, X, coords, varexp, cumvar, Z = direction_2(profiles, runner.metric_names)

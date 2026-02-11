@@ -22,6 +22,7 @@ Usage:
     runner.save(fig, "dna_methylation")
 """
 
+import multiprocessing
 import sys
 import time
 import warnings
@@ -42,24 +43,61 @@ from matplotlib import gridspec
 warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 
+# ----------------------------------------------------------
+# Parallel analysis helpers (module-level for pickling)
+# ----------------------------------------------------------
+_worker_analyzer = None
+
+
+def _worker_init(mode, cache_dir):
+    """Initialize a per-process GeometryAnalyzer."""
+    global _worker_analyzer
+    _worker_analyzer = GeometryAnalyzer(cache_dir=cache_dir)
+    if mode == '1d':
+        _worker_analyzer.add_all_geometries()
+    elif mode == '2d':
+        _worker_analyzer.add_spatial_geometries()
+
+
+def _worker_analyze(chunk):
+    """Analyze a single chunk using the per-process analyzer."""
+    return _worker_analyzer.analyze(chunk)
+
+
+def _parallel_analyze(chunks, mode, cache_dir, n_workers):
+    """Analyze chunks in parallel using a process pool."""
+    with multiprocessing.Pool(
+        processes=n_workers,
+        initializer=_worker_init,
+        initargs=(mode, cache_dir),
+    ) as pool:
+        return pool.map(_worker_analyze, chunks)
+
+
 class Runner:
     """Reusable investigation runner with all boilerplate baked in."""
 
     def __init__(self, name, mode='1d', data_size=2000, n_trials=25,
-                 alpha=0.05, seed=42):
+                 alpha=0.05, seed=42, cache=False, n_workers=1):
         self.name = name
         self.mode = mode
         self.data_size = data_size
         self.n_trials = n_trials
         self.alpha = alpha
         self.seed = seed
+        self.n_workers = n_workers
         self.fig_dir = _ROOT / "figures"
         self.fig_dir.mkdir(exist_ok=True)
+
+        # Cache setup
+        self.cache_dir = None
+        if cache:
+            self.cache_dir = str(_ROOT / ".cache")
 
         np.random.seed(seed)
 
         # Setup analyzer and discover metrics
-        self.analyzer = GeometryAnalyzer()
+        self.analyzer = GeometryAnalyzer(cache_dir=self.cache_dir)
         if mode == '1d':
             self.analyzer.add_all_geometries()
             dummy = self.analyzer.analyze(
@@ -79,7 +117,9 @@ class Runner:
 
         print(f"Runner: {name}")
         print(f"  mode={mode}, data_size={data_size}, trials={n_trials}, "
-              f"metrics={self.n_metrics}")
+              f"metrics={self.n_metrics}"
+              + (f", workers={n_workers}" if n_workers > 1 else "")
+              + (", cache=on" if cache else ""))
 
     # ----------------------------------------------------------
     # RNG helpers
@@ -93,10 +133,21 @@ class Runner:
     # Data collection
     # ----------------------------------------------------------
     def collect(self, chunks):
-        """Analyze chunks, return {metric_name: [values]}."""
+        """Analyze chunks, return {metric_name: [values]}.
+
+        When n_workers > 1, chunks are processed in parallel using
+        multiprocessing.  Each worker creates its own GeometryAnalyzer
+        to avoid pickling issues.
+        """
         out = {m: [] for m in self.metric_names}
-        for chunk in chunks:
-            res = self.analyzer.analyze(chunk)
+
+        if self.n_workers > 1 and len(chunks) > 1:
+            results = _parallel_analyze(
+                chunks, self.mode, self.cache_dir, self.n_workers)
+        else:
+            results = [self.analyzer.analyze(chunk) for chunk in chunks]
+
+        for res in results:
             for r in res.results:
                 for mn, mv in r.metrics.items():
                     key = f"{r.geometry_name}:{mn}"
