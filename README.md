@@ -1,8 +1,8 @@
 # Exotic Geometry Framework
 
-Embed byte sequences into 31 exotic geometric spaces — E8 lattices, Heisenberg groups, tropical semirings, Penrose quasicrystals, and 8 native 2D spatial geometries — and measure what comes out. Structure that survives the embedding is real. Structure that doesn't is noise.
+Embed byte sequences into 33 exotic geometric spaces — E8 lattices, Heisenberg groups, tropical semirings, Penrose quasicrystals, Mandelbrot/Julia fractal dynamics, and 8 native 2D spatial geometries — and measure what comes out. Structure that survives the embedding is real. Structure that doesn't is noise.
 
-This framework treats data analysis as a question of **geometry**: different mathematical spaces are sensitive to different kinds of hidden structure. A single data stream analyzed through 24 independent 1D lenses produces a geometric fingerprint that can distinguish chaotic maps, detect cipher weaknesses, identify DNA organisms, and find backdoors in neural network weights. For 2D fields, 8 spatial geometries (80 metrics) span differential geometry, algebraic topology, conformal analysis, integral geometry, fractal scaling, Hodge theory, and spectral analysis.
+This framework treats data analysis as a question of **geometry**: different mathematical spaces are sensitive to different kinds of hidden structure. A single data stream analyzed through 26 1D geometries produces a geometric fingerprint that can distinguish chaotic maps, detect cipher weaknesses, identify DNA organisms, and find backdoors in neural network weights. A [Structure Atlas](#structure-atlas-how-the-framework-organizes-the-world) maps 56 data sources from 13 domains into a unified structure space, revealing cross-domain twins and dimensional organization. For 2D fields, 8 spatial geometries (80 metrics) span differential geometry, algebraic topology, conformal analysis, integral geometry, fractal scaling, Hodge theory, and spectral analysis.
 
 **Key differentiator**: [Surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves these geometric embeddings capture genuinely nonlinear dynamical structure that no combination of entropy, autocorrelation, spectral slope, or other standard features can replicate. Simple features: **0 detections** against IAAFT surrogates. Exotic geometries: **204 detections** across 6 signal types.
 
@@ -34,7 +34,7 @@ Exotic geometries score **204 total detections** across 6 of 7 signals:
 
 The coupled AR system correctly returns 0 — it's a linear system with no nonlinear structure to detect. Top nonlinear detectors: Higher-Order Statistics (37), E8 Lattice (27), Clifford Torus (23), Torus T² (22). Five geometries (2-adic, Cantor, Fisher, Heisenberg, Sol) score zero — they are linear-equivalent features in geometric clothing.
 
-An [ablation study](#ablation-131-metrics--15-effective-dimensions) confirms this: exotic geometries amplify detection (79-89% of significant metrics) but 131 metrics collapse to ~15 independent dimensions. The surrogate test is what proves they carry genuinely new information.
+An [ablation study](#ablation-141-metrics--15-effective-dimensions) confirms this: exotic geometries amplify detection (79-89% of significant metrics) but 141 metrics collapse to ~15 independent dimensions. The surrogate test is what proves they carry genuinely new information.
 
 ![Surrogate Testing](figures/surrogate.png)
 
@@ -164,6 +164,29 @@ Twelve elementary CA rules spanning all four Wolfram complexity classes, analyze
 
 → `investigations/2d/elementary_ca.py`
 
+### Structure Atlas: how the framework organizes the world
+
+56 data sources from 13 domains — chaos, number theory, noise, waveforms, bearings, binary, DNA, medical (ECG/EEG), financial, motion, astronomy, climate, speech — mapped into 141-metric structure space. At 12,000 bytes per chunk, effective dimensionality = 7.7. Key findings:
+
+- **Cross-domain twins**: EEG seizure ↔ speech (d=0.18), bearing faults ↔ EEG (d=0.07), financial returns ↔ accelerometer (d=0.16)
+- **DNA is unique**: synthetic and real DNA cluster tightly (d=0.001-0.05), isolated from everything else
+- **Surrogate decomposition**: structure type (sequential vs distributional vs time-asymmetric) maps cleanly onto PCA space. White noise/AES/gzip = 0 sequential metrics. ECG/sawtooth/fBm = 70-87 sequential metrics
+- **Multi-scale robustness**: ECG/DNA/primes detectable at all scales (256-4096 bytes). Financial returns need longer windows (50→66 sig).
+
+→ `investigations/1d/structure_atlas.py`
+
+### Bearing fault diagnosis (CWRU dataset)
+
+Real vibration data from CWRU bearing fault dataset. 4 conditions (Normal, Ball, Inner, Outer race faults) all distinguished. Fractal geometries (Mandelbrot/Julia) are inner-race specialists: 9/10 fractal metrics significant for inner race (d=1.9-5.5), only 3/10 for outer race.
+
+→ `investigations/1d/bearing_fault.py`
+
+### Mathematical constants: fingerprints of transcendence
+
+Base-256 digits of Pi, e, Phi, Sqrt(2) are indistinguishable from each other (0 sig) but all differ from white noise (84-85 sig). Continued fraction taxonomy reveals deep structure: CF(e) vs CF(Pi) = 94 sig, CF(ln2) vs algebraics = 118 sig. Pi's CF has only 5 sig vs Gauss-Kuzmin i.i.d. — barely detectable sequential structure. Same constant (Pi) in 4 representations (base-256, base-10, binary, CF) produces wildly different fingerprints (52-106 sig pairwise).
+
+→ `investigations/1d/math_constants.py`
+
 ### RNG quality testing: geometric fingerprints of PRNG weakness
 
 Ten generators spanning a quality gradient — from cryptographic (os.urandom, SHA-256 CTR) through good (PCG64, MT19937, SFC64) to weak (XorShift128, MINSTD) to bad (RANDU, LFSR-16, Middle-Square) — tested against an os.urandom reference. Self-check (urandom vs urandom) returns 0 significant metrics, validating the methodology.
@@ -187,9 +210,9 @@ Geometric metrics outperform standard statistical tests: RANDU has 44 geometric 
 
 → `investigations/1d/rng.py`
 
-### Ablation: 131 metrics → 15 effective dimensions
+### Ablation: 141 metrics → 15 effective dimensions
 
-An honest self-assessment: a 14-feature simple baseline (entropy, autocorrelation, spectral slope, permutation entropy, kurtosis) detects the same phenomena as the full framework — 9-12 significant features across all test cases. The 131 framework metrics collapse to ~15 independent dimensions at 95% explained variance, with 109 metrics >95% redundant with another metric. Exotic geometries contribute 79-89% of significant detections but are amplifiers, not discoverers of fundamentally new phenomena — with one critical exception: [surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves they capture nonlinear structure simple features provably cannot.
+An honest self-assessment: a 14-feature simple baseline (entropy, autocorrelation, spectral slope, permutation entropy, kurtosis) detects the same phenomena as the full framework — 9-12 significant features across all test cases. The 141 framework metrics collapse to ~15 independent dimensions at 95% explained variance, with 109 metrics >95% redundant with another metric. Exotic geometries contribute 79-89% of significant detections but are amplifiers, not discoverers of fundamentally new phenomena — with one critical exception: [surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves they capture nonlinear structure simple features provably cannot.
 
 → `investigations/1d/ablation.py`
 
@@ -205,7 +228,7 @@ python quickstart.py
 Output:
 ```
 EXOTIC GEOMETRY FRAMEWORK - QUICKSTART
-[OK] Loaded 24 geometries
+[OK] Loaded 26 geometries
 
 Data                 |  E8 roots |  Heis. twist |    Sol aniso |   Penrose 5f
 Random               |        73 |          0.1 |         3.52 |       0.9891
@@ -230,7 +253,7 @@ import numpy as np
 
 data = np.random.randint(0, 256, 2000, dtype=np.uint8)
 
-# All 24 geometries
+# All 26 geometries
 analyzer = GeometryAnalyzer().add_all_geometries()
 results = analyzer.analyze(data)
 
@@ -299,10 +322,12 @@ encoded = encode_float_to_unit(float_array)
 | **Conformal2D** (2D) | `cauchy_riemann_residual` | Angle preservation | Riesz amplitude d=+7.0 |
 | **PersistentHomology2D** (2D) | `sub_total_persistence` | Component lifetimes | 9.0 sig/pair avg |
 | **SpectralPower** (2D) | `spectral_slope` | Frequency structure | 1/f^β power law |
+| **Fractal (Mandelbrot)** | `interior_fraction` | Escape dynamics, set membership | Bearing inner race d=5.5 |
+| **Fractal (Julia)** | `connectedness` | Julia set structure, stability | Bearing inner race d=4.2 |
 
-Full catalog of all 31 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATALOG.md)
+Full catalog of all 33 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATALOG.md)
 
-## Investigations
+## Investigations (48 1D + 19 2D = 67 scripts)
 
 ### 1D (byte stream analysis)
 
@@ -328,7 +353,27 @@ Full catalog of all 31 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [number_theory_deep.py](investigations/1d/number_theory_deep.py) | Additive number theory | CFs, partitions, σ(n)/n. π CF geo_mean ≈ Khinchin K |
 | [time_series.py](investigations/1d/time_series.py) | Time series | 9 processes, Hurst detection, process class fingerprinting |
 | [surrogate.py](investigations/1d/surrogate.py) | Surrogate testing | Simple=0, exotic=204 vs IAAFT. Proves nonlinear detection |
-| [ablation.py](investigations/1d/ablation.py) | Ablation study | 131 metrics → 15 dimensions, exotic = amplifiers |
+| [ablation.py](investigations/1d/ablation.py) | Ablation study | 141 metrics → 15 dimensions, exotic = amplifiers |
+| [bearing_fault.py](investigations/1d/bearing_fault.py) | Bearing faults (CWRU) | 4 conditions distinguished, fractals = inner race specialists |
+| [bearing_fault_baseline.py](investigations/1d/bearing_fault_baseline.py) | Bearing baseline | Exotic geometries vs standard features comparison |
+| [bearing_fault_ml.py](investigations/1d/bearing_fault_ml.py) | Bearing ML | SVM classifier on geometric features |
+| [structure_atlas.py](investigations/1d/structure_atlas.py) | Structure Atlas | 56 sources, 13 domains, 7.7D structure space |
+| [math_constants.py](investigations/1d/math_constants.py) | Math constants | CF taxonomy, Pi CF ≈ Gauss-Kuzmin, representation fingerprints |
+| [binary_anatomy.py](investigations/1d/binary_anatomy.py) | ISA taxonomy | x86/ARM/WASM/JVM distinguishable (85-101 sig) |
+| [quantum_geometry.py](investigations/1d/quantum_geometry.py) | Quantum wavefunctions | Coherence d≈4000, energy levels fingerprinted |
+| [memory_geometry.py](investigations/1d/memory_geometry.py) | Data structures | Arrays/lists/trees/hash tables distinguished (77 avg sig) |
+| [esoteric_code.py](investigations/1d/esoteric_code.py) | Esolangs | Brainfuck/Whitespace/Malbolge/Zalgo (92 avg sig) |
+| [sorting_algorithms.py](investigations/1d/sorting_algorithms.py) | Sorting traces | Memory access fingerprints of sort algorithms |
+| [music_theory.py](investigations/1d/music_theory.py) | Music theory | Harmonic/melodic structure detection |
+| [network_protocols.py](investigations/1d/network_protocols.py) | Network protocols | Protocol fingerprinting |
+| [julia_sweep.py](investigations/1d/julia_sweep.py) | Julia set sweep | Parameter space geometry |
+| [proteins.py](investigations/1d/proteins.py) | Protein sequences | Globular vs IDP: 53 sig (compositional, not sequential) |
+| [unsolved.py](investigations/1d/unsolved.py) | Goldbach's comet | g(2n) vs Hardy-Littlewood: 17 sig beyond HL |
+| [noise_robustness.py](investigations/1d/noise_robustness.py) | Noise robustness | 2-4x more noise-tolerant than standard tests |
+| [noise_deep.py](investigations/1d/noise_deep.py) | Deep noise | IAAFT surrogate decomposition |
+| [seti.py](investigations/1d/seti.py) | SETI | Chaotic modulation at -20dB, 7-17dB advantage |
+| [ai_text.py](investigations/1d/ai_text.py) | AI text detection | Byte-level geometry of text |
+| [text_geometry.py](investigations/1d/text_geometry.py) | Text structure | Order-2 Markov fools geometry |
 
 ### 2D (spatial field analysis)
 
@@ -347,6 +392,9 @@ Full catalog of all 31 geometries: [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATA
 | [lenia.py](investigations/2d/lenia.py) | Continuous CA | 15/15 configs |
 | [stego_bitmatrix.py](investigations/2d/stego_bitmatrix.py) | 2D stego detection | Co-occurrence SS=14/15, diff grid LSBMR=14 sig |
 | [elementary_ca.py](investigations/2d/elementary_ca.py) | Elementary CA | Wolfram classes I-IV, R110≈R124, scale-robust to 32×32 |
+| [meta_geometry.py](investigations/2d/meta_geometry.py) | Meta-investigation | Metric correlation field, 7D signature space |
+| [rule_space.py](investigations/2d/rule_space.py) | CA rule space | Rule parameter sweep |
+| [strange_attractors.py](investigations/2d/strange_attractors.py) | Strange attractors | 2D attractor geometry |
 
 ## Statistical Methodology
 
@@ -362,7 +410,7 @@ The framework produces zero false positives on validated random sources and corr
 
 Equally important: the framework's known limits.
 
-- **AES-CTR vs random**: Indistinguishable across all 24 geometries, preprocessings, and combination strategies. This is the fundamental limit.
+- **AES-CTR vs random**: Indistinguishable across all 26 geometries, preprocessings, and combination strategies. This is the fundamental limit.
 - **XorShift128**: Undetected raw (0 sig), but delay embedding reveals 2 sig metrics via Thurston height_drift — borderline
 - **MT19937**: 1 borderline detection (S² × ℝ sphere_concentration). Essentially passes at byte level
 - **Standard map, Arnold cat map**: Uniformly mixing → look random
@@ -373,7 +421,7 @@ See [docs/NEGATIVE_RESULTS.md](docs/NEGATIVE_RESULTS.md).
 
 ## Complete Results
 
-All validated findings and negative results across 42 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
+All validated findings and negative results across 67 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
 
 ## Dependencies
 
@@ -384,7 +432,9 @@ All validated findings and negative results across 42 investigations: [docs/FIND
 
 **Optional**:
 - pycryptodome — for `ciphers.py`, `reduced_aes.py`, `ecb_penguin.py`
-- mpmath — for `number_theory.py` (Riemann zeta zeros)
+- mpmath — for `number_theory.py` (Riemann zeta zeros), `math_constants.py`
+- h5py — for LIGO data in `structure_atlas.py`
+- scikit-learn — for `bearing_fault_ml.py`
 
 ## License
 
