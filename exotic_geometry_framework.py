@@ -2561,6 +2561,191 @@ class EinsteinHatGeometry(ExoticGeometry):
         )
 
 
+
+# =============================================================================
+# FRACTAL MANDELBROT GEOMETRY
+# =============================================================================
+
+class FractalMandelbrotGeometry(ExoticGeometry):
+    """
+    Mandelbrot Fractal Geometry - detects sensitivity to initial conditions.
+
+    Maps data pairs to the complex plane and iterates z = z² + c.
+    Measures escape velocity, orbit traps, and connectivity.
+    Good for distinguishing different types of deterministic chaos.
+    """
+
+    def __init__(self, input_scale: float = 255.0, max_iter: int = 64):
+        self.input_scale = input_scale
+        self.max_iter = max_iter
+
+    @property
+    def name(self) -> str:
+        return "Fractal (Mandelbrot)"
+
+    @property
+    def dimension(self) -> int:
+        return 2
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """
+        Embed data pairs as parameters c in the complex plane.
+        Maps [0, 1] to [-1.5, 1.5].
+        """
+        data = self.validate_data(data)
+        data = self._normalize_to_unit(data, self.input_scale)
+
+        n_points = len(data) // 2
+        pairs = data[:2*n_points].reshape(n_points, 2)
+        c_vals = (pairs[:, 0] * 3.0 - 1.5) + 1j * (pairs[:, 1] * 3.0 - 1.5)
+
+        return c_vals
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute Mandelbrot escape metrics."""
+        c_vals = self.embed(data)
+
+        if len(c_vals) == 0:
+            return GeometryResult(self.name, {}, {})
+
+        escapes = []
+        final_moduli = []
+
+        for c in c_vals:
+            z = 0j
+            it = 0
+            for _ in range(self.max_iter):
+                z = z*z + c
+                if abs(z) > 2.0:
+                    break
+                it += 1
+            escapes.append(it)
+            final_moduli.append(abs(z))
+
+        escapes = np.array(escapes)
+        final_moduli = np.array(final_moduli)
+
+        # Metrics
+        mean_escape = np.mean(escapes)
+        escape_variance = np.var(escapes)
+
+        # "Interior" fraction (points that didn't escape)
+        interior_fraction = np.mean(escapes == self.max_iter)
+
+        # Entropy of escape times
+        counts = np.bincount(escapes)
+        probs = counts[counts > 0] / len(escapes)
+        escape_entropy = -np.sum(probs * np.log2(probs + 1e-10))
+
+        # Orbit magnitude (for escaped points, this grows huge; for interior, bounded)
+        # We use log magnitude to handle the explosion
+        log_moduli = np.log(final_moduli + 1e-10)
+        mean_log_modulus = np.mean(log_moduli)
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "mean_escape_time": mean_escape,
+                "escape_time_variance": escape_variance,
+                "interior_fraction": interior_fraction,
+                "escape_entropy": escape_entropy,
+                "mean_log_orbit_modulus": mean_log_modulus,
+            },
+            raw_data={
+                "c_vals": c_vals,
+                "escapes": escapes
+            }
+        )
+
+
+class FractalJuliaGeometry(ExoticGeometry):
+    """
+    Julia Fractal Geometry - a tunable dynamical sensor.
+
+    Data define the starting position z0. 
+    A fixed parameter c defines the landscape (physics).
+    Changing c acts like tuning a sensor to different "resonance" patterns.
+    """
+
+    def __init__(self, c_real: float = -0.8, c_imag: float = 0.156, 
+                 input_scale: float = 255.0, max_iter: int = 64):
+        self.c = complex(c_real, c_imag)
+        self.input_scale = input_scale
+        self.max_iter = max_iter
+
+    @property
+    def name(self) -> str:
+        return f"Fractal (Julia c={self.c.real:+.2f}{self.c.imag:+.2f}i)"
+
+    @property
+    def dimension(self) -> int:
+        return 2
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Embed data pairs as starting positions z0.
+        Maps [0, 1] to [-1.5, 1.5].
+        """
+        data = self.validate_data(data)
+        data = self._normalize_to_unit(data, self.input_scale)
+
+        n_points = len(data) // 2
+        pairs = data[:2*n_points].reshape(n_points, 2)
+        z0_vals = (pairs[:, 0] * 3.0 - 1.5) + 1j * (pairs[:, 1] * 3.0 - 1.5)
+
+        return z0_vals
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute Julia escape metrics."""
+        z0_vals = self.embed(data)
+
+        if len(z0_vals) == 0:
+            return GeometryResult(self.name, {}, {})
+
+        escapes = []
+        final_moduli = []
+
+        for z0 in z0_vals:
+            z = z0
+            it = 0
+            for _ in range(self.max_iter):
+                z = z*z + self.c
+                if abs(z) > 2.0:
+                    break
+                it += 1
+            escapes.append(it)
+            final_moduli.append(abs(z))
+
+        escapes = np.array(escapes)
+        final_moduli = np.array(final_moduli)
+
+        # Metrics (similar to Mandelbrot but for fixed c)
+        mean_escape = np.mean(escapes)
+        counts = np.bincount(escapes)
+        probs = counts[counts > 0] / len(escapes)
+        escape_entropy = -np.sum(probs * np.log2(probs + 1e-10))
+        
+        # Connectedness proxy: fraction of points that never escape
+        connectedness = np.mean(escapes == self.max_iter)
+        
+        # Stability: variance of escape times
+        stability = np.var(escapes)
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "mean_escape_time": mean_escape,
+                "escape_entropy": escape_entropy,
+                "connectedness": connectedness,
+                "stability": stability,
+                "mean_log_modulus": np.mean(np.log(final_moduli + 1e-10))
+            },
+            raw_data={
+                "z0_vals": z0_vals,
+                "escapes": escapes
+            }
+        )
+
+
 # =============================================================================
 # HIGHER-ORDER GEOMETRY (3rd/4th order statistics)
 # =============================================================================
@@ -4359,6 +4544,9 @@ class GeometryAnalyzer:
             EinsteinHatGeometry(input_scale=s),
             # Clifford Torus
             CliffordTorusGeometry(input_scale=s),
+            # Fractal
+            FractalMandelbrotGeometry(input_scale=s),
+            FractalJuliaGeometry(input_scale=s),
             # Higher-order (3rd/4th order, independent from all above)
             HigherOrderGeometry(),
         ]
