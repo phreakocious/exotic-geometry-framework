@@ -9,3 +9,6 @@ dist/
 build/
 .eggs/
 orig/
+data/
+tools/gemini_*.log
+investigations/1d/.protein_cache.json
