@@ -36,7 +36,7 @@ The coupled AR system correctly returns 0 — it's a linear system with no nonli
 
 An [ablation study](#ablation-141-metrics--15-effective-dimensions) confirms this: exotic geometries amplify detection (79-89% of significant metrics) but 141 metrics collapse to ~15 independent dimensions. The surrogate test is what proves they carry genuinely new information.
 
-![Surrogate Testing](figures/surrogate.png)
+![Surrogate Testing](docs/figures/surrogate.png)
 
 → `investigations/1d/surrogate.py` · `investigations/1d/ablation.py`
 
@@ -160,7 +160,7 @@ Nine signal types — Brownian motion, pink noise, fractional Brownian motion (H
 
 Twelve elementary CA rules spanning all four Wolfram complexity classes, analyzed as 2D spacetime fields with 80 spatial metrics. Class I (homogeneous) = 79 avg sig vs random, Class II (periodic) = 74, Class IV (complex) = 70, Class III (chaotic) = 65. All 6 class pairs distinguished (66-75 sig). Within Class IV, Rules 110 and 124 are nearly identical (only 2 sig metrics) — they are computationally equivalent via left-right reflection. `PersistentHomology2D:persistence_asymmetry` is the Class IV signature (d = 331-2013). Detection is scale-robust down to 32×32 fields.
 
-![Elementary CA](figures/elementary_ca.png)
+![Elementary CA](docs/figures/elementary_ca.png)
 
 → `investigations/2d/elementary_ca.py`
 
@@ -206,7 +206,7 @@ Ten generators spanning a quality gradient — from cryptographic (os.urandom, S
 
 Geometric metrics outperform standard statistical tests: RANDU has 44 geometric detections vs 4 standard, Middle-Square has 78 vs 7. Delay embedding (τ=2) newly reveals XorShift128 (0→2 sig) and amplifies Middle-Square (78→82). RANDU is detectable at just 500 bytes (41 sig). Different PRNG weaknesses have distinct geometric fingerprints — E8 Lattice, Higher-Order Statistics, Torus T², and Ammann-Beenker are the top weakness detectors.
 
-![RNG Quality](figures/rng.png)
+![RNG Quality](docs/figures/rng.png)
 
 → `investigations/1d/rng.py`
 
