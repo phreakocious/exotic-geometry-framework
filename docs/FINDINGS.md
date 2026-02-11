@@ -241,7 +241,7 @@ All validated discoveries and negative results from 67 investigations.
 | 61b | Chaos maps are time-asymmetric: Henon (26 rev), Logistic (25), Tent (23) metrics disrupted by reversal | consistent with iterative map's forward direction | `1d/structure_atlas.py` |
 | 62 | Financial returns time-asymmetric at 12K bytes (Nikkei: 18, NYSE: 17, NASDAQ: 15 metrics disrupted by reversal) | markets have geometric time arrow | `1d/structure_atlas.py` |
 | 63 | 54% of all nearest-neighbor pairs (90/168) cross domain boundaries | structure space reflects universal motifs, not domain | `1d/structure_atlas.py` |
-| 64 | Multi-scale: ECG Normal detectable at all scales (92-100 sig at 256-4096 bytes), DNA Human rock-solid (91-95) | NYSE: 50→66 (grows with scale), White Noise: 0 at all scales | `1d/structure_atlas.py` |
+| 64 | Multi-scale: ECG Normal detectable at all scales (92-101 sig at 256-8192 bytes), DNA Human rock-solid (90-98) | NYSE: 50→87 at 8192 (financial needs longer windows), White Noise: 0 at all scales | `1d/structure_atlas.py` |
 
 ### Bearing Fault Diagnosis
 | # | Finding | Effect Size | Investigation |

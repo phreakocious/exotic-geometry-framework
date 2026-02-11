@@ -1102,7 +1102,7 @@ def direction_7(runner, domains):
 
     from scipy import stats as sp_stats
 
-    SCALES = [256, 512, 1024, 2048, 4096]
+    SCALES = [256, 512, 1024, 2048, 4096, 8192]
 
     # Representative subset — one per major structure type + key exemplars
     SUBSET = [

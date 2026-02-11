@@ -171,7 +171,7 @@ Twelve elementary CA rules spanning all four Wolfram complexity classes, analyze
 - **Cross-domain twins**: EEG Eyes Closed ↔ Bearing Outer (d=0.084), EEG Seizure ↔ Speech (d=0.18), financial returns ↔ accelerometer (NASDAQ ↔ Accel Stairs d=0.16)
 - **DNA is unique**: synthetic and real DNA cluster tightly (Synthetic DNA ↔ DNA Chimp d=0.001), isolated from everything else in its own cluster
 - **Surrogate decomposition**: ECG Supraventricular is the most sequential source (87/141 metrics disrupted by shuffling, 62%). White Noise/AES = 0 disrupted. Pi (base 256) has more structure disrupted by rolling (69) than by shuffling (45) — positional structure beyond autocorrelation. Chaos maps are time-asymmetric (Henon: 26 rev metrics), financial returns too (Nikkei: 18 rev)
-- **Multi-scale robustness**: ECG Normal detectable at all scales (92-100 sig at 256-4096 bytes). DNA Human rock-solid (91-95). Financial returns grow with scale (50→66 sig)
+- **Multi-scale robustness**: ECG Normal detectable at all scales (92-101 sig at 256-8192 bytes). DNA Human rock-solid (90-98). NYSE Returns jump from 50 (256 bytes) to 87 (8192 bytes) — financial data needs longer windows
 
 ![Structure Atlas](docs/figures/structure_atlas.png)
 ![Structure Atlas 3D](docs/figures/structure_atlas_3d.png)
