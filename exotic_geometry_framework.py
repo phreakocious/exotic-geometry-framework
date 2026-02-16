@@ -116,6 +116,7 @@ Usage:
 """
 
 import hashlib
+import inspect
 import math
 import os
 import pickle
@@ -124,7 +125,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple, Union
-from itertools import combinations, product
+from itertools import combinations, permutations, product
 from collections import Counter
 import warnings
 
@@ -185,6 +186,22 @@ class ExoticGeometry(ABC):
         """Dimension of the geometry (or 'variable', 'fractal', etc.)."""
         pass
 
+    @property
+    def description(self) -> str:
+        """What this geometry detects / its mathematical basis."""
+        return ""
+
+    @property
+    def view(self) -> str:
+        """Geometric lens family: distributional, topological, dynamical,
+        symmetry, scale, quasicrystal, or other."""
+        return "other"
+
+    @property
+    def detects(self) -> str:
+        """Short phrase: what phenomena this geometry reveals."""
+        return ""
+
     @abstractmethod
     def embed(self, data: np.ndarray) -> np.ndarray:
         """Embed data into this geometry's space."""
@@ -194,6 +211,25 @@ class ExoticGeometry(ABC):
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         """Compute all metrics for this geometry on the given data."""
         pass
+
+    def metadata(self) -> dict:
+        """Export geometry metadata for atlas/viewer."""
+        # Derive metric names by running on dummy data
+        try:
+            dummy = np.arange(256, dtype=np.uint8)
+            result = self.compute_metrics(dummy)
+            metrics = list(result.metrics.keys())
+        except Exception:
+            metrics = []
+        return {
+            "class": type(self).__name__,
+            "name": self.name,
+            "dimension": self.dimension,
+            "description": self.description,
+            "view": self.view,
+            "detects": self.detects,
+            "metrics": metrics,
+        }
 
     def validate_data(self, data: np.ndarray) -> np.ndarray:
         """Validate and preprocess input data."""
@@ -249,6 +285,27 @@ class E8Geometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "E8 Lattice"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Projects 8-byte windows onto the 240 roots of E8, the densest lattice sphere-packing in 8 dimensions. Root usage diversity and alignment measure algebraic constraint."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Lattice alignment, algebraic constraint"
 
     @property
     def dimension(self) -> int:
@@ -353,6 +410,519 @@ class E8Geometry(ExoticGeometry):
 
 
 # =============================================================================
+# G2 ROOT SYSTEM GEOMETRY
+# =============================================================================
+
+def _perm_sign(perm):
+    """Return +1 for even permutation, -1 for odd."""
+    perm = list(perm)
+    n = len(perm)
+    visited = [False] * n
+    sign = 1
+    for i in range(n):
+        if not visited[i]:
+            j, cycle_len = i, 0
+            while not visited[j]:
+                visited[j] = True
+                j = perm[j]
+                cycle_len += 1
+            if cycle_len % 2 == 0:
+                sign *= -1
+    return sign
+
+
+class G2Geometry(ExoticGeometry):
+    """
+    G2 Root System — hexagonal byte-pair structure.
+
+    12 roots in 2D: 6 short at 60° intervals, 6 long at 30° offsets (length √3).
+    Window size 2 probes consecutive byte-pair correlations — complementary to
+    E8's 8-byte windows.
+    """
+
+    def __init__(self, window_size: int = 2, normalize: bool = True):
+        self.window_size = window_size
+        self.normalize = normalize
+        self._roots = None
+        self._roots_normalized = None
+
+    @property
+    def name(self) -> str:
+        return "G2 Root System"
+
+    @property
+    def description(self) -> str:
+        return "Projects byte pairs onto the 12 roots of G2. Detects hexagonal symmetry in consecutive-byte correlations."
+
+    @property
+    def view(self) -> str:
+        return "symmetry"
+
+    @property
+    def detects(self) -> str:
+        return "Hexagonal byte-pair symmetry"
+
+    @property
+    def dimension(self) -> int:
+        return 2
+
+    @property
+    def roots(self) -> np.ndarray:
+        if self._roots is None:
+            self._roots = self._compute_roots()
+            norms = np.linalg.norm(self._roots, axis=1, keepdims=True)
+            self._roots_normalized = self._roots / norms
+        return self._roots
+
+    @property
+    def roots_normalized(self) -> np.ndarray:
+        if self._roots_normalized is None:
+            _ = self.roots
+        return self._roots_normalized
+
+    def _compute_roots(self) -> np.ndarray:
+        """12 roots of G2: 6 short + 6 long."""
+        roots = []
+        for k in range(6):
+            a = k * np.pi / 3
+            roots.append([np.cos(a), np.sin(a)])
+        for k in range(6):
+            a = np.pi / 6 + k * np.pi / 3
+            r = np.sqrt(3)
+            roots.append([r * np.cos(a), r * np.sin(a)])
+        return np.array(roots)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        n = len(data) // 2
+        if n == 0:
+            raise ValueError("Data too short for window size 2")
+        w = data[:n * 2].astype(float).reshape(n, 2)
+        if self.normalize:
+            # Global normalization — per-window centering collapses 2D to ±1
+            mean = np.mean(w)
+            std = np.std(w) + 1e-10
+            w = (w - mean) / std
+        return w
+
+    def find_closest_roots(self, embedded):
+        dots = embedded @ self.roots_normalized.T
+        abs_dots = np.abs(dots)
+        return np.argmax(abs_dots, axis=1), np.max(abs_dots, axis=1)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        embedded = self.embed(data)
+        idx, aligns = self.find_closest_roots(embedded)
+        n_roots = 12
+        unique = len(set(idx))
+        counts = Counter(idx)
+        probs = np.array(list(counts.values())) / len(idx)
+        ent = -np.sum(probs * np.log2(probs + 1e-10))
+        max_ent = np.log2(min(len(idx), n_roots))
+        short = sum(counts.get(i, 0) for i in range(6))
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "diversity_ratio": unique / n_roots,
+                "alignment_mean": float(np.mean(aligns)),
+                "alignment_std": float(np.std(aligns)),
+                "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
+                "short_long_ratio": short / (len(idx) + 1e-10),
+            },
+            raw_data={"root_indices": idx, "alignments": aligns}
+        )
+
+
+# =============================================================================
+# D4 TRIALITY GEOMETRY
+# =============================================================================
+
+class D4Geometry(ExoticGeometry):
+    """
+    D4 Root System with Triality — 4-byte structural symmetry.
+
+    24 roots (±eᵢ ± eⱼ) in 4D. D4 is the only Lie algebra with triality:
+    an order-3 outer automorphism permuting vector, spinor+, and spinor−
+    representations of Spin(8). The triality_invariance metric measures how
+    symmetric the data's root usage is under this automorphism.
+    """
+
+    def __init__(self, window_size: int = 4, normalize: bool = True):
+        self.window_size = window_size
+        self.normalize = normalize
+        self._roots = None
+        self._roots_normalized = None
+        self._triality_perm = None
+
+    @property
+    def name(self) -> str:
+        return "D4 Triality"
+
+    @property
+    def description(self) -> str:
+        return "Projects 4-byte windows onto the 24 roots of D4 and measures triality invariance — the unique order-3 symmetry of Spin(8)."
+
+    @property
+    def view(self) -> str:
+        return "symmetry"
+
+    @property
+    def detects(self) -> str:
+        return "Triality symmetry, 4-byte structural constraint"
+
+    @property
+    def dimension(self) -> int:
+        return 4
+
+    @property
+    def roots(self) -> np.ndarray:
+        if self._roots is None:
+            self._roots = self._compute_roots()
+            norms = np.linalg.norm(self._roots, axis=1, keepdims=True)
+            self._roots_normalized = self._roots / norms
+            self._triality_perm = self._compute_triality_permutation()
+        return self._roots
+
+    @property
+    def roots_normalized(self) -> np.ndarray:
+        if self._roots_normalized is None:
+            _ = self.roots
+        return self._roots_normalized
+
+    def _compute_roots(self) -> np.ndarray:
+        """D4 roots: ±eᵢ ± eⱼ for i < j. 24 roots in 4D."""
+        roots = []
+        for i, j in combinations(range(4), 2):
+            for si, sj in product([1, -1], repeat=2):
+                r = np.zeros(4)
+                r[i] = si
+                r[j] = sj
+                roots.append(r)
+        return np.array(roots)
+
+    def _compute_triality_permutation(self) -> np.ndarray:
+        """Permutation of roots under the order-3 triality automorphism.
+
+        Derived from the D4 Dynkin diagram: simple roots α₁=e₁−e₂ (leg),
+        α₂=e₂−e₃ (center), α₃=e₃−e₄ (leg), α₄=e₃+e₄ (leg).
+        Triality cycles α₁→α₃→α₄→α₁, fixing α₂.
+        """
+        T = 0.5 * np.array([
+            [ 1,  1,  1,  1],
+            [ 1,  1, -1, -1],
+            [ 1, -1,  1, -1],
+            [-1,  1,  1, -1],
+        ], dtype=float)
+        roots = self._roots
+        n = len(roots)
+        perm = np.zeros(n, dtype=int)
+        for i in range(n):
+            rotated = T @ roots[i]
+            dists = np.sum((roots - rotated) ** 2, axis=1)
+            perm[i] = np.argmin(dists)
+        return perm
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        n = len(data) // 4
+        if n == 0:
+            raise ValueError("Data too short for window size 4")
+        w = data[:n * 4].astype(float).reshape(n, 4)
+        if self.normalize:
+            w = w / (np.max(data) + 1e-10)
+            means = w.mean(axis=1, keepdims=True)
+            stds = w.std(axis=1, keepdims=True) + 1e-10
+            w = (w - means) / stds
+        return w
+
+    def find_closest_roots(self, embedded):
+        dots = embedded @ self.roots_normalized.T
+        abs_dots = np.abs(dots)
+        return np.argmax(abs_dots, axis=1), np.max(abs_dots, axis=1)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        embedded = self.embed(data)
+        idx, aligns = self.find_closest_roots(embedded)
+        _ = self.roots  # ensure triality perm computed
+        n_roots = 24
+        unique = len(set(idx))
+        counts = Counter(idx)
+        probs_arr = np.zeros(n_roots)
+        for k, v in counts.items():
+            probs_arr[k] = v
+        probs_arr = probs_arr / (len(idx) + 1e-10)
+
+        nonzero = probs_arr[probs_arr > 0]
+        ent = -np.sum(nonzero * np.log2(nonzero))
+        max_ent = np.log2(min(len(idx), n_roots))
+
+        # Triality invariance: TV distance between distribution and its triality-rotations.
+        # Exclude degenerate windows (constant bytes → zero vector → arbitrary root
+        # assignment). These inflate triality when they land on fixed-point roots.
+        good = aligns > 0.01
+        if good.sum() >= 20:
+            good_counts = Counter(idx[good])
+            p0 = np.zeros(n_roots)
+            for k, v in good_counts.items():
+                p0[k] = v
+            p0 /= p0.sum()
+        else:
+            # Too few non-degenerate windows — triality is undefined
+            p0 = None
+        if p0 is not None:
+            p1 = p0[self._triality_perm]
+            p2 = p1[self._triality_perm]
+            tv01 = 0.5 * np.sum(np.abs(p0 - p1))
+            tv02 = 0.5 * np.sum(np.abs(p0 - p2))
+            tv12 = 0.5 * np.sum(np.abs(p1 - p2))
+            triality_invariance = float(1.0 - (tv01 + tv02 + tv12) / 3.0)
+        else:
+            triality_invariance = 0.0
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "diversity_ratio": unique / n_roots,
+                "alignment_mean": float(np.mean(aligns)),
+                "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
+                "triality_invariance": triality_invariance,
+            },
+            raw_data={"root_indices": idx, "alignments": aligns}
+        )
+
+
+# =============================================================================
+# H3 COXETER GEOMETRY (ICOSAHEDRAL)
+# =============================================================================
+
+class H3CoxeterGeometry(ExoticGeometry):
+    """
+    H3 Coxeter root system — icosahedral symmetry in 3-byte windows.
+
+    30 roots in 3D: the vertices of the icosidodecahedron. H3 is the
+    symmetry group of the icosahedron/dodecahedron, featuring 5-fold
+    rotational symmetry not achievable by any crystallographic group.
+    """
+
+    def __init__(self, window_size: int = 3, normalize: bool = True):
+        self.window_size = window_size
+        self.normalize = normalize
+        self._roots = None
+        self._roots_normalized = None
+
+    @property
+    def name(self) -> str:
+        return "H3 Icosahedral"
+
+    @property
+    def description(self) -> str:
+        return "Projects 3-byte windows onto the 30 roots of H3 (icosidodecahedron vertices). Detects non-crystallographic 5-fold symmetry."
+
+    @property
+    def view(self) -> str:
+        return "symmetry"
+
+    @property
+    def detects(self) -> str:
+        return "Icosahedral symmetry, 5-fold rotational order"
+
+    @property
+    def dimension(self) -> int:
+        return 3
+
+    @property
+    def roots(self) -> np.ndarray:
+        if self._roots is None:
+            self._roots = self._compute_roots()
+            self._roots_normalized = self._roots.copy()  # already unit length
+        return self._roots
+
+    @property
+    def roots_normalized(self) -> np.ndarray:
+        if self._roots_normalized is None:
+            _ = self.roots
+        return self._roots_normalized
+
+    def _compute_roots(self) -> np.ndarray:
+        """30 roots of H3: icosidodecahedron vertices (all unit length)."""
+        phi = (1 + np.sqrt(5)) / 2
+        inv_phi = 1 / phi
+        roots = []
+        # 6 axis-aligned: permutations of (±1, 0, 0)
+        for i in range(3):
+            for s in [1, -1]:
+                r = [0.0, 0.0, 0.0]
+                r[i] = s
+                roots.append(r)
+        # 24 golden: even permutations of (±½, ±φ/2, ±1/(2φ))
+        base = [0.5, phi / 2, inv_phi / 2]
+        even_perms = [(0, 1, 2), (1, 2, 0), (2, 0, 1)]
+        for p in even_perms:
+            for signs in product([1, -1], repeat=3):
+                roots.append([signs[k] * base[p[k]] for k in range(3)])
+        return np.array(roots)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        n = len(data) // 3
+        if n == 0:
+            raise ValueError("Data too short for window size 3")
+        w = data[:n * 3].astype(float).reshape(n, 3)
+        if self.normalize:
+            w = w / (np.max(data) + 1e-10)
+            means = w.mean(axis=1, keepdims=True)
+            stds = w.std(axis=1, keepdims=True) + 1e-10
+            w = (w - means) / stds
+        return w
+
+    def find_closest_roots(self, embedded):
+        dots = embedded @ self.roots_normalized.T
+        abs_dots = np.abs(dots)
+        return np.argmax(abs_dots, axis=1), np.max(abs_dots, axis=1)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        embedded = self.embed(data)
+        idx, aligns = self.find_closest_roots(embedded)
+        n_roots = 30
+        unique = len(set(idx))
+        counts = Counter(idx)
+        probs = np.array(list(counts.values())) / len(idx)
+        ent = -np.sum(probs * np.log2(probs + 1e-10))
+        max_ent = np.log2(min(len(idx), n_roots))
+        # Axis-aligned (0-5) vs golden (6-29) preference
+        axis_frac = sum(counts.get(i, 0) for i in range(6)) / (len(idx) + 1e-10)
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "diversity_ratio": unique / n_roots,
+                "alignment_mean": float(np.mean(aligns)),
+                "alignment_std": float(np.std(aligns)),
+                "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
+                "axis_golden_ratio": float(axis_frac),
+            },
+            raw_data={"root_indices": idx, "alignments": aligns}
+        )
+
+
+# =============================================================================
+# H4 COXETER GEOMETRY (600-CELL)
+# =============================================================================
+
+class H4CoxeterGeometry(ExoticGeometry):
+    """
+    H4 Coxeter root system — 600-cell symmetry in 4-byte windows.
+
+    120 roots in 4D: the vertices of a 600-cell. H4 is the largest
+    non-crystallographic Coxeter group, governing the symmetry of
+    4D polytopes with icosahedral cross-sections.
+    """
+
+    def __init__(self, window_size: int = 4, normalize: bool = True):
+        self.window_size = window_size
+        self.normalize = normalize
+        self._roots = None
+        self._roots_normalized = None
+
+    @property
+    def name(self) -> str:
+        return "H4 600-Cell"
+
+    @property
+    def description(self) -> str:
+        return "Projects 4-byte windows onto the 120 roots of H4 (600-cell vertices). Detects non-crystallographic symmetry in 4D."
+
+    @property
+    def view(self) -> str:
+        return "symmetry"
+
+    @property
+    def detects(self) -> str:
+        return "600-cell alignment, non-crystallographic 4D symmetry"
+
+    @property
+    def dimension(self) -> int:
+        return 4
+
+    @property
+    def roots(self) -> np.ndarray:
+        if self._roots is None:
+            self._roots = self._compute_roots()
+            self._roots_normalized = self._roots.copy()  # already unit length
+        return self._roots
+
+    @property
+    def roots_normalized(self) -> np.ndarray:
+        if self._roots_normalized is None:
+            _ = self.roots
+        return self._roots_normalized
+
+    def _compute_roots(self) -> np.ndarray:
+        """120 roots of H4: vertices of the 600-cell (all unit length)."""
+        phi = (1 + np.sqrt(5)) / 2
+        inv_phi = 1 / phi
+        roots = []
+        # 8 axis-aligned: permutations of (±1, 0, 0, 0)
+        for i in range(4):
+            for s in [1, -1]:
+                r = [0.0, 0.0, 0.0, 0.0]
+                r[i] = s
+                roots.append(r)
+        # 16 half-integer: all (±½, ±½, ±½, ±½)
+        for signs in product([0.5, -0.5], repeat=4):
+            roots.append(list(signs))
+        # 96 golden: even permutations of (0, ±½, ±1/(2φ), ±φ/2)
+        base_vals = [0.0, 0.5, inv_phi / 2, phi / 2]
+        all_perms = list(permutations(range(4)))
+        even_perms = [p for p in all_perms if _perm_sign(p) == 1]
+        for p in even_perms:
+            perm_vals = [base_vals[p[k]] for k in range(4)]
+            nz = [i for i in range(4) if perm_vals[i] != 0.0]
+            for signs in product([1, -1], repeat=len(nz)):
+                r = list(perm_vals)
+                for si, pos in enumerate(signs):
+                    r[nz[si]] *= pos
+                roots.append(r)
+        return np.array(roots)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        n = len(data) // 4
+        if n == 0:
+            raise ValueError("Data too short for window size 4")
+        w = data[:n * 4].astype(float).reshape(n, 4)
+        if self.normalize:
+            w = w / (np.max(data) + 1e-10)
+            means = w.mean(axis=1, keepdims=True)
+            stds = w.std(axis=1, keepdims=True) + 1e-10
+            w = (w - means) / stds
+        return w
+
+    def find_closest_roots(self, embedded):
+        dots = embedded @ self.roots_normalized.T
+        abs_dots = np.abs(dots)
+        return np.argmax(abs_dots, axis=1), np.max(abs_dots, axis=1)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        embedded = self.embed(data)
+        idx, aligns = self.find_closest_roots(embedded)
+        n_roots = 120
+        unique = len(set(idx))
+        counts = Counter(idx)
+        probs = np.array(list(counts.values())) / len(idx)
+        ent = -np.sum(probs * np.log2(probs + 1e-10))
+        max_ent = np.log2(min(len(idx), n_roots))
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "diversity_ratio": unique / n_roots,
+                "alignment_mean": float(np.mean(aligns)),
+                "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
+            },
+            raw_data={"root_indices": idx, "alignments": aligns}
+        )
+
+
+# =============================================================================
 # TORUS GEOMETRY
 # =============================================================================
 
@@ -374,6 +944,27 @@ class TorusGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return f"Torus T^{self._dimension}"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Maps consecutive byte pairs to a flat torus (quotient R^2/Z^2). Coverage and nearest-neighbor distance reveal periodic or constrained structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Periodicity, cyclic coverage, uniformity"
 
     @property
     def dimension(self) -> int:
@@ -401,7 +992,7 @@ class TorusGeometry(ExoticGeometry):
         return np.array(points)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute torus metrics: coverage, entropy, uniformity."""
+        """Compute torus metrics: coverage, entropy, uniformity, toroidal distances."""
         embedded = self.embed(data)
 
         # Bin the points
@@ -426,6 +1017,23 @@ class TorusGeometry(ExoticGeometry):
         expected = len(embedded) / n_total
         chi2 = np.sum((hist_flat - expected) ** 2 / (expected + 1e-10))
 
+        # Toroidal mean nearest-neighbor distance (wrap-aware)
+        # Subsample if large to keep O(n²) tractable
+        pts = embedded
+        if len(pts) > 500:
+            rng = np.random.default_rng(0)
+            idx = rng.choice(len(pts), 500, replace=False)
+            pts = pts[idx]
+        if len(pts) > 1:
+            diff = np.abs(pts[:, np.newaxis, :] - pts[np.newaxis, :, :])
+            diff = np.minimum(diff, 1.0 - diff)
+            dist_matrix = np.sqrt(np.sum(diff**2, axis=2))
+            np.fill_diagonal(dist_matrix, np.inf)
+            nn_distances = dist_matrix.min(axis=1)
+            toroidal_mean_nn = float(np.mean(nn_distances))
+        else:
+            toroidal_mean_nn = 0.0
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -434,6 +1042,7 @@ class TorusGeometry(ExoticGeometry):
                 "normalized_entropy": normalized_entropy,
                 "chi2_uniformity": chi2,
                 "occupied_bins": n_occupied,
+                "toroidal_mean_nn_distance": toroidal_mean_nn,
             },
             raw_data={
                 "histogram": hist,
@@ -460,6 +1069,27 @@ class HyperbolicGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Hyperbolic (Poincaré)"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Embeds data in the Poincare disk, where distances grow exponentially near the boundary. Hierarchical or tree-like data clusters near the edge."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "topological"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Hierarchy depth, branching, boundary clustering"
 
     @property
     def dimension(self) -> int:
@@ -502,35 +1132,59 @@ class HyperbolicGeometry(ExoticGeometry):
         return np.array([result.real, result.imag])
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute hyperbolic metrics: centroid, dispersion, boundary proximity."""
+        """Compute hyperbolic metrics using proper Poincare disk geometry."""
         embedded = self.embed(data)
 
-        # Centroid (Euclidean approximation - proper would use Fréchet mean)
-        centroid = np.mean(embedded, axis=0)
-        centroid_norm = np.linalg.norm(centroid)
-
-        # Distances from origin
-        radii = np.linalg.norm(embedded, axis=1)
-        mean_radius = np.mean(radii)
+        if len(embedded) == 0:
+            return GeometryResult(
+                geometry_name=self.name,
+                metrics={
+                    "centroid_offset": 0.0,
+                    "mean_pairwise_distance": 0.0,
+                    "mean_hyperbolic_radius": 0.0,
+                    "boundary_proximity": 0.0,
+                },
+                raw_data={"embedded_points": embedded, "centroid": np.zeros(2)}
+            )
 
         # Hyperbolic distances from origin
+        radii = np.linalg.norm(embedded, axis=1)
         hyp_radii = 2 * np.arctanh(np.clip(radii, 0, 0.9999))
         mean_hyp_radius = np.mean(hyp_radii)
+
+        # Einstein midpoint (proper hyperbolic centroid in Poincare ball)
+        # gamma_i = 1/sqrt(1 - |z_i|^2) is the Lorentz factor
+        r_sq = np.sum(embedded**2, axis=1)
+        gamma = 1.0 / np.sqrt(np.clip(1 - r_sq, 1e-10, None))
+        centroid = np.sum(gamma[:, np.newaxis] * embedded, axis=0) / np.sum(gamma)
+        # Clamp inside disk
+        centroid_r = np.linalg.norm(centroid)
+        if centroid_r >= 1.0:
+            centroid = centroid / (centroid_r + 0.01) * 0.99
+            centroid_r = 0.99
+        centroid_offset = 2 * np.arctanh(min(centroid_r, 0.9999))
+
+        # Mean pairwise hyperbolic distance (sampled for efficiency)
+        rng = np.random.default_rng(0)
+        n_sample = min(len(embedded), 200)
+        sample_idx = rng.choice(len(embedded), n_sample, replace=False)
+        sample = embedded[sample_idx]
+        pairwise_dists = []
+        for i in range(len(sample)):
+            for j in range(i + 1, min(i + 20, len(sample))):
+                pairwise_dists.append(self.hyperbolic_distance(sample[i], sample[j]))
+        mean_pairwise_distance = float(np.mean(pairwise_dists)) if pairwise_dists else 0.0
 
         # Boundary proximity (how close to edge)
         boundary_proximity = np.mean(radii > 0.8)
 
-        # Dispersion (variance of hyperbolic distances)
-        dispersion = np.std(hyp_radii)
-
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "centroid_norm": centroid_norm,
-                "mean_radius": mean_radius,
+                "centroid_offset": centroid_offset,
+                "mean_pairwise_distance": mean_pairwise_distance,
                 "mean_hyperbolic_radius": mean_hyp_radius,
                 "boundary_proximity": boundary_proximity,
-                "dispersion": dispersion,
             },
             raw_data={
                 "embedded_points": embedded,
@@ -566,6 +1220,27 @@ class HeisenbergGeometry(ExoticGeometry):
     def name(self) -> str:
         suffix = " (centered)" if self.center_data else ""
         return f"Heisenberg (Nil){suffix}"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Lifts byte pairs to the 3D Heisenberg group, where the z-coordinate accumulates signed area (xy cross-products). Correlated data twists the path; uncorrelated data stays flat."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Correlation twist, phase coupling, area accumulation"
 
     @property
     def dimension(self) -> int:
@@ -621,9 +1296,10 @@ class HeisenbergGeometry(ExoticGeometry):
         # XY spread
         xy_std = np.std(path[:, :2])
 
-        # Z accumulation profile
+        # Z accumulation profile — normalize by n_steps² to make
+        # scale-invariant (z is cumulative, so raw var grows as O(N²))
         z_values = path[:, 2]
-        z_variance = np.var(z_values)
+        z_variance = np.var(z_values) / (n_steps ** 2) if n_steps > 0 else 0
 
         return GeometryResult(
             geometry_name=self.name,
@@ -658,6 +1334,27 @@ class SphericalGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Spherical S²"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Maps byte triples to the 2-sphere via spherical coordinates. Measures directional concentration, hemisphere balance, and angular spread."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Directional clustering, angular uniformity"
 
     @property
     def dimension(self) -> int:
@@ -741,7 +1438,28 @@ class CantorGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return f"Cantor (base {self.base})"
+        return "Cantor Set"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Interprets bits as a base-3 address into the Cantor set. Gap structure and dust fraction measure self-similarity in the ternary digit stream."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Gaps, dust fraction, ternary self-similarity"
 
     @property
     def dimension(self) -> str:
@@ -767,16 +1485,25 @@ class CantorGeometry(ExoticGeometry):
         """Compute fractal metrics: box-counting dimension estimate, gaps."""
         embedded = self.embed(data)
 
-        # Box-counting dimension estimate
-        dimensions = []
-        for scale in [0.1, 0.05, 0.02, 0.01]:
-            bins = int(1 / scale)
-            hist, _ = np.histogram(embedded, bins=bins, range=(0, 1))
-            n_occupied = np.sum(hist > 0)
-            if n_occupied > 0:
-                dimensions.append(np.log(n_occupied) / np.log(bins))
+        # Box-counting dimension via base-aligned scales.
+        # At scale ε = (1/base)^k, bins exactly match the Cantor intervals,
+        # so N(ε) = 2^k for a full Cantor set → d = log2/log(base).
+        # Misaligned scales (e.g. 0.1, 0.05) straddle gaps and overcount.
+        log_inv_eps = []
+        log_n = []
+        for k in range(1, 9):
+            n_bins = self.base ** k
+            hist, _ = np.histogram(embedded, bins=n_bins, range=(0, 1))
+            n_occupied = int(np.sum(hist > 0))
+            if n_occupied > 1:
+                log_inv_eps.append(k * np.log(self.base))
+                log_n.append(np.log(n_occupied))
 
-        est_dimension = np.mean(dimensions) if dimensions else 1.0
+        if len(log_inv_eps) >= 2:
+            slope, _ = np.polyfit(log_inv_eps, log_n, 1)
+            est_dimension = float(np.clip(slope, 0.0, 1.0))
+        else:
+            est_dimension = 0.0
 
         # Gap analysis
         sorted_coords = np.sort(embedded)
@@ -784,8 +1511,8 @@ class CantorGeometry(ExoticGeometry):
         mean_gap = np.mean(gaps)
         max_gap = np.max(gaps) if len(gaps) > 0 else 0
 
-        # Coverage
-        coverage = len(set(np.round(embedded, 4))) / len(embedded)
+        # Coverage (fraction of distinct embedded values)
+        coverage = len(np.unique(embedded)) / len(embedded)
 
         return GeometryResult(
             geometry_name=self.name,
@@ -807,9 +1534,14 @@ class CantorGeometry(ExoticGeometry):
 
 class UltrametricGeometry(ExoticGeometry):
     """
-    Ultrametric/p-adic Geometry - detects hierarchical tree structure.
+    Ultrametric/p-adic Geometry — detects number-theoretic hierarchy.
 
-    Uses ultrametric distance where d(x,z) ≤ max(d(x,y), d(y,z)).
+    Computes p-adic distance between byte values, where d(a,b) = p^(-v_p(a-b))
+    and v_p is the p-adic valuation. This measures divisibility structure:
+    values whose difference is divisible by high powers of p are "close."
+
+    Note: this detects hierarchy in the VALUE space (number-theoretic),
+    not temporal hierarchy or structural nesting of the time series.
     """
 
     def __init__(self, p: int = 2):
@@ -818,6 +1550,27 @@ class UltrametricGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return f"{self.p}-adic"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Measures distances via 2-adic valuation: two bytes are close if they agree on many trailing bits. Ultrametric violations reveal non-hierarchical structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "p-adic clustering, divisibility depth, modular structure"
 
     @property
     def dimension(self) -> str:
@@ -845,7 +1598,8 @@ class UltrametricGeometry(ExoticGeometry):
 
         # Sample pairwise distances
         n = min(len(embedded), 500)
-        indices = np.random.choice(len(embedded), n, replace=False)
+        rng = np.random.default_rng(0)
+        indices = rng.choice(len(embedded), n, replace=False)
         sample = embedded[indices]
 
         distances = []
@@ -863,25 +1617,11 @@ class UltrametricGeometry(ExoticGeometry):
             for d in set(distances)
         ])
 
-        # Check ultrametric property violations (should be 0 for tree-like)
-        violations = 0
-        total_checks = 0
-        for i in range(min(100, len(sample) - 2)):
-            d_ab = self.p_adic_distance(sample[i], sample[i+1])
-            d_bc = self.p_adic_distance(sample[i+1], sample[i+2])
-            d_ac = self.p_adic_distance(sample[i], sample[i+2])
-            if d_ac > max(d_ab, d_bc) * 1.001:  # Small tolerance
-                violations += 1
-            total_checks += 1
-
-        violation_rate = violations / total_checks if total_checks > 0 else 0
-
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "mean_distance": mean_dist,
                 "distance_entropy": dist_entropy,
-                "ultrametric_violation_rate": violation_rate,
             },
             raw_data={
                 "sample_distances": distances,
@@ -895,11 +1635,14 @@ class UltrametricGeometry(ExoticGeometry):
 
 class TropicalGeometry(ExoticGeometry):
     """
-    Tropical Geometry - detects piecewise-linear structure.
+    Piecewise-Linear Geometry — detects linear regimes and slope transitions.
 
-    In tropical algebra: ⊕ = min, ⊗ = +
-    Tropical polynomials become piecewise-linear functions.
-    Useful for optimization and detecting linear constraints.
+    Analyzes the piecewise-linear structure of 1D signals: how many distinct
+    linear segments exist, how they break, and the envelope structure.
+
+    Note: Named "Tropical" for historical reasons. The metrics do not use
+    tropical semiring (min-plus) operations. They detect piecewise-linear
+    structure via second-derivative thresholding and running-minimum envelopes.
     """
 
     def __init__(self, input_scale: float = 255.0):
@@ -909,32 +1652,42 @@ class TropicalGeometry(ExoticGeometry):
     def name(self) -> str:
         return "Tropical"
 
+
+    @property
+
+    def description(self) -> str:
+
+        return "Tropical algebra replaces (add,multiply) with (min,add). The resulting piecewise-linear envelope reveals slope transitions and regime boundaries."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Piecewise-linear regimes, slope diversity, envelope structure"
+
     @property
     def dimension(self) -> str:
         return "piecewise-linear"
 
-    def tropical_add(self, a: float, b: float) -> float:
-        """Tropical addition: a ⊕ b = min(a, b)"""
-        return min(a, b)
-
-    def tropical_mult(self, a: float, b: float) -> float:
-        """Tropical multiplication: a ⊗ b = a + b"""
-        return a + b
-
     def embed(self, data: np.ndarray) -> np.ndarray:
-        """Embed data for tropical analysis."""
+        """Normalize data to [0, 1] for piecewise-linear analysis."""
         data = self.validate_data(data)
         return self._normalize_to_unit(data, self.input_scale)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute tropical metrics: linearity detection, tropical convexity."""
+        """Compute piecewise-linear structure metrics."""
         embedded = self.embed(data)
-
-        # Tropical metric: d(x,y) = max|xᵢ - yᵢ| (L∞ norm)
-        # Measure how "tropical-linear" the sequence is
         n = len(embedded)
 
-        # Piecewise linearity: count slope changes
+        # Piecewise linearity: count slope changes via second-derivative threshold
         if n < 3:
             slope_changes = 0
             linearity = 1.0
@@ -944,14 +1697,12 @@ class TropicalGeometry(ExoticGeometry):
             # Linearity: fraction without slope change
             linearity = 1 - slope_changes / (n - 2)
 
-        # Tropical convex hull approximation (min-plus)
-        # For 1D, this is just the running minimum
+        # Running-minimum envelope area
+        # Measures how far the signal deviates above its cumulative minimum
         running_min = np.minimum.accumulate(embedded)
-        tropical_hull_area = np.sum(embedded - running_min)
+        envelope_area = np.sum(embedded - running_min)
 
-        # Check for tropical polynomial structure
-        # A tropical polynomial has at most k+1 linear pieces for degree k
-        # Count distinct "slopes" in windows
+        # Slope diversity: count distinct windowed slopes
         window_size = 10
         slopes = []
         for i in range(0, n - window_size, window_size):
@@ -965,7 +1716,7 @@ class TropicalGeometry(ExoticGeometry):
             metrics={
                 "linearity": linearity,
                 "slope_changes": slope_changes,
-                "tropical_hull_area": tropical_hull_area,
+                "envelope_area": envelope_area,
                 "unique_slopes": unique_slopes,
             },
             raw_data={
@@ -994,6 +1745,27 @@ class WassersteinGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Wasserstein"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Computes optimal transport (earth mover's) distance between windowed histograms. Self-similarity and concentration measure distributional stability."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Distribution shape, transport cost, self-similarity"
 
     @property
     def dimension(self) -> str:
@@ -1065,13 +1837,34 @@ class PersistentHomologyGeometry(ExoticGeometry):
     Note: This is a simplified implementation. For full TDA, use giotto-tda or ripser.
     """
 
-    def __init__(self, n_points: int = 100, max_dim: int = 1):
+    def __init__(self, n_points: int = 50, max_dim: int = 1):
         self.n_points = n_points
         self.max_dim = max_dim
 
     @property
     def name(self) -> str:
         return "Persistent Homology"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Builds a Vietoris-Rips filtration on delay-embedded points. Persistent features (connected components H0, loops H1) that survive across scales indicate robust topological structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "topological"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Holes, loops, connected components, topological persistence"
 
     @property
     def dimension(self) -> str:
@@ -1082,14 +1875,28 @@ class PersistentHomologyGeometry(ExoticGeometry):
         data = self.validate_data(data)
         data = data.astype(float)
 
-        # Subsample if too large
+        # Subsample: use contiguous block to preserve temporal adjacency.
+        # np.linspace subsampling scatters points across the signal,
+        # destroying the delay embedding's topology (e.g., a periodic
+        # signal's ellipse becomes a disconnected scatter).
         if len(data) > self.n_points * 2:
-            indices = np.linspace(0, len(data) - 2, self.n_points, dtype=int)
-        else:
-            indices = np.arange(0, len(data) - 1)
+            data = data[:self.n_points * 2]
+
+        indices = np.arange(0, len(data) - 1)
 
         # Delay embedding: (x[i], x[i+1])
         points = np.array([[data[i], data[i + 1]] for i in indices])
+
+        # Deduplicate: uint8 inputs create many exact-duplicate embedded
+        # points (e.g., a sine with 89 points may have only 20 unique).
+        # Duplicates create degenerate Rips complexes with thousands of
+        # spurious zero-birth H1 features. Keep unique points only.
+        points = np.unique(points, axis=0)
+
+        # Cap at n_points to keep TDA tractable
+        if len(points) > self.n_points:
+            points = points[:self.n_points]
+
         return points
 
     def compute_rips_homology_h0(self, points: np.ndarray) -> List[Tuple[float, float]]:
@@ -1139,9 +1946,112 @@ class PersistentHomologyGeometry(ExoticGeometry):
 
         return persistence_pairs
 
+    def compute_rips_homology_h1(self, points: np.ndarray,
+                                  dists: np.ndarray,
+                                  max_filtration: float) -> List[Tuple[float, float]]:
+        """
+        Compute H1 (loops) persistent homology via boundary matrix reduction over Z_2.
+
+        Algorithm:
+        1. Build spanning tree (union-find) to identify non-tree edges = H1 births
+        2. Enumerate triangles up to filtration threshold
+        3. Column-reduce boundary matrix: each triangle may kill an H1 cycle
+        """
+        n = len(points)
+        if n < 3:
+            return []
+
+        # Build sorted edges with index mapping
+        edge_list = []    # [(filtration, i, j), ...]
+        for i in range(n):
+            for j in range(i + 1, n):
+                edge_list.append((dists[i, j], i, j))
+        edge_list.sort()
+
+        # Map (i,j) -> filtration-order index
+        edge_order = {}
+        for idx, (f, i, j) in enumerate(edge_list):
+            edge_order[(i, j)] = idx
+
+        # Union-find to identify tree vs non-tree edges
+        parent = list(range(n))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        non_tree_edges = set()
+        for f, i, j in edge_list:
+            ri, rj = find(i), find(j)
+            if ri != rj:
+                parent[rj] = ri
+            else:
+                non_tree_edges.add(edge_order[(i, j)])
+
+        # Enumerate triangles up to max_filtration
+        # Optimized: instead of O(n^3) combinations, only check neighbors in the threshold graph
+        adj = [[] for _ in range(n)]
+        for (f, i, j) in edge_list:
+            if f > max_filtration:
+                break
+            adj[i].append(j)
+            adj[j].append(i)
+
+        triangles = []
+        for i in range(n):
+            # Only check neighbors with higher index to avoid double-counting
+            neighbors = sorted([nj for nj in adj[i] if nj > i])
+            for idx_j, j in enumerate(neighbors):
+                for k in neighbors[idx_j + 1:]:
+                    # Check if (j,k) exists and is within filtration
+                    if dists[j, k] <= max_filtration:
+                        tri_filt = max(dists[i, j], dists[j, k], dists[i, k])
+                        triangles.append((tri_filt, i, j, k))
+        triangles.sort()
+
+        # Boundary matrix column reduction over Z_2
+        pivot_to_col = {}
+        h1_pairs = []
+
+        for tri_filt, i, j, k in triangles:
+            e1 = edge_order[(min(i, j), max(i, j))]
+            e2 = edge_order[(min(j, k), max(j, k))]
+            e3 = edge_order[(min(i, k), max(i, k))]
+            boundary = {e1, e2, e3}
+
+            while boundary:
+                pivot = max(boundary)
+                if pivot in pivot_to_col:
+                    boundary ^= pivot_to_col[pivot]
+                else:
+                    pivot_to_col[pivot] = boundary
+                    if pivot in non_tree_edges:
+                        h1_pairs.append((edge_list[pivot][0], tri_filt))
+                    break
+
+        return h1_pairs
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute persistence metrics."""
+        """Compute persistence metrics (H0 components + H1 loops)."""
         points = self.embed(data)
+
+        if len(points) == 0:
+            return GeometryResult(
+                geometry_name=self.name,
+                metrics={
+                    "total_persistence": 0.0,
+                    "n_significant_features": 0,
+                    "persistence_entropy": 0.0,
+                    "max_components": 0,
+                    "max_lifetime": 0.0,
+                    "n_h1_features": 0,
+                    "max_h1_lifetime": 0.0,
+                    "h1_total_persistence": 0.0,
+                },
+                raw_data={"points": points}
+            )
 
         # Normalize points to [0,1]
         points = points - points.min()
@@ -1150,25 +2060,34 @@ class PersistentHomologyGeometry(ExoticGeometry):
         # Compute H0 persistence
         h0_pairs = self.compute_rips_homology_h0(points)
 
-        # Persistence statistics
+        # H0 statistics
         lifetimes = [death - birth for birth, death in h0_pairs]
         lifetimes = sorted(lifetimes, reverse=True)
-
-        # Total persistence
         total_persistence = sum(lifetimes)
-
-        # Number of significant features (lifetime > threshold)
         threshold = 0.1
         n_significant = sum(1 for l in lifetimes if l > threshold)
-
-        # Persistence entropy
         lifetimes_arr = np.array(lifetimes)
         probs = lifetimes_arr / (total_persistence + 1e-10)
         persistence_entropy = -np.sum(probs * np.log2(probs + 1e-10))
-
-        # Betti curve summary (number of components at different scales)
-        # Simplified: just report max and final
         max_components = len(h0_pairs)
+
+        # Compute H1 persistence (loops)
+        h1_pairs = []
+        h1_n_significant = 0
+        h1_max_lifetime = 0.0
+        h1_total_persistence = 0.0
+
+        if self.max_dim >= 1 and len(points) >= 3:
+            from scipy.spatial.distance import pdist, squareform
+            dists = squareform(pdist(points))
+            max_filt = max(d for _, d in h0_pairs) if h0_pairs else 1.0
+            h1_pairs = self.compute_rips_homology_h1(points, dists, max_filt)
+
+            if h1_pairs:
+                h1_lifetimes = sorted([d - b for b, d in h1_pairs], reverse=True)
+                h1_total_persistence = sum(h1_lifetimes)
+                h1_n_significant = sum(1 for l in h1_lifetimes if l > threshold)
+                h1_max_lifetime = h1_lifetimes[0]
 
         return GeometryResult(
             geometry_name=self.name,
@@ -1178,9 +2097,13 @@ class PersistentHomologyGeometry(ExoticGeometry):
                 "persistence_entropy": persistence_entropy,
                 "max_components": max_components,
                 "max_lifetime": lifetimes[0] if lifetimes else 0,
+                "n_h1_features": h1_n_significant,
+                "max_h1_lifetime": h1_max_lifetime,
+                "h1_total_persistence": h1_total_persistence,
             },
             raw_data={
                 "h0_pairs": h0_pairs,
+                "h1_pairs": h1_pairs,
                 "lifetimes": lifetimes,
                 "points": points,
             }
@@ -1207,17 +2130,48 @@ class LorentzianGeometry(ExoticGeometry):
     def name(self) -> str:
         return "Lorentzian"
 
+
+    @property
+
+    def description(self) -> str:
+
+        return "Treats consecutive (time, value) pairs as events in 1+1 Minkowski spacetime. Classifies intervals as timelike, spacelike, or lightlike to detect causal structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Causal ordering, lightcone structure, timelike fraction"
+
     @property
     def dimension(self) -> str:
         return "1+1 spacetime"
 
     def embed(self, data: np.ndarray) -> np.ndarray:
-        """Embed as spacetime events (t, x)."""
-        data = self.validate_data(data)
-        data = self._normalize_to_unit(data, self.input_scale)
+        """Embed as spacetime events (t, x) with resolution-matched scales.
 
-        # t = index (time), x = value (space)
-        events = np.array([[i / len(data), data[i]] for i in range(len(data))])
+        Scale time so that c=1 corresponds to sqrt(n_levels) byte values
+        per step.  For uint8 (256 levels), the lightcone boundary is at
+        16 byte levels per step — the geometric mean of the spatial
+        resolution scales.  Without this, c=1 in the naive (i/N, v/255)
+        embedding makes the minimum nonzero velocity ~N/255 ≈ 32 × c,
+        collapsing causal_order_preserved to "fraction of identical bytes."
+        """
+        data = self.validate_data(data)
+        data_norm = self._normalize_to_unit(data, self.input_scale)
+        n = len(data_norm)
+
+        n_levels = 256.0  # uint8 resolution
+        t = np.arange(n) / np.sqrt(n_levels)  # Δt = 1/16 per step
+        events = np.column_stack([t, data_norm])
         return events
 
     def minkowski_interval(self, e1: np.ndarray, e2: np.ndarray) -> float:
@@ -1236,43 +2190,48 @@ class LorentzianGeometry(ExoticGeometry):
         events = self.embed(data)
         n = len(events)
 
-        # Sample intervals
+        if n < 3:
+            return GeometryResult(
+                geometry_name=self.name,
+                metrics={k: 0.0 for k in [
+                    "timelike_fraction", "spacelike_fraction",
+                    "lightlike_fraction", "causal_order_preserved",
+                    "mean_velocity", "superluminal_fraction"]},
+                raw_data={"events": events})
+
+        # --- Sample intervals at log-spaced separations ---
+        # Uniform sampling is dominated by large time gaps (trivially
+        # timelike).  Log-spaced separations probe causal structure across
+        # scales: short-range (local smoothness) to long-range (global drift).
+        rng = np.random.default_rng(0)
         n_samples = min(500, n * (n - 1) // 2)
-        intervals = []
+        log_seps = rng.uniform(0, np.log(max(n // 2, 2)), n_samples)
+        seps = np.clip(np.exp(log_seps).astype(int), 1, n - 1)
+        starts = np.array([rng.integers(0, n - s) for s in seps])
+        ends = starts + seps
 
-        for _ in range(n_samples):
-            i, j = np.random.randint(0, n, 2)
-            if i != j:
-                s2 = self.minkowski_interval(events[i], events[j])
-                intervals.append(s2)
+        dt = events[ends, 0] - events[starts, 0]
+        dx = events[ends, 1] - events[starts, 1]
+        intervals = -dt**2 + dx**2
+        separations = dt**2 + dx**2
 
-        intervals = np.array(intervals)
+        rel_tol = 0.01
+        near_lightcone = np.abs(intervals) < rel_tol * (separations + 1e-20)
+        timelike_frac = float(np.mean((intervals < 0) & ~near_lightcone))
+        spacelike_frac = float(np.mean((intervals > 0) & ~near_lightcone))
+        lightlike_frac = float(np.mean(near_lightcone))
 
-        # Classify separations
-        timelike_frac = np.mean(intervals < -1e-10)
-        spacelike_frac = np.mean(intervals > 1e-10)
-        lightlike_frac = np.mean(np.abs(intervals) < 1e-10)
+        # --- Causal ordering: consecutive events ---
+        con_dt = events[1:, 0] - events[:-1, 0]
+        con_dx = events[1:, 1] - events[:-1, 1]
+        con_s2 = -con_dt**2 + con_dx**2
+        causal_order_preserved = float(np.mean(con_s2 < 0))
 
-        # Causal ordering: for consecutive events
-        consecutive_intervals = []
-        for i in range(n - 1):
-            s2 = self.minkowski_interval(events[i], events[i + 1])
-            consecutive_intervals.append(s2)
-
-        consecutive_intervals = np.array(consecutive_intervals)
-        causal_order_preserved = np.mean(consecutive_intervals < 0)
-
-        # Light cone analysis: how fast does the signal propagate?
-        # dx/dt for consecutive events
-        velocities = []
-        for i in range(n - 1):
-            dt = events[i + 1, 0] - events[i, 0]
-            dx = events[i + 1, 1] - events[i, 1]
-            if dt > 1e-10:
-                velocities.append(abs(dx / dt))
-
-        mean_velocity = np.mean(velocities) if velocities else 0
-        superluminal_frac = np.mean(np.array(velocities) > 1) if velocities else 0
+        # --- Light cone analysis: consecutive velocities ---
+        good = con_dt > 1e-10
+        velocities = np.abs(con_dx[good] / con_dt[good])
+        mean_velocity = float(np.mean(velocities)) if len(velocities) > 0 else 0.0
+        superluminal_frac = float(np.mean(velocities > 1)) if len(velocities) > 0 else 0.0
 
         return GeometryResult(
             geometry_name=self.name,
@@ -1309,30 +2268,52 @@ class SpiralGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return f"Spiral ({self.spiral_type})"
+        return "Logarithmic Spiral"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Maps the time series to a logarithmic spiral in polar coordinates. Growth rate, winding number, and angular uniformity measure multiplicative structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "scale"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Growth rate, spiral tightness, radial regularity"
 
     @property
     def dimension(self) -> int:
         return 2
 
     def embed(self, data: np.ndarray) -> np.ndarray:
-        """Embed data on spiral."""
+        """Embed data on spiral. Angle advances by a data-dependent step each sample,
+        so angular metrics (winding, uniformity) reflect the data's structure."""
         data = self.validate_data(data)
         data = self._normalize_to_unit(data, self.input_scale)
 
         points = []
-        for i, val in enumerate(data):
-            theta = i * 0.1  # Angle increases with index
+        theta = 0.0
+        for val in data:
+            # Angular step: base rate + data modulation
+            # val in [0,1]: 0 → slow rotation, 1 → fast rotation
+            theta += 0.05 + val * 0.15  # step in [0.05, 0.20]
 
             if self.spiral_type == "logarithmic":
-                # r = a * e^(b*θ), with r modulated by value
-                r = (0.1 + val) * np.exp(0.1 * theta)
+                r = (0.1 + val) * np.exp(0.02 * theta)
             elif self.spiral_type == "archimedean":
-                # r = a + b*θ
                 r = (0.1 + val) + 0.05 * theta
             else:  # fermat
-                # r² = a²*θ
-                r = np.sqrt((0.1 + val) * theta)
+                r = np.sqrt((0.1 + val) * max(theta, 0.01))
 
             x = r * np.cos(theta)
             y = r * np.sin(theta)
@@ -1370,9 +2351,13 @@ class SpiralGeometry(ExoticGeometry):
             angular_uniformity = 1
 
         # Spiral tightness (ratio of radial to angular change)
+        # Log-transform radius-based metrics: the logarithmic spiral
+        # parameterization produces exp(0.02 * θ) growth, which overflows
+        # for long data (N=16384 → θ ~ 2000 → exp(40) ~ 10^17).
+        # Log/log preserves ordering while keeping values on comparable scale.
         if len(radii) > 1:
             radial_change = radii[-1] - radii[0]
-            tightness = radial_change / (total_winding + 1e-10)
+            tightness = np.log1p(abs(radial_change)) / (np.log1p(abs(total_winding)) + 1e-10)
         else:
             tightness = 0
 
@@ -1383,7 +2368,7 @@ class SpiralGeometry(ExoticGeometry):
                 "total_winding": total_winding,
                 "angular_uniformity": angular_uniformity,
                 "tightness": tightness,
-                "final_radius": radii[-1] if len(radii) > 0 else 0,
+                "final_radius": float(np.log1p(radii[-1])) if len(radii) > 0 else 0,
             },
             raw_data={
                 "points": points,
@@ -1410,6 +2395,27 @@ class ProjectiveGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Projective ℙ²"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Lifts byte triples to projective 2-space (homogeneous coordinates). Cross-ratio variance measures departure from projective invariance."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Scale invariance, cross-ratio stability, projective curvature"
 
     @property
     def dimension(self) -> int:
@@ -1460,19 +2466,28 @@ class ProjectiveGeometry(ExoticGeometry):
 
         distances = np.array(distances)
 
-        # Cross-ratio invariant (projective invariant)
-        # For 4 collinear points, cross-ratio is preserved
+        # Cross-ratio invariant (projective invariant of 4 collinear points)
+        # For 4 points in P^2, project p3,p4 onto span(p1,p2) and compute:
+        #   p3 ≈ α·p1 + β·p2, p4 ≈ γ·p1 + δ·p2
+        #   CR = (α·δ) / (β·γ)
+        rng = np.random.default_rng(0)
         cross_ratios = []
         for _ in range(min(100, n // 4)):
-            idx = np.random.choice(n, 4, replace=False)
-            p = points[idx]
-            # Simplified: compute ratio of distance products
-            d01 = self.projective_distance(p[0], p[1])
-            d23 = self.projective_distance(p[2], p[3])
-            d02 = self.projective_distance(p[0], p[2])
-            d13 = self.projective_distance(p[1], p[3])
-            if d02 * d13 > 1e-10:
-                cr = (d01 * d23) / (d02 * d13)
+            idx = rng.choice(n, 4, replace=False)
+            p1, p2, p3, p4 = points[idx]
+            # Project p3, p4 onto span(p1, p2) via least squares
+            A = np.column_stack([p1, p2])
+            coeff3, _, _, _ = np.linalg.lstsq(A, p3, rcond=None)
+            coeff4, _, _, _ = np.linalg.lstsq(A, p4, rcond=None)
+            alpha, beta = coeff3
+            gamma, delta = coeff4
+            denom = beta * gamma
+            if abs(denom) > 1e-10:
+                cr = (alpha * delta) / denom
+                # Clip: near-coincident projected points produce divergent
+                # cross-ratios that dominate the std. CR is a Möbius invariant
+                # so ±100 is already far from the generic range [0,1].
+                cr = np.clip(cr, -100, 100)
                 cross_ratios.append(cr)
 
         cross_ratio_std = np.std(cross_ratios) if cross_ratios else 0
@@ -1481,7 +2496,7 @@ class ProjectiveGeometry(ExoticGeometry):
         collinear_count = 0
         total_triples = 0
         for _ in range(min(100, n // 3)):
-            idx = np.random.choice(n, 3, replace=False)
+            idx = rng.choice(n, 3, replace=False)
             p = points[idx]
             # Volume of parallelepiped (0 = collinear in ℙ²)
             vol = abs(np.linalg.det(p))
@@ -1525,24 +2540,49 @@ class FisherGeometry(ExoticGeometry):
     def name(self) -> str:
         return "Fisher Information"
 
+
+    @property
+
+    def description(self) -> str:
+
+        return "Treats windowed histograms as points on a statistical manifold. The Fisher metric measures how sharply the distribution changes — high curvature means the data is informationally rich."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Information gradient, statistical curvature, parameter sensitivity"
+
     @property
     def dimension(self) -> str:
         return "statistical manifold"
 
     def embed(self, data: np.ndarray) -> np.ndarray:
-        """Embed as histogram (empirical distribution parameters)."""
+        """Embed as histogram with Laplace smoothing (empirical distribution)."""
         data = self.validate_data(data)
         data = data.astype(float)
         data = (data - data.min()) / (data.max() - data.min() + 1e-10)
         hist, _ = np.histogram(data, bins=self.n_bins, range=(0, 1))
-        return hist.astype(float) / (len(data) + 1e-10)
+        # Laplace smoothing: add 1 pseudocount per bin to guarantee
+        # all probabilities are positive and bounded away from zero.
+        # This prevents catastrophic Fisher information values (1/p → ∞).
+        return (hist + 1).astype(float) / (len(data) + self.n_bins)
 
     def fisher_information(self, p: np.ndarray) -> np.ndarray:
         """
-        Compute Fisher information matrix for multinomial.
-        For multinomial, F_ij = δ_ij/p_i (diagonal)
+        Compute Fisher information matrix for multinomial (Poisson approx).
+        For multinomial with Laplace-smoothed probabilities:
+        F_ij = δ_ij / p_i (diagonal, ignoring simplex constraint).
+        All p_i > 0 is guaranteed by Laplace smoothing in embed().
         """
-        p = np.clip(p, 1e-10, 1)
         return np.diag(1.0 / p)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
@@ -1552,9 +2592,12 @@ class FisherGeometry(ExoticGeometry):
         # Fisher information matrix
         F = self.fisher_information(p)
 
-        # Scalar curvature proxy: trace and determinant
+        # Scalar curvature proxy: trace and log-determinant.
+        # F = diag(1/p_i) so det(F) = prod(1/p_i) which spans 40+ orders of
+        # magnitude (10^19 for uniform → 10^58 for concentrated data).
+        # Log-scale is mandatory for PCA and distance-based analysis.
         trace_F = np.trace(F)
-        det_F = np.linalg.det(F)
+        log_det_F = float(np.sum(np.log(np.diag(F))))  # = -sum(log(p_i))
 
         # Effective dimension (number of significant parameters)
         eigenvalues = np.linalg.eigvalsh(F)
@@ -1569,17 +2612,13 @@ class FisherGeometry(ExoticGeometry):
         uniform = np.ones(self.n_bins) / self.n_bins
         kl_div = np.sum(p * np.log((p + 1e-10) / uniform))
 
-        # Jeffreys prior volume (sqrt(det(F)))
-        jeffreys_volume = np.sqrt(abs(det_F)) if det_F > 0 else 0
-
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "trace_fisher": trace_F,
-                "det_fisher": det_F,
+                "log_det_fisher": log_det_F,
                 "effective_dimension": eff_dim,
                 "kl_from_uniform": kl_div,
-                "jeffreys_volume": jeffreys_volume,
             },
             raw_data={
                 "distribution": p,
@@ -1606,6 +2645,27 @@ class SymplecticGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Symplectic"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Constructs a phase portrait (position vs. momentum) from the time series. The symplectic area form measures trajectory stationarity and return structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Phase space area, trajectory stationarity, recurrence"
 
     @property
     def dimension(self) -> int:
@@ -1651,14 +2711,18 @@ class SymplecticGeometry(ExoticGeometry):
         # Phase space area
         total_area = self.symplectic_area(points)
 
-        # Liouville measure preservation (area should be constant for Hamiltonian)
+        # Windowed phase-space area: coefficient of variation of shoelace areas
+        # across trajectory windows. Low CV suggests stationary dynamics;
+        # high CV suggests transient or multi-regime behavior.
+        # Note: this is NOT a test of Liouville measure preservation (which
+        # concerns volume of phase-space *regions*, not trajectory segments).
         window_size = min(50, len(points) // 4)
         areas = []
         for i in range(0, len(points) - window_size, window_size):
             window = points[i:i + window_size]
             areas.append(self.symplectic_area(window))
 
-        area_variation = np.std(areas) / (np.mean(areas) + 1e-10) if areas else 0
+        windowed_area_cv = np.std(areas) / (np.mean(areas) + 1e-10) if areas else 0
 
         # Poincaré recurrence: does the trajectory return near starting point?
         start = points[0]
@@ -1673,7 +2737,7 @@ class SymplecticGeometry(ExoticGeometry):
             geometry_name=self.name,
             metrics={
                 "total_area": total_area,
-                "area_variation": area_variation,
+                "windowed_area_cv": windowed_area_cv,
                 "min_return_distance": min_return_dist,
                 "q_spread": q_spread,
                 "p_spread": p_spread,
@@ -1716,6 +2780,27 @@ class SolGeometry(ExoticGeometry):
     def name(self) -> str:
         return "Sol (Thurston)"
 
+
+    @property
+
+    def description(self) -> str:
+
+        return "One of Thurston's eight 3D geometries. The Sol metric stretches one direction exponentially while contracting the other, detecting anisotropic scaling."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Hyperbolic splitting, exponential divergence"
+
     @property
     def dimension(self) -> int:
         return 3
@@ -1741,11 +2826,12 @@ class SolGeometry(ExoticGeometry):
         path = [np.array([0.0, 0.0, 0.0])]
 
         for i in range(n_steps):
-            # Scale z smaller to avoid numerical overflow
-            step = np.array([data[3*i], data[3*i + 1], data[3*i + 2] * 0.1])
+            step = np.array([data[3*i], data[3*i + 1], data[3*i + 2]])
             new_point = self.sol_multiply(path[-1], step)
-            # Clamp to avoid overflow
-            new_point = np.clip(new_point, -100, 100)
+            # Clamp z to [-5, 5] so exp(2z) stays in [~4e-5, ~22026],
+            # safe for float64 and large enough for Sol structure to matter.
+            new_point[2] = np.clip(new_point[2], -5, 5)
+            new_point[:2] = np.clip(new_point[:2], -1000, 1000)
             path.append(new_point)
 
         return np.array(path)
@@ -1766,12 +2852,15 @@ class SolGeometry(ExoticGeometry):
         z_drift = final[2]
         z_variance = np.var(path[:, 2])
 
-        # Path length
+        # Path length in the Sol metric: ds² = e^(2z)dx² + e^(-2z)dy² + dz²
         diffs = np.diff(path, axis=0)
-        path_length = np.sum(np.linalg.norm(diffs, axis=1))
-
-        # Anisotropy: ratio of spreads in x vs y
-        anisotropy = np.std(path[:, 0]) / (np.std(path[:, 1]) + 1e-10)
+        z_vals = path[:-1, 2]  # z at start of each segment
+        sol_ds = np.sqrt(
+            np.exp(2 * z_vals) * diffs[:, 0]**2 +
+            np.exp(-2 * z_vals) * diffs[:, 1]**2 +
+            diffs[:, 2]**2
+        )
+        path_length = np.sum(sol_ds)
 
         return GeometryResult(
             geometry_name=self.name,
@@ -1780,7 +2869,6 @@ class SolGeometry(ExoticGeometry):
                 "z_drift": z_drift,
                 "z_variance": z_variance,
                 "path_length": path_length,
-                "anisotropy": anisotropy,
             },
             raw_data={
                 "path": path,
@@ -1803,6 +2891,27 @@ class ProductS2RGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "S² × ℝ (Thurston)"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Thurston geometry: product of the 2-sphere and the real line. Detects data with layered spherical structure — directional concentration that drifts over time."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Spherical layering, radial drift"
 
     @property
     def dimension(self) -> int:
@@ -1892,6 +3001,27 @@ class ProductH2RGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "H² × ℝ (Thurston)"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Thurston geometry: product of the hyperbolic plane and the real line. Combines hierarchical depth (hyperbolic) with vertical drift (Euclidean)."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Hyperbolic layering, vertical drift"
 
     @property
     def dimension(self) -> int:
@@ -1989,15 +3119,40 @@ class SL2RGeometry(ExoticGeometry):
     def name(self) -> str:
         return "SL(2,ℝ) (Thurston)"
 
+
+    @property
+
+    def description(self) -> str:
+
+        return "Thurston geometry: the universal cover of the unit tangent bundle of H^2. Accumulates 2x2 matrices and classifies the path as elliptic, parabolic, or hyperbolic by trace."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Shear flow, geodesic divergence, rotation-shear coupling"
+
     @property
     def dimension(self) -> int:
         return 3  # SL(2,R) is 3-dimensional
 
     def embed(self, data: np.ndarray) -> np.ndarray:
         """
-        Embed data as elements of SL(2,ℝ).
-        Parametrize as: [[a, b], [c, d]] with ad - bc = 1
-        Use (a, b, c) with d = (1 + bc) / a
+        Embed data as elements of SL(2,ℝ) using the KAK decomposition.
+        Each element = rotation(θ) @ diag(e^t, e^{-t}) @ rotation(φ).
+        This naturally spans all three conjugacy classes:
+          - small t → elliptic (rotation-dominated)
+          - large t → hyperbolic (boost-dominated)
+          - t ≈ 0 boundary → parabolic
+        Three bytes → (θ, t, φ), covering the full group topology.
         """
         data = self.validate_data(data)
         data = self._normalize_to_unit(data, self.input_scale)
@@ -2006,17 +3161,20 @@ class SL2RGeometry(ExoticGeometry):
         matrices = []
 
         for i in range(n_matrices):
-            # Parametrize SL(2,R) element
-            a = data[3*i] + 0.5  # Avoid a=0
-            b = data[3*i + 1] - 0.5
-            c = data[3*i + 2] - 0.5
+            theta = data[3*i] * 2 * np.pi       # rotation angle [0, 2π)
+            t = (data[3*i + 1] - 0.5) * 4.0     # boost parameter [-2, 2]
+            phi = data[3*i + 2] * 2 * np.pi      # rotation angle [0, 2π)
 
-            if abs(a) < 0.01:
-                a = 0.01
+            ct, st = np.cos(theta), np.sin(theta)
+            cp, sp = np.cos(phi), np.sin(phi)
+            et = np.exp(t)
 
-            d = (1 + b * c) / a  # Ensures det = 1
+            # R(θ) @ diag(e^t, e^{-t}) @ R(φ)
+            M = np.array([[ct, -st], [st, ct]]) \
+                @ np.array([[et, 0], [0, 1.0/et]]) \
+                @ np.array([[cp, -sp], [sp, cp]])
 
-            matrices.append(np.array([[a, b], [c, d]]))
+            matrices.append(M)
 
         return matrices
 
@@ -2038,22 +3196,30 @@ class SL2RGeometry(ExoticGeometry):
                 raw_data={"matrices": matrices}
             )
 
-        # Trace statistics (trace² - 2 classifies: <2 elliptic, =2 parabolic, >2 hyperbolic)
+        # Trace classification for SL(2,R):
+        #   Elliptic:   |trace| < 2  ⟺  trace² < 4
+        #   Parabolic:  |trace| = 2  ⟺  trace² = 4
+        #   Hyperbolic: |trace| > 2  ⟺  trace² > 4
         traces = [np.trace(M) for M in matrices]
-        trace_sq_minus_2 = [t**2 - 2 for t in traces]
+        trace_sq = np.array([t**2 for t in traces])
+        eps = 0.2  # tolerance for parabolic boundary
 
-        elliptic_frac = np.mean([x < 0 for x in trace_sq_minus_2])
-        parabolic_frac = np.mean([abs(x) < 0.1 for x in trace_sq_minus_2])
-        hyperbolic_frac = np.mean([x > 0.1 for x in trace_sq_minus_2])
+        elliptic_frac = np.mean(trace_sq < 4 - eps)
+        parabolic_frac = np.mean(np.abs(trace_sq - 4) <= eps)
+        hyperbolic_frac = np.mean(trace_sq > 4 + eps)
 
-        # Product of consecutive matrices (composition of transformations)
-        products = [np.eye(2)]
-        for M in matrices:
-            products.append(products[-1] @ M)
-
-        # Final transformation
-        final = products[-1]
-        final_trace = np.trace(final)
+        # Lyapunov exponent: average log of spectral radius over running product
+        # Use windowed products (blocks of 50) to avoid float64 overflow
+        block_size = 50
+        log_norms = []
+        for start in range(0, len(matrices) - block_size + 1, block_size):
+            product = np.eye(2)
+            for M in matrices[start:start + block_size]:
+                product = product @ M
+            # Log of operator norm (largest singular value)
+            s = np.linalg.svd(product, compute_uv=False)
+            log_norms.append(np.log(s[0] + 1e-300))
+        lyapunov_exponent = np.mean(log_norms) / block_size if log_norms else 0.0
 
         # Spectral radius (largest eigenvalue magnitude)
         eigenvalues = [np.max(np.abs(np.linalg.eigvals(M))) for M in matrices]
@@ -2066,7 +3232,7 @@ class SL2RGeometry(ExoticGeometry):
                 "parabolic_fraction": parabolic_frac,
                 "hyperbolic_fraction": hyperbolic_frac,
                 "mean_trace": np.mean(traces),
-                "final_trace": final_trace,
+                "lyapunov_exponent": lyapunov_exponent,
                 "mean_spectral_radius": mean_spectral_radius,
             },
             raw_data={
@@ -2098,6 +3264,27 @@ class CliffordTorusGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Clifford Torus"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Embeds the time series on the Clifford torus (flat torus inside S^3) via two angular coordinates. Phase coupling and winding rates reveal quasiperiodic structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "symmetry"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Phase coupling, torus flatness, S^3 embedding quality"
 
     @property
     def dimension(self) -> int:
@@ -2196,6 +3383,249 @@ class CliffordTorusGeometry(ExoticGeometry):
 
 
 # =============================================================================
+# QUASICRYSTAL DIFFRACTION ANALYSIS
+# =============================================================================
+
+def _quasicrystal_spectral_1d(data: np.ndarray, target_ratio: float) -> dict:
+    """
+    1D spectral metrics for quasicrystalline structure detection.
+
+    Quasicrystals have three properties that separate them from both periodic
+    and random signals:
+      1. Discrete (Bragg-like) spectrum with sharp peaks
+      2. Spectral self-similarity: the peak pattern is invariant under
+         frequency scaling by the characteristic algebraic ratio
+         (golden ratio φ for Penrose/Hat, silver ratio δ for Ammann-Beenker)
+      3. Aperiodic complexity: subword complexity grows linearly
+         (faster than periodic, slower than random)
+
+    These metrics are designed to reject 1/f^α noise (Brownian, fBm, etc.)
+    which has smooth power-law spectra and monotone ACF decay — no discrete
+    peaks, no oscillatory ACF, no ratio-specific structure.
+
+    Args:
+        data: uint8 array (raw signal)
+        target_ratio: characteristic ratio (φ ≈ 1.618, δ ≈ 2.414)
+
+    Returns:
+        dict with: ratio_symmetry, peak_sharpness, subword_complexity,
+                   acf_self_similarity
+    """
+    from scipy.signal import find_peaks
+
+    x = data.astype(np.float64)
+    N = len(x)
+    x_centered = x - x.mean()
+    x_std = x.std()
+    if x_std < 1e-10:
+        return {"ratio_symmetry": 0.0, "peak_sharpness": 0.0,
+                "subword_complexity": 0.0, "acf_self_similarity": 0.0}
+    x_norm = x_centered / x_std
+
+    # === Power spectrum (real FFT, skip DC) ===
+    ps = np.abs(np.fft.rfft(x_norm))**2
+    ps = ps[1:]
+    n_freq = len(ps)
+    log_ps = np.log(ps + 1e-30)
+
+    # === Moving-average detrend ===
+    # Remove the smooth spectral envelope while preserving discrete peaks.
+    # Critical: a linear detrend leaves smooth residuals for 1/f noise,
+    # which correlate at any scale factor. The moving average removes ALL
+    # smooth structure, isolating only the peaks.
+    if n_freq < 10:
+        return {"ratio_symmetry": 0.0, "peak_sharpness": 0.0,
+                "subword_complexity": 0.0, "acf_self_similarity": 0.0}
+    idx = np.arange(n_freq, dtype=np.float64)
+    win = min(max(n_freq // 10, 20), n_freq)
+    ma_kernel = np.ones(win) / win
+    smooth = np.convolve(log_ps, ma_kernel, mode='same')
+    residual = log_ps - smooth
+
+    # === Find prominent spectral peaks ===
+    med_res = np.median(residual)
+    mad = np.median(np.abs(residual - med_res))
+    prominence_threshold = max(4.0 * mad, 1.0)
+    peak_indices, peak_props = find_peaks(
+        residual, prominence=prominence_threshold, distance=3)
+    n_peaks = len(peak_indices)
+
+    # === 1. Ratio symmetry: correlation of residuals at ratio-scaled frequencies ===
+    # Pre-calculate mean/std of residual for faster correlation
+    res_mean = residual.mean()
+    res_centered = residual - res_mean
+    res_var = np.sum(res_centered**2)
+
+    def _corr_at_ratio(ratio):
+        scaled = idx / ratio
+        valid = (scaled >= 0) & (scaled < n_freq - 1)
+        if valid.sum() < 50:
+            return 0.0
+        
+        # Linear interpolation
+        interp = np.interp(scaled[valid], idx, residual)
+        
+        # Faster correlation for centered data
+        i_centered = interp - interp.mean()
+        i_var = np.sum(i_centered**2)
+        if i_var < 1e-10 or res_var < 1e-10:
+            return 0.0
+            
+        # Pearson R = dot(a, b) / (||a|| * ||b||)
+        # We must use the specific portion of 'residual' corresponding to 'valid'
+        r_centered = residual[valid] - residual[valid].mean()
+        r_var = np.sum(r_centered**2)
+        if r_var < 1e-10: return 0.0
+        
+        return np.sum(r_centered * i_centered) / np.sqrt(r_var * i_var)
+
+    target_cc = _corr_at_ratio(target_ratio)
+
+    # Use fewer null ratios to speed up the common case while maintaining Z-score integrity
+    null_ratios = [1.12, 1.31, 1.55, 1.78, 2.05, 2.33, 2.73, 3.17]
+    null_ratios = [r for r in null_ratios
+                   if abs(r - target_ratio) > 0.08
+                   and abs(r - target_ratio**2) > 0.15
+                   and abs(r - 1.0 / target_ratio) > 0.08]
+    null_ccs = [_corr_at_ratio(r) for r in null_ratios]
+    null_mean = np.mean(null_ccs)
+    null_std = np.std(null_ccs)
+
+    if null_std > 1e-10:
+        z = (target_cc - null_mean) / null_std
+    else:
+        z = 10.0 if target_cc > null_mean + 0.01 else 0.0
+    ratio_symmetry = float(np.clip(z / 5.0, 0, 1))
+
+    # === 2. Peak sharpness: Bragg peak fraction of spectral energy ===
+    # What fraction of total spectral energy sits in prominent peaks?
+    # Discrete spectrum (QC/periodic) → high; smooth spectrum (1/f, noise) → low.
+    if n_peaks > 0:
+        peak_power = 0.0
+        for pi in peak_indices:
+            lo = max(0, pi - 2)
+            hi = min(n_freq, pi + 3)
+            peak_power += np.sum(ps[lo:hi])
+        total_power = np.sum(ps)
+        peak_sharpness = float(np.clip(peak_power / (total_power + 1e-30), 0, 1))
+    else:
+        peak_sharpness = 0.0
+
+    # === 3. Subword complexity growth rate ===
+    # Binary quantize, count distinct n-grams for several n values.
+    # Quasicrystal (Fibonacci): p(n) = n+1 → constant differences.
+    # Periodic: p(n) saturates → differences → 0.
+    # Random: p(n) = 2^n → differences accelerate.
+    # Metric: 1/(1 + CV of successive differences).  High = constant rate (QC).
+    # Binarize: for binary-valued data (e.g. substitution words mapped to
+    # {0, 255}), median thresholding fails when the majority symbol equals
+    # the max value (median=255 → data>255 = all False). Fix: detect
+    # few-valued data and threshold at the midpoint of unique values.
+    unique_vals = np.unique(data)
+    if len(unique_vals) <= 4:
+        threshold = (float(unique_vals[0]) + float(unique_vals[-1])) / 2.0
+    else:
+        threshold = float(np.median(data))
+    binary = (data > threshold).astype(np.uint8)
+
+    complexities = []
+    # Maximum window size to keep unique() tractable
+    n_windows_max = 8192
+    
+    for n in [3, 5, 7, 9, 11]:
+        if N - n + 1 < 100:
+            break
+        
+        n_windows = min(N - n + 1, n_windows_max)
+        # Optimized: use stride_tricks to create overlapping views without copying
+        from numpy.lib.stride_tricks import sliding_window_view
+        
+        # Binary windows of length n
+        windows = sliding_window_view(binary[:n_windows + n - 1], n)
+        
+        # Pack bits into integers via dot product with powers of 2
+        # powers = [1, 2, 4, ..., 2^(n-1)]
+        powers = 2**np.arange(n, dtype=np.uint32)
+        packed = windows @ powers
+        
+        complexities.append(len(np.unique(packed)))
+
+    if len(complexities) >= 3:
+        diffs = np.diff(complexities).astype(np.float64)
+        mean_diff = np.mean(np.abs(diffs))
+        if mean_diff < 0.5:
+            # Complexity saturated (periodic) or degenerate (all same).
+            # True QC has linear growth, so diffs must be positive.
+            subword_complexity = 0.0
+        else:
+            std_diff = np.std(diffs)
+            cv = std_diff / (mean_diff + 1e-10)
+            subword_complexity = float(max(0.0, 1.0 / (1.0 + cv)))
+    else:
+        subword_complexity = 0.5
+
+    # === 4. ACF peak self-similarity at ratio-scaled lags ===
+    # Compute ACF via Wiener-Khinchin, then find local maxima.
+    # For a quasicrystal, ACF has oscillatory peaks at lags related by
+    # the target ratio. For 1/f noise, ACF decays monotonically — no peaks.
+    n_fft = 2 * N
+    x_padded = np.zeros(n_fft)
+    x_padded[:N] = x_norm
+    X = np.fft.rfft(x_padded)
+    acf_raw = np.fft.irfft(np.abs(X)**2)[:N]
+    acf = acf_raw / (acf_raw[0] + 1e-10)
+
+    # Detrend ACF with moving average (removes monotone decay from 1/f noise)
+    max_lag = min(N // 2, 2000)
+    acf_seg = acf[1:max_lag]
+    acf_idx = np.arange(len(acf_seg), dtype=np.float64)
+    acf_win = max(len(acf_seg) // 10, 10)
+    acf_smooth = np.convolve(acf_seg, np.ones(acf_win) / acf_win, mode='same')
+    acf_residual = acf_seg - acf_smooth
+
+    def _acf_corr_at_ratio(ratio):
+        scaled = acf_idx / ratio
+        valid = (scaled >= 0) & (scaled < len(acf_seg) - 1)
+        if valid.sum() < 30:
+            return 0.0
+        interp = np.interp(scaled[valid], acf_idx, acf_residual)
+        
+        # Fast correlation
+        a_centered = acf_residual[valid] - acf_residual[valid].mean()
+        i_centered = interp - interp.mean()
+        a_var = np.sum(a_centered**2)
+        i_var = np.sum(i_centered**2)
+        if a_var < 1e-10 or i_var < 1e-10:
+            return 0.0
+        return np.sum(a_centered * i_centered) / np.sqrt(a_var * i_var)
+
+    # Use absolute correlation: some substitution rules (e.g. Octonacci)
+    # produce sign-flipped ACF self-similarity at the target ratio.
+    acf_target_cc = abs(_acf_corr_at_ratio(target_ratio))
+    acf_null_ratios = [1.12, 1.31, 1.55, 1.78, 2.05, 2.33, 2.73, 3.17]
+    acf_null_ratios = [r for r in acf_null_ratios
+                       if abs(r - target_ratio) > 0.08
+                       and abs(r - target_ratio**2) > 0.15
+                       and abs(r - 1.0 / target_ratio) > 0.08]
+    acf_null_ccs = [abs(_acf_corr_at_ratio(r)) for r in acf_null_ratios]
+    acf_null_mean = np.mean(acf_null_ccs)
+    acf_null_std = np.std(acf_null_ccs)
+
+    if acf_null_std > 1e-10:
+        acf_z = (acf_target_cc - acf_null_mean) / acf_null_std
+    else:
+        acf_z = 10.0 if acf_target_cc > acf_null_mean + 0.01 else 0.0
+    acf_self_similarity = float(np.clip(acf_z / 5.0, 0, 1))
+
+    return {
+        "ratio_symmetry": ratio_symmetry,
+        "peak_sharpness": peak_sharpness,
+        "subword_complexity": subword_complexity,
+        "acf_self_similarity": acf_self_similarity,
+    }
+
+
+# =============================================================================
 # PENROSE GEOMETRY (QUASICRYSTALS)
 # =============================================================================
 
@@ -2219,6 +3649,27 @@ class PenroseGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Penrose (Quasicrystal)"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Projects the 1D signal into a 2D diffraction pattern and tests for fivefold Bragg peaks, the hallmark of Penrose quasicrystalline order."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "quasicrystal"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Fivefold diffraction symmetry, Bragg peak contrast, aperiodic order"
 
     @property
     def dimension(self) -> str:
@@ -2246,67 +3697,24 @@ class PenroseGeometry(ExoticGeometry):
         return np.array(embedded)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute Penrose/quasicrystal metrics."""
-        embedded = self.embed(data)
+        """Compute Penrose quasicrystal metrics via 1D spectral analysis.
 
-        if len(embedded) < 10:
-            return GeometryResult(
-                geometry_name=self.name,
-                metrics={"n_points": len(embedded)},
-                raw_data={"embedded": embedded}
-            )
-
-        # 5-fold symmetry: check if projections onto 5 directions are balanced
-        projections = embedded[:, :5]
-        proj_stds = np.std(projections, axis=0)
-        fivefold_balance = 1 - np.std(proj_stds) / (np.mean(proj_stds) + 1e-10)
-
-        # Golden ratio test: check spacing ratios
-        x_coords = embedded[:, 5]
-        diffs = np.abs(np.diff(np.sort(x_coords)))
-        diffs = diffs[diffs > 0.1]  # Filter tiny differences
-
-        if len(diffs) > 1:
-            ratios = diffs[1:] / (diffs[:-1] + 1e-10)
-            # Count ratios close to φ or 1/φ
-            phi_matches = np.sum((np.abs(ratios - self.PHI) < 0.2) |
-                                (np.abs(ratios - 1/self.PHI) < 0.2))
-            golden_ratio_score = phi_matches / len(ratios)
-        else:
-            golden_ratio_score = 0
-
-        # Penrose index diversity (quantize to lattice)
-        indices = set()
-        for pt in embedded[:, :5]:
-            idx = tuple(int(np.round(p)) for p in pt)
-            indices.add(idx)
-        index_diversity = len(indices) / len(embedded)
-
-        # Quasiperiodicity: autocorrelation structure
-        x_centered = x_coords - np.mean(x_coords)
-        if len(x_centered) > 50:
-            autocorr = np.correlate(x_centered, x_centered, mode='full')
-            autocorr = autocorr[len(autocorr)//2:]
-            autocorr = autocorr / (autocorr[0] + 1e-10)
-
-            # Long-range order: correlation at distance
-            n = len(autocorr)
-            long_range = np.mean(np.abs(autocorr[n//4:n//2])) if n > 4 else 0
-        else:
-            long_range = 0
+        Detects golden-ratio (φ) self-similarity in the signal's spectrum
+        and autocorrelation — the defining signature of Penrose/Fibonacci
+        quasicrystalline order.
+        """
+        data = self.validate_data(data)
+        m = _quasicrystal_spectral_1d(data, self.PHI)
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "fivefold_balance": fivefold_balance,
-                "golden_ratio_score": golden_ratio_score,
-                "index_diversity": index_diversity,
-                "long_range_order": long_range,
+                "fivefold_symmetry": m["ratio_symmetry"],
+                "peak_sharpness": m["peak_sharpness"],
+                "index_diversity": m["subword_complexity"],
+                "long_range_order": m["acf_self_similarity"],
             },
-            raw_data={
-                "embedded": embedded,
-                "projections": projections,
-            }
+            raw_data={}
         )
 
 
@@ -2331,6 +3739,27 @@ class AmmannBeenkerGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Ammann-Beenker (Octagonal)"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Tests for eightfold quasicrystalline order (the Ammann-Beenker tiling). Measures cardinal vs. diagonal anisotropy in the diffraction pattern."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "quasicrystal"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Eightfold diffraction symmetry, Bragg peak contrast, cardinal-diagonal anisotropy"
 
     @property
     def dimension(self) -> str:
@@ -2358,71 +3787,27 @@ class AmmannBeenkerGeometry(ExoticGeometry):
         return np.array(embedded)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute octagonal quasicrystal metrics."""
-        embedded = self.embed(data)
+        """Compute octagonal quasicrystal metrics via 1D spectral analysis.
 
-        if len(embedded) < 10:
-            return GeometryResult(
-                geometry_name=self.name,
-                metrics={"n_points": len(embedded)},
-                raw_data={"embedded": embedded}
-            )
-
-        # 8-fold symmetry balance
-        projections = embedded[:, :8]
-        proj_stds = np.std(projections, axis=0)
-        eightfold_balance = 1 - np.std(proj_stds) / (np.mean(proj_stds) + 1e-10)
-
-        # Silver ratio test (δ = 1+√2 ≈ 2.414)
-        x_coords = embedded[:, 8]
-        diffs = np.abs(np.diff(np.sort(x_coords)))
-        diffs = diffs[diffs > 0.1]
-
-        if len(diffs) > 1:
-            ratios = diffs[1:] / (diffs[:-1] + 1e-10)
-            silver_matches = np.sum((np.abs(ratios - self.SILVER) < 0.3) |
-                                   (np.abs(ratios - 1/self.SILVER) < 0.15))
-            silver_ratio_score = silver_matches / len(ratios)
-        else:
-            silver_ratio_score = 0
-
-        # Octagonal index diversity
-        indices = set()
-        for pt in embedded[:, :8]:
-            idx = tuple(int(np.round(p)) for p in pt)
-            indices.add(idx)
-        index_diversity = len(indices) / len(embedded)
-
-        # 4-fold vs 8-fold: compare variance across 90-degree vs 45-degree axes
-        # Directions 0,2,4,6 are the square axes; 1,3,5,7 are the diagonal axes
-        square_stds = proj_stds[[0, 2, 4, 6]]
-        diag_stds = proj_stds[[1, 3, 5, 7]]
-        square_diag_ratio = np.mean(square_stds) / (np.mean(diag_stds) + 1e-10)
-
-        # Long-range order (same method as Penrose)
-        x_centered = x_coords - np.mean(x_coords)
-        if len(x_centered) > 50:
-            autocorr = np.correlate(x_centered, x_centered, mode='full')
-            autocorr = autocorr[len(autocorr)//2:]
-            autocorr = autocorr / (autocorr[0] + 1e-10)
-            n = len(autocorr)
-            long_range = np.mean(np.abs(autocorr[n//4:n//2])) if n > 4 else 0
-        else:
-            long_range = 0
+        Detects silver-ratio (δ = 1+√2) self-similarity in the signal's
+        spectrum and autocorrelation.  Also checks √2 self-similarity
+        (the cardinal-diagonal half-step of octagonal symmetry).
+        """
+        data = self.validate_data(data)
+        m = _quasicrystal_spectral_1d(data, self.SILVER)
+        # √2 spectral self-similarity (cardinal ↔ diagonal relationship)
+        m_sqrt2 = _quasicrystal_spectral_1d(data, np.sqrt(2))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "eightfold_balance": eightfold_balance,
-                "silver_ratio_score": silver_ratio_score,
-                "index_diversity": index_diversity,
-                "square_diag_ratio": square_diag_ratio,
-                "long_range_order": long_range,
+                "eightfold_symmetry": m["ratio_symmetry"],
+                "peak_sharpness": m["peak_sharpness"],
+                "index_diversity": m["subword_complexity"],
+                "square_diag_ratio": m_sqrt2["ratio_symmetry"],
+                "long_range_order": m["acf_self_similarity"],
             },
-            raw_data={
-                "embedded": embedded,
-                "projections": projections,
-            }
+            raw_data={}
         )
 
 
@@ -2432,44 +3817,200 @@ class AmmannBeenkerGeometry(ExoticGeometry):
 
 class EinsteinHatGeometry(ExoticGeometry):
     """
-    Einstein Hat Geometry - detects chiral aperiodic structure.
+    Einstein Hat Geometry — hexagonal chiral analysis with Hat motif matching.
 
-    Based on the 2023 discovery of the "hat" tile - a single shape that
-    tiles the plane aperiodically. Unlike Penrose (5-fold) and
-    Ammann-Beenker (8-fold), the hat has NO rotational symmetry requirement.
+    Analyzes data as a path on a hexagonal grid and cross-correlates its turn
+    sequence with the projected boundary of the Hat aperiodic monotile
+    (Smith et al. 2023).
 
-    Uses a hexagonal grid basis with 13-vertex structure. Projects data onto
-    the 6 hexagonal directions plus a chirality-breaking asymmetric direction.
+    Limitation: The actual Hat lives on a kite grid (12 directions, 30° apart),
+    not a hex grid (6 directions, 60° apart). The Hat's boundary turns include
+    90° angles that don't exist on the hex grid. The hat_kernel is the nearest
+    hex-grid projection of the true boundary, so hat_boundary_match is an
+    approximate motif detector, not an exact shape test.
+
+    Metrics:
+    - Hat Boundary Match: Cross-correlation with the Hat's projected turn kernel.
+    - Inflation Similarity: Path tortuosity self-similarity under downsampling.
+      Not specific to the Hat's inflation factor.
+    - Chirality: Signed area bias of the hex path.
+    - Hex Balance: Directional uniformity.
     """
 
     def __init__(self, input_scale: float = 255.0):
         self.input_scale = input_scale
+        # Hat boundary turn sequence projected onto the hex grid.
+        # The actual Hat polykite (Smith et al. 2023) lives on a kite grid
+        # with 12 directions (30° steps), not 6 (60° steps). Its exact
+        # boundary turns in degrees are:
+        #   [90, 60, 60, -90, 60, 90, 60, -90, 60, 90, -60, 90, -60]
+        # (from hatviz by Craig Kaplan, co-author of the paper).
+        # Projected to nearest hex unit (÷60°, rounded):
+        self.hat_kernel = np.array([2, 1, 1, -2, 1, 2, 1, -2, 1, 2, -1, 2, -1])
 
     @property
     def name(self) -> str:
         return "Einstein (Hat Monotile)"
 
     @property
+    def description(self) -> str:
+        return "Correlates the signal with the Hat monotile boundary kernel (Smith et al., 2023). Detects the aperiodic tiling's distinctive chiral hexagonal structure."
+
+    @property
+    def view(self) -> str:
+        return "quasicrystal"
+
+    @property
+    def detects(self) -> str:
+        return "Hat motif correlation, tortuosity self-similarity, chirality"
+
+    @property
     def dimension(self) -> str:
         return "2D with hex+chiral"
 
-    def hat_projection(self, x: float, y: float) -> Tuple[float, ...]:
-        """Project onto hexagonal grid directions plus chirality axis.
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Embed data as a path on a hexagonal grid (axial coordinates q, r)."""
+        data = self.validate_data(data)
+        # Map values to 6 hexagonal directions
+        directions = (data % 6).astype(int)
+        
+        # Axial moves: q, r
+        # 0: +1, 0  (East)
+        # 1: 0, +1  (South East)
+        # 2: -1, +1 (South West)
+        # 3: -1, 0  (West)
+        # 4: 0, -1  (North West)
+        # 5: +1, -1 (North East)
+        moves = np.array([
+            [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]
+        ])
+        
+        path = np.zeros((len(data) + 1, 2), dtype=int)
+        # Vectorized path integration
+        path[1:] = np.cumsum(moves[directions], axis=0)
+        
+        return path
 
-        6 hexagonal directions (60-degree spacing) plus an asymmetric
-        "chirality" direction at 15 degrees (breaks pure 6-fold symmetry,
-        capturing the hat tile's fundamental asymmetry).
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute Hat monotile metrics.
+
+        Combines:
+        - Hat kernel cross-correlation on the hex-path turn sequence
+          (specific to the Hat tile's boundary shape)
+        - 1D spectral analysis for quasicrystalline structure (φ ratio)
+        - Chirality from hex path (the Hat and its mirror are distinct)
         """
-        hex_angles = [2 * np.pi * k / 6 for k in range(6)]
-        # Chirality-breaking direction (not aligned with any hex axis)
-        chiral_angle = np.pi / 12  # 15 degrees
+        data = self.validate_data(data)
 
-        projections = [x * np.cos(a) + y * np.sin(a) for a in hex_angles]
-        projections.append(x * np.cos(chiral_angle) + y * np.sin(chiral_angle))
-        return tuple(projections)
+        # === Hat boundary match via kernel cross-correlation ===
+        # Map data to hex directions, compute turn sequence, cross-correlate
+        # with the Hat's projected boundary kernel.
+        directions = (data % 6).astype(int)
+        turns = np.diff(directions) % 6  # turn angles in hex units
+        # Shift to signed: 0..5 → -3..+2 (so turn of 4 = -2, turn of 5 = -1)
+        turns = np.where(turns > 3, turns - 6, turns)
+        kernel = self.hat_kernel.astype(np.float64)
+        klen = len(kernel)
+        if len(turns) >= klen:
+            # Normalized cross-correlation
+            k_norm = kernel - kernel.mean()
+            k_std = np.std(k_norm)
+            if k_std < 1e-10:
+                hat_boundary_match = 0.0
+            else:
+                k_norm = k_norm / k_std
+                n_windows = len(turns) - klen + 1
+                # Compute in chunks for efficiency
+                scores = np.empty(n_windows)
+                for i in range(n_windows):
+                    window = turns[i:i + klen].astype(np.float64)
+                    w_norm = window - window.mean()
+                    w_std = np.std(w_norm)
+                    if w_std < 1e-10:
+                        scores[i] = 0.0
+                    else:
+                        scores[i] = np.dot(k_norm, w_norm / w_std) / klen
+                # Fraction of windows with high correlation (> 0.9).
+                # A signal containing Hat boundary repeats will have ~1/klen
+                # perfect matches; random data will have essentially none.
+                match_frac = (scores > 0.9).mean()
+                hat_boundary_match = float(np.clip(match_frac * klen, 0, 1))
+        else:
+            hat_boundary_match = 0.0
+
+        # === 1D spectral metrics at golden ratio ===
+        m = _quasicrystal_spectral_1d(data, (1 + np.sqrt(5)) / 2)
+
+        # === Chirality from local hex turn asymmetry ===
+        # Previous approach (signed area of hex path) was drift-sensitive:
+        # trending data (fBm H>0.5) accumulates large spurious signed area.
+        # Fix: use sin(turn_angle) which measures local left/right asymmetry,
+        # is zero-mean for uniform random turns, and ignores global drift.
+        directions = (data % 6).astype(int)
+        hex_turns = np.diff(directions) % 6  # [0, 5]
+        # sin(turn × 60°) naturally captures left (turns 1,2) vs right (4,5)
+        # and has exact zero mean under uniform distribution
+        chirality = float(np.mean(np.sin(hex_turns * (np.pi / 3.0))))
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "hat_boundary_match": hat_boundary_match,
+                "inflation_similarity": m["ratio_symmetry"],
+                "chirality": chirality,
+                "hex_balance": m["subword_complexity"],
+            },
+            raw_data={}
+        )
+
+
+# =============================================================================
+# DODECAGONAL GEOMETRY (12-fold aperiodic)
+# =============================================================================
+
+class DodecagonalGeometry(ExoticGeometry):
+    """
+    Dodecagonal (Stampfli) Geometry - detects 12-fold quasicrystalline structure.
+
+    Dodecagonal quasicrystals (like Ta-Te, V-Ni-Si) have 12-fold rotational
+    symmetry and are connected to the ratio 2 + √3. They can be modeled by
+    Square-Triangle tilings (Stampfli tiling).
+
+    Complementary to Penrose (5-fold) and Ammann-Beenker (8-fold).
+    """
+
+    RATIO = 2 + np.sqrt(3)  # Dodecagonal ratio ~ 3.732
+
+    def __init__(self, input_scale: float = 255.0):
+        self.input_scale = input_scale
+
+    @property
+    def name(self) -> str:
+        return "Dodecagonal (Stampfli)"
+
+    @property
+    def description(self) -> str:
+        return "Tests for 12-fold quasicrystalline order (Stampfli square-triangle tiling, ratio 2+sqrt(3)). Found in Ta-Te and V-Ni-Si alloys."
+
+    @property
+    def view(self) -> str:
+        return "quasicrystal"
+
+    @property
+    def detects(self) -> str:
+        return "Twelvefold diffraction symmetry, square-triangle tiling order"
+
+    @property
+    def dimension(self) -> str:
+        return "2D with 12-fold"
+
+    def dodecagonal_projection(self, x: float, y: float) -> Tuple[float, ...]:
+        """Project 2D point onto 12 directions (dodecagonal symmetry)."""
+        angles = [2 * np.pi * k / 12 for k in range(12)]
+        return tuple(x * np.cos(a) + y * np.sin(a) for a in angles)
 
     def embed(self, data: np.ndarray) -> np.ndarray:
-        """Embed data pairs in hex+chiral projection space."""
+        """Embed data pairs in 12-direction dodecagonal space."""
         data = self.validate_data(data)
         data = self._normalize_to_unit(data, self.input_scale)
 
@@ -2479,85 +4020,192 @@ class EinsteinHatGeometry(ExoticGeometry):
         for i in range(n_points):
             x = data[2*i] * 10 - 5
             y = data[2*i + 1] * 10 - 5
-            proj = self.hat_projection(x, y)
+            proj = self.dodecagonal_projection(x, y)
             embedded.append(list(proj) + [x, y])
 
         return np.array(embedded)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute hat/einstein tile metrics."""
-        embedded = self.embed(data)
+        """Compute dodecagonal quasicrystal metrics via 1D spectral analysis.
 
-        if len(embedded) < 10:
-            return GeometryResult(
-                geometry_name=self.name,
-                metrics={"n_points": len(embedded)},
-                raw_data={"embedded": embedded}
-            )
-
-        # Hexagonal balance (6-fold, using first 6 projections)
-        hex_projections = embedded[:, :6]
-        hex_stds = np.std(hex_projections, axis=0)
-        hexagonal_balance = 1 - np.std(hex_stds) / (np.mean(hex_stds) + 1e-10)
-
-        # Chirality: sequential signed area of consecutive point triples.
-        # For (x_i,y_i), (x_{i+1},y_{i+1}), (x_{i+2},y_{i+2}), the signed
-        # area (cross product) has a preferred sign for chiral data.
-        # Random data → mean ≈ 0; chiral patterns → nonzero.
-        x_coords = embedded[:, 7]
-        y_coords = embedded[:, 8]
-        if len(x_coords) > 2:
-            dx1 = x_coords[1:-1] - x_coords[:-2]
-            dy1 = y_coords[1:-1] - y_coords[:-2]
-            dx2 = x_coords[2:] - x_coords[1:-1]
-            dy2 = y_coords[2:] - y_coords[1:-1]
-            signed_areas = dx1 * dy2 - dy1 * dx2
-            mean_abs = np.mean(np.abs(signed_areas))
-            chirality = np.mean(signed_areas) / (mean_abs + 1e-10) if mean_abs > 1e-10 else 0.0
-        else:
-            chirality = 0.0
-
-        # Hex index diversity
-        indices = set()
-        for pt in embedded[:, :6]:
-            idx = tuple(int(np.round(p)) for p in pt)
-            indices.add(idx)
-        index_diversity = len(indices) / len(embedded)
-
-        # Hex skewness asymmetry: compare 3rd moments across hex directions.
-        # Skewness(proj_k) depends on data's 3rd-order joint distribution,
-        # which CAN differ across directions even when variance is identical.
-        # For isotropic data, all skewnesses are equal; asymmetric data breaks this.
-        from scipy.stats import skew as scipy_skew
-        hex_skews = np.array([scipy_skew(hex_projections[:, k]) for k in range(6)])
-        hex_asymmetry = np.std(hex_skews) / (np.mean(np.abs(hex_skews)) + 1e-10)
-
-        # Long-range order
-        x_coords = embedded[:, 7]
-        x_centered = x_coords - np.mean(x_coords)
-        if len(x_centered) > 50:
-            autocorr = np.correlate(x_centered, x_centered, mode='full')
-            autocorr = autocorr[len(autocorr)//2:]
-            autocorr = autocorr / (autocorr[0] + 1e-10)
-            n = len(autocorr)
-            long_range = np.mean(np.abs(autocorr[n//4:n//2])) if n > 4 else 0
-        else:
-            long_range = 0
+        Detects (2+√3) self-similarity in the signal's spectrum and
+        autocorrelation. Also checks √3 self-similarity (related to
+        the triangle height in square-triangle tilings).
+        """
+        data = self.validate_data(data)
+        m = _quasicrystal_spectral_1d(data, self.RATIO)
+        # √3 spectral self-similarity (triangle height relationship)
+        m_sqrt3 = _quasicrystal_spectral_1d(data, np.sqrt(3))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "hexagonal_balance": hexagonal_balance,
-                "chirality": chirality,
-                "index_diversity": index_diversity,
-                "hex_asymmetry": hex_asymmetry,
-                "long_range_order": long_range,
+                "twelvefold_symmetry": m["ratio_symmetry"],
+                "peak_sharpness": m["peak_sharpness"],
+                "index_diversity": m["subword_complexity"],
+                "triangle_height_ratio": m_sqrt3["ratio_symmetry"],
+                "long_range_order": m["acf_self_similarity"],
             },
-            raw_data={
-                "embedded": embedded,
-            }
+            raw_data={}
         )
 
+
+# =============================================================================
+# DECAGONAL GEOMETRY (10-fold aperiodic)
+# =============================================================================
+
+class DecagonalGeometry(ExoticGeometry):
+    """
+    Decagonal Geometry - detects 10-fold quasicrystalline structure.
+
+    Decagonal quasicrystals (like Al-Ni-Co) have 10-fold rotational symmetry.
+    While related to Penrose (5-fold) via the Golden Ratio, they form distinct
+    columnar structures (periodic in 3rd dim, aperiodic in 2D plane).
+    """
+
+    PHI = (1 + np.sqrt(5)) / 2
+
+    def __init__(self, input_scale: float = 255.0):
+        self.input_scale = input_scale
+
+    @property
+    def name(self) -> str:
+        return "Decagonal (Al-Ni-Co)"
+
+    @property
+    def description(self) -> str:
+        return "Tests for 10-fold quasicrystalline order via Golden Ratio spacing. Decagonal quasicrystals (Al-Ni-Co) are periodic in one axis, aperiodic in the other two."
+
+    @property
+    def view(self) -> str:
+        return "quasicrystal"
+
+    @property
+    def detects(self) -> str:
+        return "Tenfold diffraction symmetry, Golden Mean scaling"
+
+    @property
+    def dimension(self) -> str:
+        return "2D with 10-fold"
+
+    def decagonal_projection(self, x: float, y: float) -> Tuple[float, ...]:
+        """Project 2D point onto 10 directions."""
+        angles = [2 * np.pi * k / 10 for k in range(10)]
+        return tuple(x * np.cos(a) + y * np.sin(a) for a in angles)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Embed data pairs in 10-direction decagonal space."""
+        data = self.validate_data(data)
+        data = self._normalize_to_unit(data, self.input_scale)
+
+        n_points = len(data) // 2
+        embedded = []
+
+        for i in range(n_points):
+            x = data[2*i] * 10 - 5
+            y = data[2*i + 1] * 10 - 5
+            proj = self.decagonal_projection(x, y)
+            embedded.append(list(proj) + [x, y])
+
+        return np.array(embedded)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute decagonal metrics."""
+        data = self.validate_data(data)
+        # Primary ratio is Phi (same as Penrose)
+        m = _quasicrystal_spectral_1d(data, self.PHI)
+        
+        # Check secondary ratio: Phi^2? Or maybe sqrt(5)?
+        # Phi^2 = Phi + 1 ~ 2.618
+        m_phi2 = _quasicrystal_spectral_1d(data, self.PHI**2)
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "tenfold_symmetry": m["ratio_symmetry"],
+                "peak_sharpness": m["peak_sharpness"],
+                "index_diversity": m["subword_complexity"],
+                "phi_squared_ratio": m_phi2["ratio_symmetry"],
+                "long_range_order": m["acf_self_similarity"],
+            },
+            raw_data={}
+        )
+
+
+# =============================================================================
+# SEPTAGONAL GEOMETRY (7-fold aperiodic)
+# =============================================================================
+
+class SeptagonalGeometry(ExoticGeometry):
+    """
+    Septagonal Geometry - detects 7-fold quasicrystalline structure.
+
+    Sevenfold symmetry is impossible in periodic crystals. It is associated
+    with the ratio ρ ≈ 2.247 (root of x³ - x² - 2x + 1 = 0), related to
+    2*cos(π/7).
+    """
+
+    RATIO = 1 + 2 * np.cos(2 * np.pi / 7)  # approx 2.24698
+
+    def __init__(self, input_scale: float = 255.0):
+        self.input_scale = input_scale
+
+    @property
+    def name(self) -> str:
+        return "Septagonal (Danzer)"
+
+    @property
+    def description(self) -> str:
+        return "Tests for 7-fold quasicrystalline order (Danzer tiling). Sevenfold symmetry is crystallographically forbidden, arising only in aperiodic structures."
+
+    @property
+    def view(self) -> str:
+        return "quasicrystal"
+
+    @property
+    def detects(self) -> str:
+        return "Sevenfold diffraction symmetry, Danzer tiling order"
+
+    @property
+    def dimension(self) -> str:
+        return "2D with 7-fold"
+
+    def septagonal_projection(self, x: float, y: float) -> Tuple[float, ...]:
+        """Project 2D point onto 7 directions."""
+        angles = [2 * np.pi * k / 7 for k in range(7)]
+        return tuple(x * np.cos(a) + y * np.sin(a) for a in angles)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Embed data pairs in 7-direction septagonal space."""
+        data = self.validate_data(data)
+        data = self._normalize_to_unit(data, self.input_scale)
+
+        n_points = len(data) // 2
+        embedded = []
+
+        for i in range(n_points):
+            x = data[2*i] * 10 - 5
+            y = data[2*i + 1] * 10 - 5
+            proj = self.septagonal_projection(x, y)
+            embedded.append(list(proj) + [x, y])
+
+        return np.array(embedded)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute septagonal metrics."""
+        data = self.validate_data(data)
+        m = _quasicrystal_spectral_1d(data, self.RATIO)
+        
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "sevenfold_symmetry": m["ratio_symmetry"],
+                "peak_sharpness": m["peak_sharpness"],
+                "index_diversity": m["subword_complexity"],
+                "long_range_order": m["acf_self_similarity"],
+            },
+            raw_data={}
+        )
 
 
 # =============================================================================
@@ -2580,6 +4228,27 @@ class FractalMandelbrotGeometry(ExoticGeometry):
     @property
     def name(self) -> str:
         return "Fractal (Mandelbrot)"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Uses byte pairs as starting points z0 for Mandelbrot iteration z -> z^2 + c. Escape times and orbit statistics measure fractal boundary structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "topological"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Escape rate, fractal dimension, boundary complexity"
 
     @property
     def dimension(self) -> int:
@@ -2673,7 +4342,28 @@ class FractalJuliaGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return f"Fractal (Julia c={self.c.real:+.2f}{self.c.imag:+.2f}i)"
+        return "Julia Set"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Fixed Julia set parameter c acts as a tunable sensor. Data values become starting points z0; escape time and orbit stability detect dynamical trapping."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "topological"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Dynamical trapping, basin structure, Julia dimension"
 
     @property
     def dimension(self) -> int:
@@ -2772,6 +4462,27 @@ class HigherOrderGeometry(ExoticGeometry):
     def name(self) -> str:
         return "Higher-Order Statistics"
 
+
+    @property
+
+    def description(self) -> str:
+
+        return "Computes windowed skewness, kurtosis, permutation entropy, and bispectral coherence — the statistical fingerprint beyond mean and variance."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "dynamical"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Skewness, kurtosis, tail asymmetry, non-Gaussianity"
+
     @property
     def dimension(self) -> str:
         return "mixed (3rd/4th order)"
@@ -2813,12 +4524,11 @@ class HigherOrderGeometry(ExoticGeometry):
             skewnesses = np.array(skewnesses)
             kurtoses = np.array(kurtoses)
 
-            metrics['skew_max'] = float(np.max(np.abs(skewnesses)))
             metrics['skew_mean'] = float(np.mean(np.abs(skewnesses)))
             metrics['kurt_max'] = float(np.max(np.abs(kurtoses)))
             metrics['kurt_mean'] = float(np.mean(kurtoses))
         else:
-            metrics.update({'skew_max': 0, 'skew_mean': 0,
+            metrics.update({'skew_mean': 0,
                           'kurt_max': 0, 'kurt_mean': 0})
 
         # --- Permutation entropy (ordinal patterns) ---
@@ -2862,9 +4572,8 @@ class HigherOrderGeometry(ExoticGeometry):
         if c3_values:
             c3_arr = np.array(c3_values)
             metrics['c3_energy'] = float(np.sum(c3_arr**2))
-            metrics['c3_mean'] = float(np.mean(np.abs(c3_arr)))
         else:
-            metrics.update({'c3_energy': 0, 'c3_mean': 0})
+            metrics['c3_energy'] = 0
 
         # --- Bicoherence (segment-averaged normalized bispectrum) ---
         # Single-FFT bicoherence is trivially 1. Must average over segments.
@@ -2913,6 +4622,1058 @@ class HigherOrderGeometry(ExoticGeometry):
         )
 
 
+# =============================================================================
+# HÖLDER REGULARITY GEOMETRY
+# =============================================================================
+
+class HolderRegularityGeometry(ExoticGeometry):
+    """
+    Hölder Regularity Geometry — local regularity and multifractal analysis.
+
+    Measures how "rough" or "smooth" the signal is at each point and how
+    that roughness varies. Uses structure functions S(q, ℓ) to compute
+    scaling exponents ζ(q) and the multifractal spectrum f(α).
+
+    This geometry targets the blind spot in the 7D signature space:
+    signals with pathological local regularity (Lévy flights, Devil's
+    staircases, space-filling curves) that global summary statistics miss.
+
+    Metrics:
+    - hurst_exponent: ζ(2)/2, generalized Hurst exponent
+    - holder_mean: mean local Hölder exponent
+    - holder_std: std of local exponents (0 = monofractal)
+    - holder_min: minimum exponent (roughest point)
+    - holder_max: maximum exponent (smoothest point)
+    - multifractal_width: range of the f(α) spectrum
+    - structure_curvature: ζ(q) nonlinearity (0 = monofractal)
+    """
+
+    def __init__(self, input_scale: float = 255.0,
+                 q_values=(-2, -1, -0.5, 0.5, 1, 2, 3, 4),
+                 n_scales: int = 8):
+        self.input_scale = input_scale
+        self.q_values = np.array(q_values, dtype=float)
+        self.n_scales = n_scales
+
+    @property
+    def name(self) -> str:
+        return "Hölder Regularity"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Estimates pointwise Holder exponents via wavelet leaders. The regularity spectrum (multifractal formalism) measures local smoothness variation."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "scale"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Local roughness, regularity spectrum, singularity strength"
+
+    @property
+    def dimension(self) -> str:
+        return "function space"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Normalize signal to [0, 1]."""
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute Hölder regularity and multifractal metrics."""
+        x = self.embed(data)
+        n = len(x)
+
+        if n < 32:
+            return GeometryResult(self.name, {k: 0.0 for k in [
+                "hurst_exponent", "holder_mean", "holder_std",
+                "holder_min", "holder_max", "multifractal_width",
+                "structure_curvature"]}, {})
+
+        # Scales: powers of 2 up to n/4
+        max_scale = min(n // 4, 2 ** self.n_scales)
+        scales = []
+        s = 1
+        while s <= max_scale:
+            scales.append(s)
+            s *= 2
+        scales = np.array(scales)
+
+        # Structure functions: S(q, ℓ) = mean(|X(t+ℓ) - X(t)|^q)
+        # For q < 0, use |increment|^q only where increment != 0
+        zeta = np.zeros(len(self.q_values))  # scaling exponents
+        log_scales = np.log2(scales)
+        S_matrix = np.zeros((len(self.q_values), len(scales)))
+
+        for j, ell in enumerate(scales):
+            increments = np.abs(x[ell:] - x[:-ell])
+            for i, q in enumerate(self.q_values):
+                if q < 0:
+                    # Avoid zero increments for negative q
+                    inc = increments[increments > 1e-15]
+                    if len(inc) > 10:
+                        S_matrix[i, j] = np.mean(inc ** q)
+                    else:
+                        S_matrix[i, j] = np.nan
+                else:
+                    S_matrix[i, j] = np.mean(increments ** q) if len(increments) > 0 else np.nan
+
+        # Fit ζ(q) via log-log regression of S(q, ℓ) vs ℓ
+        for i, q in enumerate(self.q_values):
+            log_S = np.log2(np.maximum(S_matrix[i, :], 1e-30))
+            valid = np.isfinite(log_S)
+            if np.sum(valid) >= 3:
+                coeffs = np.polyfit(log_scales[valid], log_S[valid], 1)
+                zeta[i] = coeffs[0]
+            else:
+                zeta[i] = np.nan
+
+        # Hurst exponent from ζ(2)/2
+        q2_idx = np.argmin(np.abs(self.q_values - 2.0))
+        hurst = zeta[q2_idx] / 2.0 if np.isfinite(zeta[q2_idx]) else 0.5
+
+        # Structure curvature: deviation of ζ(q) from linear (monofractal)
+        valid_zeta = np.isfinite(zeta)
+        if np.sum(valid_zeta) >= 3:
+            q_valid = self.q_values[valid_zeta]
+            z_valid = zeta[valid_zeta]
+            linear_fit = np.polyfit(q_valid, z_valid, 1)
+            linear_pred = np.polyval(linear_fit, q_valid)
+            curvature = np.sqrt(np.mean((z_valid - linear_pred) ** 2))
+        else:
+            curvature = 0.0
+
+        # Local Hölder exponents via finest scale increments
+        # α(t) ≈ log|X(t+1) - X(t)| / log(1) — use ratio of scales 1 and 2
+        inc1 = np.abs(x[1:] - x[:-1])
+        inc2 = np.abs(x[2:] - x[:-2])
+        # α(t) ≈ log2(inc2/inc1) where both are nonzero
+        n_loc = min(len(inc1), len(inc2))
+        local_alpha = np.full(n_loc, np.nan)
+        for t in range(n_loc):
+            if inc1[t] > 1e-15 and inc2[t] > 1e-15:
+                local_alpha[t] = np.log2(inc2[t] / inc1[t])
+
+        valid_alpha = local_alpha[np.isfinite(local_alpha)]
+        if len(valid_alpha) > 10:
+            # Clip extreme values for robustness
+            valid_alpha = np.clip(valid_alpha, -2, 4)
+            holder_mean = float(np.mean(valid_alpha))
+            holder_std = float(np.std(valid_alpha))
+            holder_min = float(np.percentile(valid_alpha, 2))
+            holder_max = float(np.percentile(valid_alpha, 98))
+            multifractal_width = holder_max - holder_min
+        else:
+            holder_mean = hurst
+            holder_std = 0.0
+            holder_min = hurst
+            holder_max = hurst
+            multifractal_width = 0.0
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "hurst_exponent": float(np.clip(hurst, -2, 4)),
+                "holder_mean": holder_mean,
+                "holder_std": holder_std,
+                "holder_min": holder_min,
+                "holder_max": holder_max,
+                "multifractal_width": multifractal_width,
+                "structure_curvature": float(curvature),
+            },
+            raw_data={
+                "zeta": zeta,
+                "q_values": self.q_values,
+                "S_matrix": S_matrix,
+            }
+        )
+
+
+# =============================================================================
+# p-VARIATION GEOMETRY
+# =============================================================================
+
+class PVariationGeometry(ExoticGeometry):
+    """
+    p-Variation Geometry — path roughness characterization.
+
+    Computes V_p = Σ|X(t+1) - X(t)|^p for multiple p values and at
+    multiple partition scales. The variation index γ (critical p where
+    V_p transitions from divergent to convergent with refinement) is a
+    fundamental path invariant:
+
+      γ = 2 for Brownian motion
+      γ = α for Lévy-α stable processes
+      γ = 1/H for fractional Brownian motion with Hurst H
+      γ = ∞ for smooth (C¹) functions
+
+    Also computes how V_p scales with partition refinement, which reveals
+    the Devil's Staircase (anomalous scaling) and space-filling curves
+    (dimension visible in V_1 scaling).
+
+    Metrics:
+    - var_p05, var_p1, var_p2, var_p3: p-variation at each p
+    - variation_index: estimated critical p (roughness invariant)
+    - var_scaling_ratio: V_p(fine) / V_p(coarse) characterizes self-similarity
+    """
+
+    def __init__(self, input_scale: float = 255.0,
+                 p_values=(0.5, 1.0, 2.0, 3.0)):
+        self.input_scale = input_scale
+        self.p_values = list(p_values)
+
+    @property
+    def name(self) -> str:
+        return "p-Variation"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Computes the p-th variation (sum of |increments|^p) for multiple p. The critical p where variation transitions from finite to infinite characterizes path roughness."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "scale"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Path roughness, variation index, regularity"
+
+    @property
+    def dimension(self) -> str:
+        return "path space"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Normalize signal to [0, 1]."""
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    def _compute_pvar(self, x, p, partition_step=1):
+        """Compute p-variation over a given partition."""
+        sub = x[::partition_step]
+        if len(sub) < 2:
+            return 0.0
+        increments = np.abs(np.diff(sub))
+        return float(np.sum(increments ** p))
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute p-variation metrics at multiple scales."""
+        x = self.embed(data)
+        n = len(x)
+
+        if n < 16:
+            return GeometryResult(self.name, {k: 0.0 for k in [
+                "var_p05", "var_p1", "var_p2", "var_p3",
+                "variation_index", "var_scaling_ratio"]}, {})
+
+        # p-variation at finest scale
+        vp = {}
+        for p in self.p_values:
+            vp[p] = self._compute_pvar(x, p, partition_step=1)
+
+        # Normalize by length for comparability
+        metrics = {
+            "var_p05": vp[0.5] / n,
+            "var_p1": vp[1.0] / n,
+            "var_p2": vp[2.0] / n,
+            "var_p3": vp[3.0] / n,
+        }
+
+        # Variation index: use scaling across partition refinements
+        # V_p(step=k) vs k for each p. If V_p grows with refinement (decreasing k),
+        # the path has infinite p-variation. The critical p is where it stabilizes.
+        steps = [1, 2, 4, 8, 16]
+        steps = [s for s in steps if s < n // 4]
+
+        if len(steps) >= 3:
+            log_steps = np.log2(np.array(steps, dtype=float))
+
+            # For each p, compute slope of log(V_p) vs log(1/step)
+            slopes = {}
+            for p in self.p_values:
+                vp_at_steps = [self._compute_pvar(x, p, s) for s in steps]
+                vp_at_steps = np.array(vp_at_steps)
+                vp_at_steps[vp_at_steps < 1e-30] = 1e-30
+                log_vp = np.log2(vp_at_steps)
+                # Finer partitions = smaller steps = more points
+                # log(V_p) vs log(n_points) where n_points ~ 1/step
+                log_npts = np.log2(n / np.array(steps, dtype=float))
+                coeffs = np.polyfit(log_npts, log_vp, 1)
+                slopes[p] = coeffs[0]
+
+            # Variation index: find p where slope transitions from positive
+            # (V_p grows with refinement = infinite variation) to negative/zero
+            # (V_p converges = finite variation)
+            slope_vals = np.array([slopes[p] for p in self.p_values])
+            p_arr = np.array(self.p_values)
+
+            # Interpolate to find zero crossing
+            if slope_vals[0] > 0 and slope_vals[-1] <= 0:
+                # Find crossing point
+                for i in range(len(slope_vals) - 1):
+                    if slope_vals[i] > 0 and slope_vals[i + 1] <= 0:
+                        # Linear interpolation
+                        frac = slope_vals[i] / (slope_vals[i] - slope_vals[i + 1])
+                        variation_index = p_arr[i] + frac * (p_arr[i + 1] - p_arr[i])
+                        break
+                else:
+                    variation_index = p_arr[-1]
+            elif slope_vals[0] <= 0:
+                variation_index = p_arr[0]  # Already convergent at lowest p
+            else:
+                variation_index = p_arr[-1] + 1.0  # Still divergent at highest p
+
+            metrics["variation_index"] = float(variation_index)
+
+            # Scaling ratio: V_p(step=1) / V_p(step=4) at p=1
+            # Reveals self-similarity structure
+            vp1_fine = self._compute_pvar(x, 1.0, 1)
+            vp1_coarse = self._compute_pvar(x, 1.0, 4)
+            metrics["var_scaling_ratio"] = (
+                vp1_fine / vp1_coarse if vp1_coarse > 1e-15 else 0.0)
+        else:
+            metrics["variation_index"] = 2.0  # default
+            metrics["var_scaling_ratio"] = 1.0
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics=metrics,
+            raw_data={"p_values": self.p_values, "vp": vp}
+        )
+
+
+# =============================================================================
+# MULTI-SCALE WASSERSTEIN GEOMETRY
+# =============================================================================
+
+class MultiScaleWassersteinGeometry(ExoticGeometry):
+    """
+    Multi-Scale Wasserstein Geometry — distributional self-similarity.
+
+    Extends the single-scale Wasserstein comparison (half vs half) to a
+    full cascade: compares block distributions at scales 2^k for k=1..K.
+
+    For self-similar signals (Devil's Staircase), the Wasserstein distance
+    between adjacent blocks is constant across scales. For non-stationary
+    signals, it drifts. For scale-free processes (Lévy), it follows a
+    power law. The scaling exponent and spectral shape characterize the
+    signal's multi-scale distributional structure.
+
+    Metrics:
+    - w_mean: mean Wasserstein distance across all scales
+    - w_slope: log-log slope of W(scale) vs scale (self-similarity exponent)
+    - w_std: variability of W across scales (flatness indicator)
+    - w_max_ratio: W_max / W_min (dynamic range)
+    - w_fine: average W at finest scale (local distributional variation)
+    - w_coarse: average W at coarsest scale (global distributional shift)
+    """
+
+    def __init__(self, input_scale: float = 255.0, n_bins: int = 32):
+        self.input_scale = input_scale
+        self.n_bins = n_bins
+
+    @property
+    def name(self) -> str:
+        return "Multi-Scale Wasserstein"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Computes Wasserstein distances between histograms at multiple coarsening scales. Scale coherence reveals distributional self-similarity."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "scale"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Scale coherence, distributional drift, self-similarity"
+
+    @property
+    def dimension(self) -> str:
+        return "distribution cascade"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Normalize signal to [0, 1]."""
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    @staticmethod
+    def _wasserstein_1d(p, q):
+        """1D Wasserstein distance via CDF difference."""
+        cdf_p = np.cumsum(p)
+        cdf_q = np.cumsum(q)
+        return float(np.sum(np.abs(cdf_p - cdf_q)) / len(p))
+
+    def _block_histogram(self, block):
+        """Compute normalized histogram for a block."""
+        hist, _ = np.histogram(block, bins=self.n_bins, range=(0, 1),
+                               density=False)
+        total = hist.sum()
+        if total > 0:
+            return hist.astype(float) / total
+        return np.ones(self.n_bins) / self.n_bins
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute multi-scale Wasserstein metrics."""
+        x = self.embed(data)
+        n = len(x)
+
+        if n < 32:
+            return GeometryResult(self.name, {k: 0.0 for k in [
+                "w_mean", "w_slope", "w_std", "w_max_ratio",
+                "w_fine", "w_coarse"]}, {})
+
+        # Scales: number of blocks = 2, 4, 8, 16, ...
+        max_blocks = n // 8  # each block needs >= 8 samples
+        n_levels = int(np.floor(np.log2(max_blocks))) if max_blocks >= 2 else 0
+
+        if n_levels < 2:
+            return GeometryResult(self.name, {k: 0.0 for k in [
+                "w_mean", "w_slope", "w_std", "w_max_ratio",
+                "w_fine", "w_coarse"]}, {})
+
+        scale_distances = []  # (n_blocks, mean_W)
+
+        for level in range(1, n_levels + 1):
+            n_blocks = 2 ** level
+            block_size = n // n_blocks
+
+            # Compute histogram for each block
+            hists = []
+            for b in range(n_blocks):
+                block = x[b * block_size:(b + 1) * block_size]
+                hists.append(self._block_histogram(block))
+
+            # Compute W between adjacent blocks
+            distances = []
+            for b in range(n_blocks - 1):
+                w = self._wasserstein_1d(hists[b], hists[b + 1])
+                distances.append(w)
+
+            mean_w = np.mean(distances)
+            scale_distances.append((n_blocks, mean_w))
+
+        n_blocks_arr = np.array([sd[0] for sd in scale_distances], dtype=float)
+        w_arr = np.array([sd[1] for sd in scale_distances])
+
+        # Guard against zero/negative values in log
+        w_arr_safe = np.maximum(w_arr, 1e-15)
+
+        # Metrics
+        w_mean = float(np.mean(w_arr))
+        w_std = float(np.std(w_arr))
+
+        # Log-log slope: how does W scale with number of blocks?
+        log_nb = np.log2(n_blocks_arr)
+        log_w = np.log2(w_arr_safe)
+        if len(log_nb) >= 2 and np.std(log_w) > 1e-15:
+            coeffs = np.polyfit(log_nb, log_w, 1)
+            w_slope = float(coeffs[0])
+        else:
+            w_slope = 0.0
+
+        w_max = np.max(w_arr_safe)
+        w_min = np.min(w_arr_safe)
+        w_max_ratio = float(w_max / w_min) if w_min > 1e-15 else 0.0
+
+        # Fine vs coarse scale
+        w_fine = float(w_arr[-1])   # most blocks = finest scale
+        w_coarse = float(w_arr[0])  # fewest blocks = coarsest scale
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "w_mean": w_mean,
+                "w_slope": w_slope,
+                "w_std": w_std,
+                "w_max_ratio": w_max_ratio,
+                "w_fine": w_fine,
+                "w_coarse": w_coarse,
+            },
+            raw_data={
+                "scale_distances": scale_distances,
+            }
+        )
+
+
+# =============================================================================
+# SPECTRAL GEOMETRY (1D)
+# =============================================================================
+
+class SpectralGeometry(ExoticGeometry):
+    """
+    Spectral Geometry — frequency-domain analysis of 1D signals.
+
+    Computes the power spectral density via FFT and extracts statistics
+    characterizing the spectral structure. This fills the biggest gap in
+    the 1D geometry suite: no existing geometry operates in the frequency
+    domain.
+
+    Metrics:
+    - spectral_slope: log-log slope of PSD (β in P(f) ∝ f^β).
+      White noise ≈ 0, pink ≈ -1, brown ≈ -2, periodic → steep.
+    - spectral_r2: goodness of power-law fit (1 = perfect power law)
+    - spectral_entropy: Shannon entropy of normalized PSD (high = flat
+      spectrum, low = peaked/narrowband)
+    - spectral_flatness: Wiener entropy = exp(mean(log P)) / mean(P).
+      1 = white noise, 0 = pure tone.
+    - spectral_centroid: first moment of PSD, <f> (low = bass-heavy)
+    - spectral_bandwidth: std of PSD about centroid (narrow = tonal)
+    - peak_frequency: frequency bin with maximum power (normalized 0–1)
+    - high_freq_ratio: fraction of power above Nyquist/2
+    """
+
+    def __init__(self, input_scale: float = 255.0):
+        self.input_scale = input_scale
+
+    @property
+    def name(self) -> str:
+        return "Spectral Analysis"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "FFT power spectrum analysis: spectral slope (1/f^beta exponent), entropy, flatness, centroid, and bandwidth characterize the frequency content."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "dynamical"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Dominant frequency, spectral slope, bandwidth, periodicity"
+
+    @property
+    def dimension(self) -> str:
+        return "frequency"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        x = self.embed(data)
+        n = len(x)
+
+        if n < 16:
+            return GeometryResult(self.name, {k: 0.0 for k in [
+                "spectral_slope", "spectral_r2", "spectral_entropy",
+                "spectral_flatness", "spectral_centroid", "spectral_bandwidth",
+                "peak_frequency", "high_freq_ratio"]}, {})
+
+        # Power spectral density via FFT (one-sided)
+        x_centered = x - np.mean(x)
+        F = np.fft.rfft(x_centered)
+        psd = np.abs(F) ** 2 / n
+        # Double one-sided (except DC and Nyquist)
+        psd[1:-1] *= 2
+        freqs = np.fft.rfftfreq(n)  # normalized [0, 0.5]
+
+        # Skip DC component
+        psd = psd[1:]
+        freqs = freqs[1:]
+
+        if len(psd) < 3:
+            return GeometryResult(self.name, {k: 0.0 for k in [
+                "spectral_slope", "spectral_r2", "spectral_entropy",
+                "spectral_flatness", "spectral_centroid", "spectral_bandwidth",
+                "peak_frequency", "high_freq_ratio"]}, {})
+
+        # Spectral slope: log-log regression
+        valid = psd > 0
+        if np.sum(valid) >= 3:
+            log_f = np.log(freqs[valid])
+            log_p = np.log(psd[valid])
+            coeffs = np.polyfit(log_f, log_p, 1)
+            slope = float(coeffs[0])
+            predicted = np.polyval(coeffs, log_f)
+            ss_res = np.sum((log_p - predicted) ** 2)
+            ss_tot = np.sum((log_p - np.mean(log_p)) ** 2) + 1e-12
+            r2 = float(1.0 - ss_res / ss_tot)
+        else:
+            slope = 0.0
+            r2 = 0.0
+
+        # Normalize PSD as probability distribution
+        total = np.sum(psd) + 1e-30
+        p_norm = psd / total
+
+        # Spectral entropy (normalized by max possible)
+        p_pos = p_norm[p_norm > 0]
+        max_ent = np.log(len(p_norm)) if len(p_norm) > 1 else 1.0
+        spectral_entropy = float(-np.sum(p_pos * np.log(p_pos)) / max_ent) if max_ent > 0 else 0.0
+
+        # Spectral flatness (Wiener entropy): geometric mean / arithmetic mean
+        psd_pos = psd[psd > 1e-30]
+        if len(psd_pos) >= 2:
+            log_psd = np.log(psd_pos)
+            geo_mean = np.exp(np.mean(log_psd))
+            arith_mean = np.mean(psd_pos)
+            spectral_flatness = float(geo_mean / arith_mean)
+        else:
+            spectral_flatness = 0.0
+
+        # Spectral centroid and bandwidth
+        centroid = float(np.sum(freqs * p_norm))
+        bandwidth = float(np.sqrt(np.sum((freqs - centroid) ** 2 * p_norm)))
+
+        # Peak frequency
+        peak_idx = np.argmax(psd)
+        peak_frequency = float(freqs[peak_idx])
+
+        # High-frequency ratio (above half-Nyquist = 0.25)
+        hf_mask = freqs > 0.25
+        high_freq_ratio = float(np.sum(psd[hf_mask]) / total)
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "spectral_slope": np.clip(slope, -10, 2),
+                "spectral_r2": np.clip(r2, 0, 1),
+                "spectral_entropy": spectral_entropy,
+                "spectral_flatness": np.clip(spectral_flatness, 0, 1),
+                "spectral_centroid": centroid,
+                "spectral_bandwidth": bandwidth,
+                "peak_frequency": peak_frequency,
+                "high_freq_ratio": high_freq_ratio,
+            },
+            raw_data={"psd": psd, "freqs": freqs}
+        )
+
+
+# =============================================================================
+# INFORMATION / COMPLEXITY GEOMETRY (1D)
+# =============================================================================
+
+class InformationGeometry(ExoticGeometry):
+    """
+    Information Geometry — complexity and predictability measures.
+
+    Computes entropy at multiple block sizes (entropy rate), compression-
+    based complexity (Lempel-Ziv), and temporal dependence (mutual
+    information at multiple lags). These measure *how predictable* and
+    *how compressible* the signal is — fundamentally different from any
+    geometric embedding.
+
+    Metrics:
+    - block_entropy_1: Shannon entropy of single-byte distribution
+    - block_entropy_2: Shannon entropy of byte-pair distribution
+    - block_entropy_4: Shannon entropy of 4-grams (normalized)
+    - entropy_rate: estimated entropy per symbol (h = H_k - H_{k-1})
+    - compression_ratio: zlib compression ratio (0 = trivial, 1 = incompressible)
+    - mutual_info_1: mutual information at lag 1 (sequential dependence)
+    - mutual_info_8: mutual information at lag 8 (longer-range dependence)
+    - excess_entropy: total predictable information (H_1 - h) × N
+    """
+
+    def __init__(self, input_scale: float = 255.0, n_bins: int = 16):
+        self.input_scale = input_scale
+        self.n_bins = n_bins
+
+    @property
+    def name(self) -> str:
+        return "Information Theory"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Block entropies at multiple depths (1, 2, 4 bytes), entropy rate, compression ratio, and mutual information at lag 1 and 8. Measures sequential redundancy."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Shannon entropy, complexity, redundancy"
+
+    @property
+    def dimension(self) -> str:
+        return "information"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    @staticmethod
+    def _shannon_entropy(counts):
+        """Shannon entropy in nats from count array."""
+        total = np.sum(counts)
+        if total == 0:
+            return 0.0
+        p = counts[counts > 0] / total
+        return float(-np.sum(p * np.log(p)))
+
+    @staticmethod
+    def _compression_complexity(data_bytes):
+        """Compression ratio via zlib as a proxy for Kolmogorov complexity.
+
+        Returns value in [0, 1] where 0 = perfectly compressible,
+        1 = incompressible (random).
+        """
+        import zlib
+        raw = bytes(data_bytes)
+        n = len(raw)
+        if n == 0:
+            return 0.0
+        compressed = zlib.compress(raw, level=9)
+        # Subtract zlib header (~11 bytes) for fairer ratio
+        compressed_size = max(len(compressed) - 11, 1)
+        return float(min(compressed_size / n, 1.0))
+
+    def _mutual_information(self, x, lag, n_bins):
+        """Mutual information I(X_t; X_{t+lag}) via histogram estimator."""
+        n = len(x) - lag
+        if n < 10:
+            return 0.0
+        a = x[:n]
+        b = x[lag:lag + n]
+
+        # Joint and marginal histograms
+        joint, _, _ = np.histogram2d(a, b, bins=n_bins, range=[[0, 1], [0, 1]])
+        px = np.sum(joint, axis=1)
+        py = np.sum(joint, axis=0)
+
+        total = np.sum(joint)
+        if total == 0:
+            return 0.0
+
+        # MI = H(X) + H(Y) - H(X,Y)
+        hx = self._shannon_entropy(px)
+        hy = self._shannon_entropy(py)
+        hxy = self._shannon_entropy(joint.ravel())
+        return float(max(0.0, hx + hy - hxy))
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        x = self.embed(data)
+        n = len(x)
+
+        if n < 32:
+            return GeometryResult(self.name, {k: 0.0 for k in [
+                "block_entropy_1", "block_entropy_2", "block_entropy_4",
+                "entropy_rate", "compression_ratio", "mutual_info_1",
+                "mutual_info_8", "excess_entropy"]}, {})
+
+        # Quantize to n_bins levels for entropy estimation
+        x_q = np.clip((x * self.n_bins).astype(int), 0, self.n_bins - 1)
+
+        # Block entropy at different scales
+        # H_1: single symbol
+        counts_1 = np.bincount(x_q, minlength=self.n_bins)
+        h1 = self._shannon_entropy(counts_1) / np.log(self.n_bins)  # normalized
+
+        # H_2: pairs
+        pairs = x_q[:-1] * self.n_bins + x_q[1:]
+        counts_2 = np.bincount(pairs, minlength=self.n_bins ** 2)
+        h2_raw = self._shannon_entropy(counts_2)
+        h2 = h2_raw / (2 * np.log(self.n_bins)) if self.n_bins > 1 else 0.0
+
+        # H_4: 4-grams (if enough data)
+        if n >= 100:
+            quads = (x_q[:-3] * self.n_bins ** 3 + x_q[1:-2] * self.n_bins ** 2 +
+                     x_q[2:-1] * self.n_bins + x_q[3:])
+            # Use unique counts instead of full bincount (n_bins^4 can be large)
+            _, quad_counts = np.unique(quads, return_counts=True)
+            h4_raw = self._shannon_entropy(quad_counts)
+            h4 = h4_raw / (4 * np.log(self.n_bins)) if self.n_bins > 1 else 0.0
+        else:
+            h4 = h2
+
+        # Entropy rate estimate: h ≈ H_2 - H_1 (conditional entropy of 2nd given 1st)
+        h1_raw = self._shannon_entropy(counts_1)
+        entropy_rate = (h2_raw - h1_raw) / np.log(self.n_bins) if self.n_bins > 1 else 0.0
+
+        # Excess entropy: total predictable information
+        excess_entropy = float(max(0.0, h1 - entropy_rate))
+
+        # Lempel-Ziv complexity (on quantized sequence)
+        lz = self._compression_complexity(self.validate_data(data))
+
+        # Mutual information at lags 1 and 8
+        mi_1 = self._mutual_information(x, 1, self.n_bins)
+        mi_8 = self._mutual_information(x, 8, self.n_bins)
+        # Normalize by H_1
+        if h1_raw > 1e-10:
+            mi_1 /= h1_raw
+            mi_8 /= h1_raw
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "block_entropy_1": h1,
+                "block_entropy_2": h2,
+                "block_entropy_4": h4,
+                "entropy_rate": float(np.clip(entropy_rate, 0, 1)),
+                "compression_ratio": float(np.clip(lz, 0, 1)),
+                "mutual_info_1": float(np.clip(mi_1, 0, 1)),
+                "mutual_info_8": float(np.clip(mi_8, 0, 1)),
+                "excess_entropy": float(np.clip(excess_entropy, 0, 2)),
+            },
+            raw_data={}
+        )
+
+
+# =============================================================================
+# RECURRENCE GEOMETRY (1D)
+# =============================================================================
+
+class RecurrenceGeometry(ExoticGeometry):
+    """
+    Recurrence Geometry — recurrence quantification analysis.
+
+    Constructs the recurrence matrix R(i,j) = Θ(ε - ||x_i - x_j||) from
+    a delay-embedded signal and extracts statistics characterizing the
+    diagonal and vertical line structures.  These directly measure
+    dynamical properties: determinism, laminarity, and trapping.
+
+    Uses 3D delay embedding with lag = median of first autocorrelation zero
+    (capped at 50) and a recurrence threshold at the 10th percentile of
+    pairwise distances. Subsampled to keep the matrix tractable.
+
+    Metrics:
+    - recurrence_rate: fraction of recurrent points (density of R)
+    - determinism: fraction of recurrent points forming diagonal lines (≥2)
+      High = deterministic dynamics, low = stochastic.
+    - avg_diagonal: mean length of diagonal lines (predictability horizon)
+    - max_diagonal: longest diagonal (Lyapunov time proxy)
+    - laminarity: fraction of recurrent points forming vertical lines (≥2)
+      High = intermittent/laminar dynamics.
+    - trapping_time: mean length of vertical lines (stickiness)
+    - entropy_diagonal: Shannon entropy of diagonal line length distribution
+    """
+
+    def __init__(self, input_scale: float = 255.0, embed_dim: int = 3,
+                 max_points: int = 500):
+        self.input_scale = input_scale
+        self.embed_dim = embed_dim
+        self.max_points = max_points  # subsample for tractability
+
+    @property
+    def name(self) -> str:
+        return "Recurrence Quantification"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Recurrence quantification analysis (RQA) on a delay-embedded phase portrait. Determinism, laminarity, and trapping time distinguish chaos from noise."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "dynamical"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Recurrence rate, determinism, laminarity, trapping time"
+
+    @property
+    def dimension(self) -> str:
+        return "phase space"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    @staticmethod
+    def _find_lag(x, max_lag=50):
+        """Find delay lag as first zero-crossing of autocorrelation."""
+        n = len(x)
+        x_centered = x - np.mean(x)
+        var = np.sum(x_centered ** 2)
+        if var < 1e-15:
+            return 1
+        for lag in range(1, min(max_lag, n // 3)):
+            acf = np.sum(x_centered[:n - lag] * x_centered[lag:]) / var
+            if acf <= 0:
+                return lag
+        return max_lag
+
+    @staticmethod
+    def _line_stats(lengths):
+        """Compute statistics from a list of line lengths (≥2)."""
+        lines = [l for l in lengths if l >= 2]
+        if not lines:
+            return 0.0, 0.0, 0, 0.0
+        total = sum(lines)
+        avg = total / len(lines)
+        mx = max(lines)
+        # Shannon entropy of line length distribution
+        counts = {}
+        for l in lines:
+            counts[l] = counts.get(l, 0) + 1
+        n_lines = len(lines)
+        ent = 0.0
+        for c in counts.values():
+            p = c / n_lines
+            if p > 0:
+                ent -= p * np.log(p)
+        return float(total), float(avg), int(mx), float(ent)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        x = self.embed(data)
+        n = len(x)
+
+        zero = {k: 0.0 for k in [
+            "recurrence_rate", "determinism", "avg_diagonal",
+            "max_diagonal", "laminarity", "trapping_time",
+            "entropy_diagonal"]}
+
+        if n < 30:
+            return GeometryResult(self.name, zero, {})
+
+        # Find delay and build embedding
+        lag = self._find_lag(x)
+        dim = self.embed_dim
+        N = n - (dim - 1) * lag
+        if N < 20:
+            return GeometryResult(self.name, zero, {})
+
+        # Delay embedding matrix: (N, dim)
+        embedded = np.zeros((N, dim))
+        for d in range(dim):
+            embedded[:, d] = x[d * lag:d * lag + N]
+
+        # Subsample if too large — use contiguous block to preserve
+        # temporal adjacency (linspace subsampling destroys diagonal
+        # line structure for signals with short Lyapunov time)
+        if N > self.max_points:
+            embedded = embedded[:self.max_points]
+            N = self.max_points
+
+        # Distance matrix
+        # Use Chebyshev (max-norm) for efficiency — standard in RQA
+        diff = embedded[:, np.newaxis, :] - embedded[np.newaxis, :, :]
+        dist = np.max(np.abs(diff), axis=2)
+
+        # Threshold: 10th percentile of distances (excluding self-pairs)
+        upper_tri = dist[np.triu_indices(N, k=1)]
+        if len(upper_tri) == 0:
+            return GeometryResult(self.name, zero, {})
+        epsilon = np.percentile(upper_tri, 10)
+        if epsilon < 1e-15:
+            epsilon = np.percentile(upper_tri, 20)
+
+        # Recurrence matrix with Theiler window — exclude diagonals
+        # |k| < w to avoid trivially short lines from embedding overlap.
+        # Standard: w = lag * (dim - 1) + 1
+        R = (dist <= epsilon).astype(np.int8)
+        theiler_w = lag * (dim - 1) + 1
+        for tw in range(-theiler_w + 1, theiler_w):
+            np.fill_diagonal(R[max(0, tw):, max(0, -tw):], 0)
+
+        total_recurrent = int(np.sum(R))
+        total_possible = N * (N - 1) - 2 * sum(N - abs(tw) for tw in range(1, theiler_w))
+        total_possible = max(total_possible, 1)
+        recurrence_rate = total_recurrent / total_possible if total_possible > 0 else 0.0
+
+        # Diagonal line statistics (lines parallel to main diagonal)
+        diag_lengths = []
+        for k in range(-N + 1, N):
+            if abs(k) < theiler_w:
+                continue
+            diag = np.diag(R, k)
+            # Count consecutive 1s
+            length = 0
+            for val in diag:
+                if val:
+                    length += 1
+                else:
+                    if length > 0:
+                        diag_lengths.append(length)
+                    length = 0
+            if length > 0:
+                diag_lengths.append(length)
+
+        diag_total, avg_diag, max_diag, ent_diag = self._line_stats(diag_lengths)
+        determinism = diag_total / total_recurrent if total_recurrent > 0 else 0.0
+
+        # Vertical line statistics (columns of R)
+        vert_lengths = []
+        for j in range(N):
+            col = R[:, j]
+            length = 0
+            for val in col:
+                if val:
+                    length += 1
+                else:
+                    if length > 0:
+                        vert_lengths.append(length)
+                    length = 0
+            if length > 0:
+                vert_lengths.append(length)
+
+        vert_total, avg_vert, _, _ = self._line_stats(vert_lengths)
+        laminarity = vert_total / total_recurrent if total_recurrent > 0 else 0.0
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "recurrence_rate": float(np.clip(recurrence_rate, 0, 1)),
+                "determinism": float(np.clip(determinism, 0, 1)),
+                "avg_diagonal": float(np.clip(avg_diag, 0, N)),
+                "max_diagonal": float(min(max_diag, N)),
+                "laminarity": float(np.clip(laminarity, 0, 1)),
+                "trapping_time": float(np.clip(avg_vert, 0, N)),
+                "entropy_diagonal": float(np.clip(ent_diag, 0, 10)),
+            },
+            raw_data={}
+        )
+
+
+# =============================================================================
+# SPATIAL FIELD GEOMETRY (2D only)
+# =============================================================================
+
 class SpatialFieldGeometry(ExoticGeometry):
     """
     Native 2D field analysis via differential geometry on scalar fields.
@@ -2938,7 +5699,28 @@ class SpatialFieldGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return "SpatialField"
+        return "Spatial Field"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Analyzes 2D fields via gradient magnitude, Laplacian, and critical point classification. Detects anisotropy, smoothness, and topographic structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Gradient field, curvature, critical points"
 
     @property
     def dimension(self) -> Union[int, str]:
@@ -3223,6 +6005,27 @@ class SurfaceGeometry(ExoticGeometry):
     def name(self) -> str:
         return "Surface"
 
+
+    @property
+
+    def description(self) -> str:
+
+        return "Treats 2D fields as height maps and computes Gaussian and mean curvature via the first and second fundamental forms. Positive Gaussian curvature = dome, negative = saddle."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Gaussian curvature, mean curvature, surface area"
+
     @property
     def dimension(self) -> Union[int, str]:
         return "2D"
@@ -3255,6 +6058,21 @@ class SurfaceGeometry(ExoticGeometry):
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         field = self._downsample(self.validate_data(data))
+        
+        if field.shape[0] < 2 or field.shape[1] < 2:
+            metrics = {
+                'gaussian_curvature_mean': 0.0,
+                'gaussian_curvature_std': 0.0,
+                'mean_curvature_mean': 0.0,
+                'mean_curvature_std': 0.0,
+                'shape_index_mean': 0.0,
+                'shape_index_std': 0.0,
+                'curvedness_mean': 0.0,
+                'gauss_bonnet_integral': 0.0,
+                'total_metric_area': 0.0
+            }
+            return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
         metrics: Dict[str, float] = {}
 
         # First derivatives
@@ -3329,7 +6147,28 @@ class PersistentHomology2DGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return "PersistentHomology2D"
+        return "Persistent Homology 2D"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Sublevel and superlevel set persistence on 2D grids. Counts topological births and deaths (components, loops) as a threshold sweeps through the field."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "2D topological features, level-set connectivity"
 
     @property
     def dimension(self) -> Union[int, str]:
@@ -3501,7 +6340,28 @@ class ConformalGeometry2D(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return "Conformal2D"
+        return "Conformal 2D"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Measures conformal distortion and angle preservation in 2D fields. The Cauchy-Riemann residual quantifies departure from holomorphicity."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Conformal distortion, angle preservation"
 
     @property
     def dimension(self) -> Union[int, str]:
@@ -3537,6 +6397,20 @@ class ConformalGeometry2D(ExoticGeometry):
         field = self._downsample(self.validate_data(data))
         H, W = field.shape
         metrics: Dict[str, float] = {}
+
+        if H < 2 or W < 2:
+            return GeometryResult(
+                geometry_name=self.name,
+                metrics={
+                    'mean_distortion': 0.0,
+                    'max_distortion': 0.0,
+                    'conformal_energy': 0.0,
+                    'riesz_energy': 0.0,
+                    'isotropy_index': 0.0,
+                    'liouville_curvature': 0.0
+                },
+                raw_data={}
+            )
 
         # Gradients
         fy, fx = np.gradient(field)
@@ -3664,7 +6538,28 @@ class MinkowskiFunctionalGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return "MinkowskiFunctional"
+        return "Minkowski Functionals"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Computes Minkowski functionals (area, perimeter, Euler characteristic) of level sets at multiple thresholds. These three numbers completely characterize the morphology of 2D binary images."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Area, perimeter, Euler characteristic of level sets"
 
     @property
     def dimension(self) -> Union[int, str]:
@@ -3815,7 +6710,28 @@ class MultiscaleFractalGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return "MultiscaleFractal"
+        return "Multiscale Fractal 2D"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Box-counting fractal dimension and lacunarity of 2D fields at multiple thresholds. Lacunarity measures the gappiness of the fractal — two sets can share the same dimension but differ in lacunarity."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "2D fractal dimension, lacunarity"
 
     @property
     def dimension(self) -> Union[int, str]:
@@ -4035,7 +6951,28 @@ class HodgeLaplacianGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return "HodgeLaplacian"
+        return "Hodge–Laplacian"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Decomposes a 2D gradient field into exact, co-exact, and harmonic components via the Hodge-Helmholtz decomposition. The harmonic fraction measures topological obstruction to gradient flow."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Harmonic content, co-exact forms, Betti numbers"
 
     @property
     def dimension(self) -> Union[int, str]:
@@ -4167,7 +7104,28 @@ class SpectralPowerGeometry(ExoticGeometry):
 
     @property
     def name(self) -> str:
-        return "SpectralPower"
+        return "Spectral Power 2D"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "2D FFT power spectrum analysis. Radial spectral slope (1/f^beta), isotropy ratio, and dominant spatial frequency characterize the field's scale structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "other"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "2D spectral slope, isotropy, dominant frequency"
 
     @property
     def dimension(self) -> Union[int, str]:
@@ -4288,6 +7246,999 @@ class SpectralPowerGeometry(ExoticGeometry):
         metrics['mid_freq_ratio'] = float(np.sum(power[mid_mask]) / (np.sum(power) + 1e-12))
 
         return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+# =============================================================================
+# POWER LAW & TOPOLOGICAL GEOMETRIES
+# =============================================================================
+
+class VisibilityGraphGeometry(ExoticGeometry):
+    """
+    Visibility Graph Geometry - transforms time series into a topological network.
+
+    A Natural Visibility Graph (NVG) connects two points (ti, yi) and (tj, yj) 
+    if any point (tk, yk) between them (ti < tk < tj) satisfies:
+        yk < yj + (yi - yj) * (tj - tk) / (tj - ti)
+
+    This mapping is invariant under affine transformations of the data and 
+    captures structural properties (periodicity, chaos, fractality) in the 
+    graph's degree distribution and modularity.
+
+    Validated for:
+    - Distinguishing fGn (fractional Gaussian noise) from fBm (fractional Brownian motion).
+    - Detecting transitions to chaos in dynamical systems (logistic map).
+    """
+
+    def __init__(self, max_points: int = 1024):
+        self.max_points = max_points
+
+    @property
+    def name(self) -> str:
+        return "Visibility Graph"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Converts the time series to a graph: two points are connected if no intermediate value blocks the line of sight. Degree distribution and clustering reveal dynamical class."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "topological"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Graph degree distribution, clustering, small-worldness"
+
+    @property
+    def dimension(self) -> str:
+        return "Network"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """The embedding is the graph adjacency matrix itself."""
+        return self.validate_data(data)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        y = self.validate_data(data).astype(float)
+        if len(y) > self.max_points:
+            # Take a contiguous block from the center.
+            # np.linspace subsampling would destroy temporal adjacency,
+            # creating spurious visibility edges between non-adjacent points.
+            start = (len(y) - self.max_points) // 2
+            y = y[start:start + self.max_points]
+        
+        N = len(y)
+        t = np.arange(N, dtype=float)
+        
+        # O(N^2) visibility graph construction
+        # Optimization: points only see neighbors that aren't blocked
+        adj = [[] for _ in range(N)]
+        for i in range(N):
+            max_slope = -np.inf
+            for j in range(i + 1, N):
+                slope = (y[j] - y[i]) / (t[j] - t[i])
+                if slope > max_slope:
+                    adj[i].append(j)
+                    adj[j].append(i)
+                    max_slope = slope
+
+        degrees = np.array([len(neighbors) for neighbors in adj], dtype=float)
+        
+        metrics: Dict[str, float] = {}
+        metrics['max_degree'] = float(np.max(degrees))
+        
+        # Power Law Fitting P(k) ~ k^-gamma
+        # Use log-log regression on the cumulative distribution
+        k_vals, counts = np.unique(degrees, return_counts=True)
+        if len(k_vals) > 3:
+            # P(K >= k) distribution
+            pk = np.cumsum(counts[::-1])[::-1] / N
+            log_k = np.log(k_vals)
+            log_pk = np.log(pk)
+            coeffs = np.polyfit(log_k, log_pk, 1)
+            metrics['degree_exponent_gamma'] = float(-coeffs[0])
+            
+            # Goodness of fit (R^2)
+            predicted = np.polyval(coeffs, log_k)
+            ss_res = np.sum((log_pk - predicted)**2)
+            ss_tot = np.sum((log_pk - np.mean(log_pk))**2) + 1e-12
+            metrics['degree_r_squared'] = float(1.0 - ss_res / ss_tot)
+        else:
+            metrics['degree_exponent_gamma'] = 0.0
+            metrics['degree_r_squared'] = 0.0
+
+        # Graph Density: actual edges / potential edges
+        n_edges = np.sum(degrees) / 2
+        metrics['graph_density'] = float(n_edges / (N * (N - 1) / 2))
+
+        # Average Clustering Coefficient (Local density)
+        # Optimized via set intersections
+        cluster_coeffs = []
+        # Pre-convert all adjacency lists to sets for O(1) lookup
+        adj_sets = [set(neighbors) for neighbors in adj]
+        
+        for i in range(N):
+            ki = degrees[i]
+            if ki < 2:
+                cluster_coeffs.append(0.0)
+                continue
+            
+            # Count edges between neighbors of i
+            neighbors = adj[i]
+            edges_between = 0
+            for idx_n1, n1 in enumerate(neighbors):
+                s1 = adj_sets[n1]
+                for n2 in neighbors[idx_n1 + 1:]:
+                    if n2 in s1:
+                        edges_between += 1
+            cluster_coeffs.append(edges_between / (ki * (ki - 1) / 2))
+        
+        metrics['avg_clustering_coeff'] = float(np.mean(cluster_coeffs))
+
+        # Degree Assortativity (Pearson correlation of degrees at ends of edges)
+        # Vectorized edge degree extraction
+        edge_list = []
+        for i in range(N):
+            for j in adj[i]:
+                if j > i:
+                    edge_list.append((i, j))
+        
+        if len(edge_list) > 1:
+            edge_arr = np.array(edge_list)
+            degs_i = degrees[edge_arr[:, 0]]
+            degs_j = degrees[edge_arr[:, 1]]
+            r = np.corrcoef(degs_i, degs_j)[0, 1]
+            metrics['assortativity'] = float(r) if np.isfinite(r) else 0.0
+        else:
+            metrics['assortativity'] = 0.0
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+class ZipfMandelbrotGeometry(ExoticGeometry):
+    """
+    Zipf-Mandelbrot Geometry - analyzes the linguistic/symbolic "vocabulary" of data.
+
+    Zipf's Law: Frequency f(r) of the r-th most common "word" follows f(r) ∝ r^-alpha.
+    Mandelbrot's refinement: f(r) ∝ (r + q)^-alpha, where q accounts for low-rank 
+    vocabulary structure.
+
+    This geometry treats N-bit sequences as symbols and measures the richness, 
+    diversity, and decay of the resulting "dictionary."
+    """
+
+    def __init__(self, n_bits: int = 8, sliding: bool = True):
+        self.n_bits = n_bits
+        self.sliding = sliding
+
+    @property
+    def name(self) -> str:
+        return f"Zipf–Mandelbrot ({self.n_bits}-bit)"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Treats N-bit sequences as symbols and fits Zipf-Mandelbrot frequency decay f(r) ~ (r+q)^-alpha. Vocabulary richness, hapax ratio, and Gini coefficient measure symbolic diversity."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "distributional"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Zipf exponent, vocabulary richness, frequency decay"
+
+    @property
+    def dimension(self) -> str:
+        return "Linguistic"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        """Converts data into a frequency-ranked vector of word counts."""
+        return self.validate_data(data)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        y = self.validate_data(data)
+        
+        # Extract "words" (N-bit atoms)
+        if self.n_bits == 8:
+            words = y
+        else:
+            # For 16-bit, etc., pack bits or use sliding window
+            if self.sliding:
+                # 16-bit sliding: pair bytes i and i+1
+                words = (y[:-1].astype(np.uint16) << 8) | y[1:].astype(np.uint16)
+            else:
+                # 16-bit non-overlapping
+                n = (len(y) // 2) * 2
+                words = (y[:n:2].astype(np.uint16) << 8) | y[1:n:2].astype(np.uint16)
+
+        counts = Counter(words)
+        frequencies = sorted(counts.values(), reverse=True)
+        N_unique = len(frequencies)
+        N_total = sum(frequencies)
+        
+        metrics: Dict[str, float] = {}
+        metrics['vocabulary_size'] = float(N_unique)
+        metrics['ttr'] = float(N_unique / N_total) if N_total > 0 else 0.0
+        
+        # Fit Zipf-Mandelbrot f(r) = C * (r + q)^-alpha
+        # via log-log: log(f) = log(C) - alpha * log(r + q)
+        # We'll estimate alpha using the Zipf limit (q=0) first
+        if N_unique >= 5:
+            ranks = np.arange(1, N_unique + 1, dtype=float)
+            log_r = np.log(ranks)
+            log_f = np.log(frequencies)
+            
+            coeffs = np.polyfit(log_r, log_f, 1)
+            metrics['zipf_alpha'] = float(-coeffs[0])
+            
+            # Mandelbrot q estimation: 
+            # We look for q that maximizes linearity of log(f) vs log(r+q)
+            best_q = 0.0
+            max_r2 = -1.0
+            for q_test in [0.0, 0.5, 1.0, 2.0, 5.0, 10.0]:
+                log_rq = np.log(ranks + q_test)
+                c_test = np.polyfit(log_rq, log_f, 1)
+                pred = np.polyval(c_test, log_rq)
+                r2 = 1.0 - np.sum((log_f - pred)**2) / (np.sum((log_f - np.mean(log_f))**2) + 1e-12)
+                if r2 > max_r2:
+                    max_r2 = r2
+                    best_q = q_test
+            
+            metrics['mandelbrot_q'] = float(best_q)
+            metrics['zipf_r_squared'] = float(max_r2)
+        else:
+            metrics['zipf_alpha'] = 0.0
+            metrics['mandelbrot_q'] = 0.0
+            metrics['zipf_r_squared'] = 0.0
+
+        # Hapax Legomena Ratio (words appearing exactly once)
+        hapax = sum(1 for f in frequencies if f == 1)
+        metrics['hapax_ratio'] = float(hapax / N_unique) if N_unique > 0 else 0.0
+        
+        # Gini Coefficient of frequencies (concentration of vocabulary)
+        # G = (2 * Σ i*f_i) / (n * Σ f_i) - (n + 1) / n
+        if N_unique > 0:
+            f_arr = np.array(frequencies[::-1]) # Sort ascending for standard Gini formula
+            index = np.arange(1, N_unique + 1)
+            gini = (np.sum((2 * index - N_unique - 1) * f_arr)) / (N_unique * np.sum(f_arr))
+            metrics['gini_coefficient'] = float(gini)
+        else:
+            metrics['gini_coefficient'] = 0.0
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+# =============================================================================
+# DYNAMICAL GEOMETRIES — Multifractal, Predictability, Attractor
+# =============================================================================
+
+
+class MultifractalGeometry(ExoticGeometry):
+    """
+    Multifractal Geometry — singularity spectrum f(α) via structure functions.
+
+    Computes the multifractal spectrum of a 1D signal by estimating the
+    scaling exponents τ(q) of the partition function Z(q, ε) = Σ|μ_i|^q
+    at multiple moment orders q, then Legendre-transforming to get f(α).
+
+    This directly measures whether a signal has uniform scaling (monofractal,
+    like fBm) or variable local regularity (multifractal, like turbulence
+    or financial returns).
+
+    Metrics:
+    - spectrum_width: width of the f(α) curve (α_max - α_min). Zero for
+      monofractal, large for strongly multifractal.
+    - alpha_peak: position of the maximum of f(α) — the most common
+      singularity strength. Low = rough, high = smooth.
+    - asymmetry: left/right asymmetry of f(α). Positive = left-skewed
+      (more smooth than rough events), negative = right-skewed.
+    - hurst_estimate: H = τ(2)/2, the self-affinity exponent.
+      H < 0.5 = anti-persistent, H > 0.5 = persistent.
+    - tau_curvature: curvature of τ(q) at q=2. Zero for monofractal,
+      negative for multifractal. Measures intermittency.
+    """
+
+    def __init__(self, input_scale: float = 255.0, n_scales: int = 8):
+        self.input_scale = input_scale
+        self.n_scales = n_scales
+
+    @property
+    def name(self) -> str:
+        return "Multifractal Spectrum"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Estimates the multifractal singularity spectrum f(alpha) via structure functions. Spectrum width measures scaling heterogeneity — monofractal vs. rich multiscale structure."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "dynamical"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Spectrum width, dominant singularity, scaling nonlinearity"
+
+    @property
+    def dimension(self) -> str:
+        return "variable"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        x = self.embed(data)
+        n = len(x)
+        zero = {k: 0.0 for k in [
+            "spectrum_width", "alpha_peak", "asymmetry",
+            "hurst_estimate", "tau_curvature"]}
+
+        if n < 64:
+            return GeometryResult(self.name, zero, {})
+
+        # Structure function approach: for scale ε, compute moments of |Δx|
+        # Use dyadic scales
+        qs = np.array([-3, -2, -1, -0.5, 0.5, 1, 2, 3, 4, 5])
+        max_scale_exp = min(self.n_scales, int(np.log2(n // 4)))
+        if max_scale_exp < 3:
+            return GeometryResult(self.name, zero, {})
+        scales = 2 ** np.arange(1, max_scale_exp + 1)
+
+        # Compute τ(q) via linear regression of log(Z(q,ε)) vs log(ε)
+        log_scales = np.log(scales.astype(float))
+        tau_q = np.full(len(qs), np.nan)
+
+        for iq, q in enumerate(qs):
+            log_Z = np.zeros(len(scales))
+            for isc, sc in enumerate(scales):
+                # Increments at scale sc
+                increments = np.abs(x[sc:] - x[:-sc])
+                increments = increments[increments > 1e-15]
+                if len(increments) < 10:
+                    log_Z[isc] = np.nan
+                    continue
+                if q > 0:
+                    log_Z[isc] = np.log(np.mean(increments ** q))
+                else:
+                    # For negative q, avoid amplifying near-zero increments
+                    clipped = np.maximum(increments, 1e-10)
+                    log_Z[isc] = np.log(np.mean(clipped ** q))
+
+            valid = np.isfinite(log_Z)
+            if valid.sum() < 3:
+                continue
+            # Fit slope: τ(q) = d log Z(q,ε) / d log ε
+            coeffs = np.polyfit(log_scales[valid], log_Z[valid], 1)
+            tau_q[iq] = coeffs[0]
+
+        valid_tau = np.isfinite(tau_q)
+        if valid_tau.sum() < 5:
+            return GeometryResult(self.name, zero, {})
+
+        # Hurst exponent from τ(2)
+        q2_idx = np.argmin(np.abs(qs - 2))
+        hurst = tau_q[q2_idx] / 2.0 if np.isfinite(tau_q[q2_idx]) else 0.5
+
+        # Legendre transform via quadratic fit of τ(q).
+        # Only use positive q for spectrum estimation: negative-q structure
+        # function moments are dominated by the uint8 quantization floor
+        # (smallest nonzero increment = 1/255) and produce systematically
+        # biased τ(q), creating false-positive spectrum width for
+        # monofractal signals like fBm.
+        pos_mask = valid_tau & (qs >= 0.5)
+        pos_qs = qs[pos_mask]
+        pos_taus = tau_q[pos_mask]
+
+        if len(pos_qs) < 3:
+            return GeometryResult(self.name, zero | {"hurst_estimate": float(np.clip(hurst, 0, 1.5))}, {})
+
+        # Quadratic: τ(q) = a*q² + b*q + c
+        # α(q) = 2aq + b, spectrum_width = |2a| * Δq
+        # Monofractal: a ≈ 0, multifractal: a < 0 (concave)
+        tau_poly = np.polyfit(pos_qs, pos_taus, min(2, len(pos_qs) - 1))
+        if len(tau_poly) == 3:
+            a_coeff = tau_poly[0]
+        else:
+            a_coeff = 0.0
+
+        tau_deriv = np.polyder(tau_poly)
+        alphas = np.polyval(tau_deriv, pos_qs)
+        tau_smooth = np.polyval(tau_poly, pos_qs)
+        f_alpha = pos_qs * alphas - tau_smooth
+
+        # Spectrum properties
+        alpha_range = abs(alphas.max() - alphas.min())
+        f_peak_idx = np.argmax(f_alpha)
+        alpha_peak = alphas[f_peak_idx]
+
+        # Asymmetry: compare left and right widths of f(α) relative to peak
+        left_width = alpha_peak - alphas.min()
+        right_width = alphas.max() - alpha_peak
+        if left_width + right_width > 1e-10:
+            asymmetry = (left_width - right_width) / (left_width + right_width)
+        else:
+            asymmetry = 0.0
+
+        # τ curvature = 2a (the quadratic coefficient)
+        curvature = 2.0 * a_coeff
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "spectrum_width": float(np.clip(alpha_range, 0, 5)),
+                "alpha_peak": float(np.clip(alpha_peak, 0, 3)),
+                "asymmetry": float(np.clip(asymmetry, -1, 1)),
+                "hurst_estimate": float(np.clip(hurst, 0, 1.5)),
+                "tau_curvature": float(np.clip(curvature, -2, 0.5)),
+            },
+            raw_data={}
+        )
+
+
+class PredictabilityGeometry(ExoticGeometry):
+    """
+    Predictability Geometry — how quickly information decays with lag.
+
+    Measures the conditional entropy H(X_t | X_{t-1}, ..., X_{t-k}) at
+    multiple embedding depths k using coarse-grained symbolization, plus
+    sample entropy (SampEn) which quantifies self-similarity of patterns
+    at different tolerance levels.
+
+    These metrics directly distinguish:
+    - Periodic signals: conditional entropy → 0 at sufficient depth
+    - Deterministic chaos: moderate conditional entropy, slow decay
+    - Stochastic processes: high conditional entropy, fast saturation
+    - IID noise: conditional entropy = marginal entropy at all depths
+
+    Metrics:
+    - cond_entropy_k1/k2/k4/k8: conditional entropy at depths 1,2,4,8
+    - entropy_decay_rate: how fast conditional entropy drops with depth
+      (slope of H(X|past_k) vs k). Near 0 = unpredictable, large negative = predictable.
+    - sample_entropy: SampEn(m=2, r=0.2σ) — regularity measure.
+      Low = regular/predictable, high = complex/unpredictable.
+    - excess_predictability: H(X) - H(X|past_8) — total information
+      gained from knowing the past 8 steps.
+    """
+
+    def __init__(self, input_scale: float = 255.0, n_symbols: int = 8):
+        self.input_scale = input_scale
+        self.n_symbols = n_symbols
+
+    @property
+    def name(self) -> str:
+        return "Predictability"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Measures conditional entropy at increasing history depths (1, 2, 4, 8 bytes). The decay rate quantifies memory — fast decay means unpredictable, slow decay means structured."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "dynamical"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Conditional entropy, memory depth, sample entropy"
+
+    @property
+    def dimension(self) -> str:
+        return "information"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    def _symbolize(self, x):
+        """Coarse-grain to n_symbols levels for entropy estimation."""
+        # Floor-based binning: map [0,1] → {0, 1, ..., n_symbols-1}
+        s = np.floor(x * self.n_symbols).astype(int)
+        return np.clip(s, 0, self.n_symbols - 1)
+
+    def _conditional_entropy(self, symbols, k):
+        """H(X_t | X_{t-1}, ..., X_{t-k}) via counting."""
+        n = len(symbols)
+        if n < k + 100:
+            return np.nan
+
+        # Optimized: vectorize context extraction using sliding windows
+        from numpy.lib.stride_tricks import sliding_window_view
+        
+        # Windows of length k+1: first k are context, last is outcome
+        all_windows = sliding_window_view(symbols, k + 1)
+        total = len(all_windows)
+        
+        # Use unique() to count occurrences of each context-outcome pair
+        # Map rows to tuples for hashing or use unique rows
+        # For small n_symbols and k, packing into an integer is faster
+        if k < 10 and self.n_symbols <= 10:
+            # Packed: c0*S^k + c1*S^(k-1) + ... + out
+            powers = (self.n_symbols**np.arange(k + 1, dtype=np.uint64))[::-1]
+            packed = all_windows.astype(np.uint64) @ powers
+            unique_packed, counts = np.unique(packed, return_counts=True)
+            
+            # Pack contexts too for fast matching
+            contexts_packed = unique_packed // self.n_symbols
+            # Sum up joint counts per context
+            context_unique, context_counts = np.unique(all_windows[:, :-1].astype(np.uint64) @ powers[1:], return_counts=True)
+            
+            # Data sufficiency check: avoid bias toward zero if samples per context are too few.
+            n_contexts = len(context_unique)
+            avg_per_context = total / max(n_contexts, 1)
+            if avg_per_context < 5:
+                return np.nan
+
+            # Map context_unique -> count
+            context_map = dict(zip(context_unique, context_counts))
+            
+            probs_joint = counts / total
+            # Conditional probability: p(joint) / p(context)
+            # Find context count for each joint pair
+            h_cond = 0.0
+            for i, p_joint in enumerate(probs_joint):
+                ctx = contexts_packed[i]
+                p_cond = counts[i] / context_map[ctx]
+                h_cond -= p_joint * np.log2(p_cond)
+            return h_cond
+        else:
+            # Fallback for large k (too large for packing)
+            from collections import Counter
+            joint_counts = Counter(map(tuple, all_windows))
+            context_counts = Counter(map(tuple, all_windows[:, :-1]))
+            
+            # Data sufficiency check
+            n_contexts = len(context_counts)
+            avg_per_context = total / max(n_contexts, 1)
+            if avg_per_context < 5:
+                return np.nan
+
+            h_cond = 0.0
+            for pair, count in joint_counts.items():
+                p_joint = count / total
+                p_cond = count / context_counts[pair[:-1]]
+                h_cond -= p_joint * np.log2(p_cond)
+            return h_cond
+
+    def _sample_entropy(self, x, m=2, r_frac=0.2):
+        """Sample entropy (SampEn): count template matches at length m and m+1."""
+        n = len(x)
+        if n < 100:
+            return np.nan
+
+        # Subsample for speed
+        if n > 2000:
+            idx = np.linspace(0, n - 1, 2000, dtype=int)
+            x = x[idx]
+            n = len(x)
+
+        r = r_frac * np.std(x)
+        if r < 1e-15:
+            return 0.0
+
+        def count_matches(length):
+            """Count pairs of matching templates of given length."""
+            from numpy.lib.stride_tricks import sliding_window_view
+            templates = sliding_window_view(x, length)
+            count = 0
+            # We still need to avoid self-matches and double-counting pairs.
+            # Vectorized approach for all pairs is memory-intensive (N^2).
+            # But we can vectorize the INNER loop completely.
+            for i in range(len(templates) - 1):
+                # Chebyshev distance: max(|a - b|) <= r is same as all(|a - b| <= r)
+                matches = np.all(np.abs(templates[i+1:] - templates[i]) <= r, axis=1)
+                count += np.sum(matches)
+            return count
+
+        A = count_matches(m + 1)
+        B = count_matches(m)
+
+        if B == 0:
+            return np.nan
+        if A == 0:
+            return np.log(B)  # conservative estimate
+
+        return -np.log(A / B)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        x = self.embed(data)
+        n = len(x)
+        zero = {k: 0.0 for k in [
+            "cond_entropy_k1", "cond_entropy_k2",
+            "cond_entropy_k4", "cond_entropy_k8",
+            "entropy_decay_rate", "sample_entropy",
+            "excess_predictability"]}
+
+        if n < 200:
+            return GeometryResult(self.name, zero, {})
+
+        symbols = self._symbolize(x)
+
+        # Marginal entropy
+        from collections import Counter
+        counts = Counter(symbols)
+        total = sum(counts.values())
+        h_marginal = -sum((c/total) * np.log2(c/total) for c in counts.values())
+
+        # Conditional entropies at different depths
+        depths = [1, 2, 4, 8]
+        h_cond = {}
+        for k in depths:
+            h = self._conditional_entropy(symbols, k)
+            h_cond[k] = h if np.isfinite(h) else h_marginal
+
+        # Entropy decay rate: slope of H(X|past_k) vs k
+        valid_ks = [k for k in depths if np.isfinite(h_cond[k])]
+        if len(valid_ks) >= 2:
+            ks_arr = np.array(valid_ks, dtype=float)
+            hs_arr = np.array([h_cond[k] for k in valid_ks])
+            decay_rate = np.polyfit(ks_arr, hs_arr, 1)[0]
+        else:
+            decay_rate = 0.0
+
+        # Sample entropy
+        sampen = self._sample_entropy(x)
+        if not np.isfinite(sampen):
+            sampen = 5.0  # max complexity
+
+        # Excess predictability
+        excess = h_marginal - h_cond.get(8, h_marginal)
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "cond_entropy_k1": float(np.clip(h_cond.get(1, 0), 0, 10)),
+                "cond_entropy_k2": float(np.clip(h_cond.get(2, 0), 0, 10)),
+                "cond_entropy_k4": float(np.clip(h_cond.get(4, 0), 0, 10)),
+                "cond_entropy_k8": float(np.clip(h_cond.get(8, 0), 0, 10)),
+                "entropy_decay_rate": float(np.clip(decay_rate, -2, 0.5)),
+                "sample_entropy": float(np.clip(sampen, 0, 10)),
+                "excess_predictability": float(np.clip(excess, 0, 10)),
+            },
+            raw_data={}
+        )
+
+
+class AttractorGeometry(ExoticGeometry):
+    """
+    Attractor Geometry — dimensionality and divergence of embedded dynamics.
+
+    Estimates the correlation dimension D2 via Grassberger-Procaccia and
+    the maximum Lyapunov exponent λ1 via the Rosenstein (1993) method,
+    both from a Takens delay-embedded signal.
+
+    These directly separate:
+    - Low-dimensional chaos: D2 ≈ 2-5, λ1 > 0 (Lorenz, Rössler)
+    - High-dimensional noise: D2 → ∞ (saturates at embedding dim), λ1 undefined
+    - Periodic signals: D2 ≈ 1, λ1 = 0
+    - Quasiperiodic: D2 ≈ 2, λ1 = 0
+
+    Limitation: Grassberger-Procaccia requires N ≳ 10^(D2/2) points for a
+    reliable scaling region. With max_points=1500, D2 estimates are reliable
+    for D2 ≲ 6 and unreliable above. High-dimensional attractors will show
+    unsaturated D2 (d2_saturation near 0).
+
+    Metrics:
+    - correlation_dimension: D2 estimate from log C(r) vs log r slope.
+      Low = low-dimensional attractor, high = high-dimensional/stochastic.
+    - d2_saturation: whether D2 saturates with embedding dimension.
+      Near 1.0 = saturated (true dimension found), near 0 = not converged.
+    - lyapunov_max: largest Lyapunov exponent (Rosenstein method).
+      Positive = chaotic divergence, near 0 = periodic/quasiperiodic,
+      negative = damped/contracting.
+    - prediction_horizon: estimated steps before exponential divergence
+      makes prediction impossible. -1/λ1 in practice.
+    - filling_ratio: fraction of embedding space actually occupied.
+      Low = signal lives on a low-dimensional manifold.
+    """
+
+    def __init__(self, input_scale: float = 255.0, max_points: int = 1500):
+        self.input_scale = input_scale
+        self.max_points = max_points
+
+    @property
+    def name(self) -> str:
+        return "Attractor Reconstruction"
+
+
+    @property
+
+    def description(self) -> str:
+
+        return "Delay-embedding reconstruction of the phase space attractor. Grassberger-Procaccia correlation dimension and maximum Lyapunov exponent distinguish chaos from noise."
+
+
+    @property
+
+    def view(self) -> str:
+
+        return "dynamical"
+
+
+    @property
+
+    def detects(self) -> str:
+
+        return "Correlation dimension, Lyapunov exponent, attractor filling"
+
+    @property
+    def dimension(self) -> str:
+        return "phase space"
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        data = self.validate_data(data)
+        return self._normalize_to_unit(data, self.input_scale)
+
+    @staticmethod
+    def _find_lag(x, max_lag=50):
+        """First zero-crossing of autocorrelation."""
+        n = len(x)
+        xc = x - np.mean(x)
+        var = np.sum(xc ** 2)
+        if var < 1e-15:
+            return 1
+        for lag in range(1, min(max_lag, n // 3)):
+            acf = np.sum(xc[:n-lag] * xc[lag:]) / var
+            if acf <= 0:
+                return lag
+        return max_lag
+
+    def _delay_embed_matrix(self, x, dim, lag):
+        """Build delay embedding matrix."""
+        N = len(x) - (dim - 1) * lag
+        if N < 10:
+            return None
+        embedded = np.zeros((N, dim))
+        for d in range(dim):
+            embedded[:, d] = x[d * lag:d * lag + N]
+        return embedded
+
+    def _correlation_dimension(self, x, lag):
+        """Grassberger-Procaccia D2 at embedding dims 2-8."""
+        dims = [2, 3, 4, 5, 6, 8]
+        d2_values = []
+
+        for dim in dims:
+            emb = self._delay_embed_matrix(x, dim, lag)
+            if emb is None or len(emb) < 50:
+                continue
+
+            # Subsample
+            N = len(emb)
+            if N > self.max_points:
+                idx = np.random.default_rng(0).choice(N, self.max_points, replace=False)
+                idx.sort()
+                emb = emb[idx]
+                N = len(emb)
+
+            # Pairwise distances (Chebyshev for speed)
+            # Use vectorized block computation
+            n_samples = min(N, 500)
+            dists = []
+            for i in range(n_samples):
+                # Compute distance from point i to all points after it
+                # Using max(abs(diff)) is Chebyshev distance
+                diffs = np.abs(emb[i+1:] - emb[i])
+                if diffs.size > 0:
+                    dists.append(np.max(diffs, axis=1))
+            
+            if not dists:
+                continue
+            dists = np.concatenate(dists)
+            dists = dists[dists > 1e-15]
+            if len(dists) < 100:
+                continue
+
+            # C(r) at multiple radii
+            # Sorting dists makes C(r) counting O(log N) per radius
+            dists.sort()
+            log_dists = np.log(dists)
+            r_min = np.percentile(log_dists, 5)
+            r_max = np.percentile(log_dists, 50)
+            if r_max - r_min < 0.5:
+                continue
+
+            n_radii = 15
+            log_rs = np.linspace(r_min, r_max, n_radii)
+            n_pairs = len(dists)
+            # Use searchsorted for extremely fast counting on sorted distances
+            counts = np.searchsorted(log_dists, log_rs, side='right')
+            log_Cr = np.log(np.maximum(counts / n_pairs, 1e-30))
+
+            # Linear fit in scaling region
+            valid = np.isfinite(log_Cr) & (log_Cr > np.log(1e-10))
+            if valid.sum() < 5:
+                continue
+            slope = np.polyfit(log_rs[valid], log_Cr[valid], 1)[0]
+            d2_values.append((dim, max(slope, 0.0)))
+
+        if not d2_values:
+            return 0.0, 0.0
+
+        # Find first plateau in D2 vs embedding dim where D2 is well
+        # below the embedding dimension. GP overestimates D2 when the
+        # scaling region degrades in high-D, so early convergence at
+        # D2 << dim is the most reliable signal of a true attractor.
+        # A "plateau" at D2 ≈ dim is just noise saturating at
+        # embedding capacity and should be rejected.
+        dims_used = [d for d, _ in d2_values]
+        d2s = [d2 for _, d2 in d2_values]
+
+        d2_final = d2s[-1]
+        saturation = 0.0
+        for i in range(len(d2s) - 1):
+            if d2s[i] < 0.1:
+                continue
+            ratio = min(d2s[i] / d2s[i+1], d2s[i+1] / d2s[i])
+            avg_d2 = (d2s[i] + d2s[i+1]) / 2.0
+            avg_dim = (dims_used[i] + dims_used[i+1]) / 2.0
+            # Accept plateau only if D2 is below 60% of embedding dim
+            if ratio > 0.75 and avg_d2 < avg_dim * 0.6:
+                d2_final = avg_d2
+                saturation = ratio
+                break
+        else:
+            # No low-D plateau found — report highest-dim estimate
+            d2_final = d2s[-1]
+            if len(d2s) >= 2 and d2s[-2] > 0.1:
+                saturation = min(d2s[-2] / d2s[-1], d2s[-1] / d2s[-2])
+                saturation = min(saturation, 1.0)
+
+        return d2_final, saturation
+
+    def _lyapunov_rosenstein(self, x, lag, dim=5):
+        """Maximum Lyapunov exponent via Rosenstein (1993) method."""
+        emb = self._delay_embed_matrix(x, dim, lag)
+        if emb is None or len(emb) < 100:
+            return 0.0
+
+        N = len(emb)
+        if N > self.max_points:
+            emb = emb[:self.max_points]
+            N = self.max_points
+
+        # For each point, find nearest neighbor (excluding temporal neighbors)
+        min_temporal_sep = max(lag * dim, 10)
+        max_iter = min(N // 4, 200)
+        
+        n_query = min(N - max_iter, 500)
+        divergences = np.full((n_query, max_iter), np.nan)
+        
+        # Pre-build distance exclusion mask for the whole matrix to speed up searches
+        # But for N=1500, a simple loop over queries is often fine if the distance part is vectorized.
+        for i in range(n_query):
+            # Find nearest neighbor
+            # Chebyshev distance is faster to compute than Euclidean
+            diffs = np.abs(emb - emb[i])
+            dists = np.max(diffs, axis=1)
+            
+            # Mask temporal neighbors
+            low = max(0, i - min_temporal_sep)
+            high = min(N, i + min_temporal_sep + 1)
+            dists[low:high] = np.inf
+            
+            j = np.argmin(dists)
+            d0 = dists[j]
+            if d0 < 1e-15:
+                continue
+
+            # Track divergence over time: vectorized across k for this i
+            # dk[k] = ||emb[i+k] - emb[j+k]||
+            # Ensure we don't exceed N
+            actual_k = min(max_iter, N - i, N - j)
+            if actual_k < 5:
+                continue
+            
+            # Vectorized divergence for all k steps simultaneously
+            traj_i = emb[i:i+actual_k]
+            traj_j = emb[j:j+actual_k]
+            dk = np.max(np.abs(traj_i - traj_j), axis=1)
+            
+            valid_dk = dk > 1e-15
+            divergences[i, :actual_k][valid_dk] = np.log(dk[valid_dk])
+
+        # Average divergence curve (suppress empty-slice warning)
+        with np.errstate(all='ignore'):
+            mean_div = np.nanmean(divergences, axis=0)
+        valid = np.isfinite(mean_div)
+        if valid.sum() < 10:
+            return 0.0
+
+        # Fit slope to initial linear region (first 20% of valid points)
+        n_valid = valid.sum()
+        n_fit = max(5, n_valid // 5)
+        valid_idx = np.where(valid)[0][:n_fit]
+        if len(valid_idx) < 3:
+            return 0.0
+
+        t = valid_idx.astype(float)
+        y = mean_div[valid_idx]
+        slope = np.polyfit(t, y, 1)[0]
+        return slope
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        x = self.embed(data)
+        n = len(x)
+        zero = {k: 0.0 for k in [
+            "correlation_dimension", "d2_saturation",
+            "lyapunov_max", "filling_ratio"]}
+
+        if n < 200:
+            return GeometryResult(self.name, zero, {})
+
+        lag = self._find_lag(x)
+
+        # Correlation dimension
+        d2, saturation = self._correlation_dimension(x, lag)
+
+        # Lyapunov exponent — embedding dim should exceed D2 by ~2
+        # (Takens theorem: d >= 2*D2 + 1 suffices, but over-embedding is safe
+        # while under-embedding corrupts the estimate)
+        lya_dim = max(5, int(np.ceil(d2)) + 2) if d2 > 0 else 5
+        lya_dim = min(lya_dim, 10)  # cap to avoid sparse embeddings
+        lam = self._lyapunov_rosenstein(x, lag, dim=lya_dim)
+
+        # Filling ratio: how much of the bounding box does the signal fill?
+        dim_embed = lya_dim
+        emb = self._delay_embed_matrix(x, dim_embed, lag)
+        if emb is not None and len(emb) > 50:
+            # Fraction of occupied cells in a coarse grid
+            n_bins = 4  # 4^5 = 1024 cells
+            mins = emb.min(axis=0)
+            maxs = emb.max(axis=0)
+            ranges = maxs - mins
+            ranges[ranges < 1e-15] = 1.0
+            binned = ((emb - mins) / ranges * (n_bins - 0.001)).astype(int)
+            binned = np.clip(binned, 0, n_bins - 1)
+            # Count unique cells
+            cells = set(map(tuple, binned))
+            total_cells = n_bins ** dim_embed
+            filling = len(cells) / total_cells
+        else:
+            filling = 0.0
+
+        return GeometryResult(
+            geometry_name=self.name,
+            metrics={
+                "correlation_dimension": float(np.clip(d2, 0, 20)),
+                "d2_saturation": float(np.clip(saturation, 0, 1)),
+                "lyapunov_max": float(np.clip(lam, -2, 5)),
+                "filling_ratio": float(np.clip(filling, 0, 1)),
+            },
+            raw_data={}
+        )
 
 
 # =============================================================================
@@ -4460,6 +8411,10 @@ class GeometryAnalyzer:
         results = analyzer.analyze(data)
     """
 
+    # Class-level cache: geometry class → SHA256 of its source code.
+    # Computed once per class, reused across all analyzer instances.
+    _code_hash_cache: Dict[type, str] = {}
+
     def __init__(self, cache_dir=None):
         self.geometries: List[ExoticGeometry] = []
         self.cache_dir = cache_dir
@@ -4481,6 +8436,58 @@ class GeometryAnalyzer:
             return 1.0
         else:
             raise ValueError(f"Unknown data_mode '{data_mode}'. Use 'bytes', 'auto', or 'unit'.")
+
+    # Geometry tiers based on greedy forward selection over 93 atlas sources.
+    # Each tier adds geometries that contribute the most unique variance to the
+    # rank-normalized PCA space (cumulative R² on top-10 PCs).
+    TIERS = {
+        'quick': [
+            # 24 metrics, ~8.6x speedup, 90% R²
+            'Information',
+            'H² × ℝ (Thurston)',
+            'Higher-Order Statistics',
+        ],
+        'standard': [
+            # 32 metrics, ~8.3x speedup, 95% R²
+            'Information',
+            'H² × ℝ (Thurston)',
+            'Higher-Order Statistics',
+            'Spectral',
+        ],
+        'full': [
+            # ~47 metrics, ~3.5x speedup, 99% R²
+            'Information',
+            'H² × ℝ (Thurston)',
+            'Higher-Order Statistics',
+            'Spectral',
+            'VisibilityGraph',
+            'Sol (Thurston)',
+        ],
+        # 'complete' = add_all_geometries() — all 36 geometries, 205 metrics
+    }
+
+    def add_tier_geometries(self, tier: str = 'complete',
+                            data_mode: str = 'bytes') -> 'GeometryAnalyzer':
+        """Add geometries for a specific analysis tier.
+
+        Tiers are ordered by coverage of the atlas's principal structure space:
+          'quick'    — 3 geometries, ~24 metrics, 90% variance, ~8.6x speedup
+          'standard' — 4 geometries, ~32 metrics, 95% variance, ~8.3x speedup
+          'full'     — 7 geometries, ~54 metrics, 99% variance, ~3.5x speedup
+          'complete' — all geometries, ~205 metrics, 100% variance (default)
+        """
+        if tier == 'complete':
+            return self.add_all_geometries(data_mode=data_mode)
+
+        tier_names = self.TIERS.get(tier)
+        if tier_names is None:
+            valid = list(self.TIERS.keys()) + ['complete']
+            raise ValueError(f"Unknown tier '{tier}'. Use one of: {valid}")
+
+        # Build the full set, then filter to tier
+        self.add_all_geometries(data_mode=data_mode)
+        self.geometries = [g for g in self.geometries if g.name in tier_names]
+        return self
 
     def add_default_geometries(self, data_mode: str = 'bytes') -> 'GeometryAnalyzer':
         """Add core validated geometries (fast, good discriminators).
@@ -4516,9 +8523,13 @@ class GeometryAnalyzer:
         self.geometries = [
             # Validated / core
             E8Geometry(),
+            # Lie / Coxeter root systems
+            G2Geometry(),
+            D4Geometry(),
+            H3CoxeterGeometry(),
+            H4CoxeterGeometry(),
             TorusGeometry(bins=16),
             HyperbolicGeometry(input_scale=s),
-            HeisenbergGeometry(input_scale=s),
             HeisenbergGeometry(input_scale=s, center_data=True),  # Correlation mode
             # Classical
             SphericalGeometry(input_scale=s),
@@ -4539,22 +8550,76 @@ class GeometryAnalyzer:
             LorentzianGeometry(input_scale=s),
             SymplecticGeometry(input_scale=s),
             SpiralGeometry(input_scale=s),
-            # Aperiodic
+            # Aperiodic / quasicrystal
             PenroseGeometry(input_scale=s),
             AmmannBeenkerGeometry(input_scale=s),
             EinsteinHatGeometry(input_scale=s),
-            # Clifford Torus
-            CliffordTorusGeometry(input_scale=s),
+            DodecagonalGeometry(input_scale=s),
+            DecagonalGeometry(input_scale=s),
+            SeptagonalGeometry(input_scale=s),
             # Fractal
             FractalMandelbrotGeometry(input_scale=s),
             FractalJuliaGeometry(input_scale=s),
             # Higher-order (3rd/4th order, independent from all above)
             HigherOrderGeometry(),
+            # Local regularity (targets 7D blind spot)
+            HolderRegularityGeometry(input_scale=s),
+            PVariationGeometry(input_scale=s),
+            MultiScaleWassersteinGeometry(input_scale=s),
+            # Spectral / information / recurrence
+            SpectralGeometry(input_scale=s),
+            InformationGeometry(input_scale=s),
+            RecurrenceGeometry(input_scale=s),
+            # Topological / Power Law
+            VisibilityGraphGeometry(),
+            ZipfMandelbrotGeometry(n_bits=8),
+            ZipfMandelbrotGeometry(n_bits=16, sliding=True),
+            # Dynamical / Complexity
+            MultifractalGeometry(input_scale=s),
+            PredictabilityGeometry(input_scale=s),
+            AttractorGeometry(input_scale=s),
         ]
         # Cantor uses bit-extraction: only meaningful for integer/byte data
         if data_mode == 'bytes':
             self.geometries.insert(11, CantorGeometry())
         return self
+
+    def geometry_catalog(self) -> list:
+        """Export metadata for all loaded geometries."""
+        return [g.metadata() for g in self.geometries]
+
+    def view_lenses(self) -> dict:
+        """Build VIEW_LENSES from geometry metadata. Returns {view_name: {geometries, ...}}."""
+        from collections import defaultdict
+        by_view = defaultdict(list)
+        for g in self.geometries:
+            by_view[g.view].append(g.name)
+        # Standard questions/detects per view
+        VIEW_META = {
+            "distributional": ("What does the value distribution look like?",
+                               "Alphabet size, uniformity, skew, tail weight"),
+            "topological": ("What is the shape of the data's phase space?",
+                            "Holes, fractal dimension, self-similarity, curvature"),
+            "dynamical": ("How does the signal evolve in time?",
+                          "Chaos, predictability, Lyapunov divergence, memory"),
+            "symmetry": ("What algebraic structure underlies the data?",
+                         "Lattice alignment, phase coupling, hyperbolic splitting"),
+            "scale": ("How does structure change across scales?",
+                      "Roughness, regularity, visibility connectivity"),
+            "quasicrystal": ("Does the data have aperiodic order?",
+                             "Aperiodic tiling alignment, forbidden symmetries"),
+        }
+        result = {}
+        for view_name, geo_names in sorted(by_view.items()):
+            if view_name == "other":
+                continue  # 2D-only geometries, not relevant for 1D atlas
+            q, d = VIEW_META.get(view_name, ("", ""))
+            result[view_name.title()] = {
+                "question": q,
+                "detects": d,
+                "geometries": geo_names,
+            }
+        return result
 
     def add_thurston_geometries(self, data_mode: str = 'bytes') -> 'GeometryAnalyzer':
         """Add Thurston's 8 geometries for 3-manifold analysis."""
@@ -4609,24 +8674,49 @@ class GeometryAnalyzer:
 
         for geom in self.geometries:
             try:
-                # Check cache
+                # Check cache — key includes geometry source code hash so
+                # that implementation changes automatically invalidate entries.
                 if self.cache_dir is not None:
+                    cls = type(geom)
+                    if cls not in GeometryAnalyzer._code_hash_cache:
+                        try:
+                            src = inspect.getsource(cls)
+                        except (OSError, TypeError):
+                            src = ""
+                        GeometryAnalyzer._code_hash_cache[cls] = \
+                            hashlib.sha256(src.encode()).hexdigest()[:16]
+                    code_hash = GeometryAnalyzer._code_hash_cache[cls]
                     cache_key = hashlib.sha256(
-                        (geom.name + "|" + data_hash).encode()
+                        (geom.name + "|" + data_hash + "|" + code_hash).encode()
                     ).hexdigest()
                     cache_path = os.path.join(self.cache_dir, cache_key + ".pkl")
                     if os.path.exists(cache_path):
-                        with open(cache_path, "rb") as f:
-                            geom_result = pickle.load(f)
-                        result.results.append(geom_result)
-                        continue
+                        try:
+                            with open(cache_path, "rb") as f:
+                                geom_result = pickle.load(f)
+                            result.results.append(geom_result)
+                            continue
+                        except Exception:
+                            # Corrupted cache file — delete and recompute
+                            os.remove(cache_path)
 
                 geom_result = geom.compute_metrics(data)
 
-                # Store in cache
+                # Store in cache (atomic write via temp + rename)
                 if self.cache_dir is not None:
-                    with open(cache_path, "wb") as f:
-                        pickle.dump(geom_result, f, protocol=pickle.HIGHEST_PROTOCOL)
+                    import tempfile
+                    fd, tmp_path = tempfile.mkstemp(
+                        dir=self.cache_dir, suffix=".pkl.tmp"
+                    )
+                    try:
+                        with os.fdopen(fd, "wb") as f:
+                            pickle.dump(geom_result, f, protocol=pickle.HIGHEST_PROTOCOL)
+                        os.replace(tmp_path, cache_path)
+                    except Exception:
+                        try:
+                            os.remove(tmp_path)
+                        except OSError:
+                            pass
 
                 result.results.append(geom_result)
             except Exception as e:
