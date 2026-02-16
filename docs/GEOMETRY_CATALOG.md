@@ -1,12 +1,12 @@
 # Geometry Catalog
 
-The framework implements 26 one-dimensional geometries and 8 two-dimensional spatial geometries (80 metrics). Each embeds byte sequences into a different mathematical space and computes structure-sensitive metrics.
+The framework implements 44 one-dimensional geometries (233 metrics) and 8 two-dimensional spatial geometries (80 metrics). Each embeds byte sequences into a different mathematical space and computes structure-sensitive metrics.
 
-## 1D Geometries (26 total)
+## 1D Geometries (44 total)
 
 ### Tier 1: Core Geometries (6 independent)
 
-These capture most of the framework's discriminative power. The remaining 20 are largely redundant with these.
+These capture most of the framework's discriminative power.
 
 | # | Geometry | Space | Key Metric | What It Detects | Best d |
 |---|----------|-------|------------|-----------------|--------|
@@ -47,9 +47,44 @@ These capture most of the framework's discriminative power. The remaining 20 are
 | 25 | Spiral | Fisher | r > 0.85 |
 | 26 | EinsteinHat | Penrose | balance r = 1.000 |
 
+### Tier 4: Expanded Geometries (added post-audit)
+
+| # | Geometry | Space | Key Metric | What It Detects |
+|---|----------|-------|------------|-----------------|
+| 27 | Lorentzian | Minkowski (1+1)D spacetime | `causal_order_preserved` | Temporal causality, light-cone structure |
+| 28 | Information Theory | Shannon/Rényi entropy | `block_entropy_2` | Block correlations, complexity |
+| 29 | Spectral Analysis | Fourier spectrum | `spectral_entropy` | Frequency structure, periodicity |
+| 30 | Hölder Regularity | Regularity exponents | `holder_mean` | Local smoothness, singularities |
+| 31 | p-Variation | p-variation norms | `p_variation_1` | Path roughness at multiple scales |
+| 32 | Predictability | Linear prediction | `prediction_gain` | Sequential predictability |
+| 33 | Multifractal Spectrum | Structure functions | `multifractal_width` | Multifractal complexity |
+| 34 | Attractor Reconstruction | Delay embedding | `correlation_dimension` | Strange attractor geometry |
+| 35 | Recurrence Quantification | Recurrence plots | `determinism` | Recurrence structure, chaos indicators |
+| 36 | Visibility Graph | NVG/HVG | `nvg_mean_degree` | Time series as graph, connectivity |
+| 37 | Zipf-Mandelbrot (8-bit) | Rank-frequency | `zipf_alpha` | Power-law vocabulary structure |
+| 38 | Zipf-Mandelbrot (16-bit) | Rank-frequency (digrams) | `zipf_alpha` | Digram frequency distribution |
+| 39 | Multi-Scale Wasserstein | Optimal transport | `wasserstein_ratio` | Multi-scale distributional structure |
+
+### Tier 5: Lie Groups and Coxeter Root Systems
+
+| # | Geometry | Space | Key Metric | What It Detects |
+|---|----------|-------|------------|-----------------|
+| 40 | G2 Root System | 12 roots in 2D | `short_long_ratio` | Root system projection, short/long root separation |
+| 41 | D4 Triality | 24 roots in 4D | `triality_invariance` | Triality automorphism (order 3) |
+| 42 | H3 Icosahedral | 30 roots in 3D (icosidodecahedron) | `axis_golden_ratio` | Non-crystallographic 5-fold symmetry |
+| 43 | H4 600-Cell | 120 roots in 4D (600-cell) | `axis_golden_ratio` | 4D non-crystallographic symmetry |
+
+### Tier 6: Quasicrystal Extensions
+
+| # | Geometry | Space | Key Metric | What It Detects |
+|---|----------|-------|------------|-----------------|
+| 44 | Decagonal (Al-Ni-Co) | 10-fold quasicrystal | `decagonal_balance` | Decagonal aperiodic order |
+| 45 | Dodecagonal (Stampfli) | 12-fold quasicrystal | `dodecagonal_balance` | 12-fold aperiodic order |
+| 46 | Septagonal (Danzer) | 7-fold quasicrystal | `septagonal_balance` | 7-fold aperiodic order |
+
 ### Redundancy Summary
 
-The 26 geometries collapse to ~7 independent dimensions of information (participation ratio = 7.0 from meta-investigation). The correlation structure was established by computing all metrics across 8 diverse data types and measuring Pearson correlations. Key clusters:
+The 44 geometries produce 233 metrics which collapse to ~40 independent dimensions at 95% variance (participation ratio = 8.9 from atlas PCA). The correlation structure was established by computing all metrics across 179 diverse data sources and measuring Spearman rank correlations. Key clusters:
 
 - **Uniformity cluster**: E8, Fisher, Lorentzian, Torus, 2-adic, Persistent Homology
 - **Value spread cluster**: Heisenberg, Sol, Hyperbolic, Spherical

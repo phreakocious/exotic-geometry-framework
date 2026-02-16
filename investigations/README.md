@@ -70,6 +70,7 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/math_constants.py` | Math constants | CF taxonomy, representation fingerprints | numpy, mpmath |
 | `1d/mandelbrot_sensor_test.py` | Mandelbrot test | Fractal geometry validation | numpy |
 
+
 ## 2D Investigations (19)
 
 2D scripts use the spatial geometry battery. `add_spatial_geometries()` provides 8 geometries (80 metrics): SpatialField, Surface, PersistentHomology2D, Conformal2D, MinkowskiFunctional, MultiscaleFractal, HodgeLaplacian, SpectralPower.
