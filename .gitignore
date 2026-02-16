@@ -14,3 +14,44 @@ orig/
 data/
 tools/gemini_*.log
 investigations/1d/.protein_cache.json
+
+# Generated / temp
+*.bin
+*.bak
+figures/.atlas_cache/
+figures/atlas_metric_names.json
+figures/atlas_profiles.npy
+figures/subcluster_analysis.txt
+atlas/old
+atlas/old/
+atlas/structure_atlas_data.json
+atlas/structure_atlas_data_20260212.json
+
+# Scratch / audit scripts
+adversarial_*.py
+harvest_*.py
+curve_ball_tests.py
+debug_classification.py
+dump_ap_index.py
+profile_geometries.py
+test_log_transform.py
+test_parser.py
+
+# Runner / scratch tools
+tools/overnight.py
+tools/radar_fingerprint.py
+investigations/1d/structure_atlas_quick.py
+investigations/1d/transport_model.py
+
+# AI assistant instructions
+CLAUDE.md
+GEMINI.md_
+
+# Planning / brainstorming notes
+IMPROVEMENTS.md
+META_INVESTIGATION.md
+NEW_DATA.md
+NEW_TECHNIQUES.md
+
+# Logs
+*.log
