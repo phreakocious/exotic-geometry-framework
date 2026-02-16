@@ -49,38 +49,50 @@ warnings.filterwarnings('ignore', category=RuntimeWarning)
 _worker_analyzer = None
 
 
-def _worker_init(mode, cache_dir):
+def _worker_init(mode, cache_dir, tier='complete'):
     """Initialize a per-process GeometryAnalyzer."""
     global _worker_analyzer
     _worker_analyzer = GeometryAnalyzer(cache_dir=cache_dir)
     if mode == '1d':
-        _worker_analyzer.add_all_geometries()
+        _worker_analyzer.add_tier_geometries(tier=tier)
     elif mode == '2d':
         _worker_analyzer.add_spatial_geometries()
 
 
 def _worker_analyze(chunk):
-    """Analyze a single chunk using the per-process analyzer."""
-    return _worker_analyzer.analyze(chunk)
+    """Analyze a single chunk, return only metrics (not raw data).
+
+    Full AnalysisResult pickles at ~4 MB due to embedded coordinates,
+    raw arrays, etc.  Stripping to (geometry_name, metrics_dict) pairs
+    reduces IPC to ~8 KB — a 500x reduction that eliminates the
+    serialization bottleneck.
+    """
+    result = _worker_analyzer.analyze(chunk)
+    return [(r.geometry_name, dict(r.metrics)) for r in result.results]
 
 
-def _parallel_analyze(chunks, mode, cache_dir, n_workers):
+def _parallel_analyze(chunks, mode, cache_dir, n_workers, tier='complete',
+                      pool=None):
     """Analyze chunks in parallel using a process pool."""
+    if pool is not None:
+        return pool.map(_worker_analyze, chunks)
     with multiprocessing.Pool(
         processes=n_workers,
         initializer=_worker_init,
-        initargs=(mode, cache_dir),
-    ) as pool:
-        return pool.map(_worker_analyze, chunks)
+        initargs=(mode, cache_dir, tier),
+    ) as p:
+        return p.map(_worker_analyze, chunks)
 
 
 class Runner:
     """Reusable investigation runner with all boilerplate baked in."""
 
     def __init__(self, name, mode='1d', data_size=2000, n_trials=25,
-                 alpha=0.05, seed=42, cache=False, n_workers=1):
+                 alpha=0.05, seed=42, cache=False, n_workers=1,
+                 tier='complete'):
         self.name = name
         self.mode = mode
+        self.tier = tier
         self.data_size = data_size
         self.n_trials = n_trials
         self.alpha = alpha
@@ -99,7 +111,7 @@ class Runner:
         # Setup analyzer and discover metrics
         self.analyzer = GeometryAnalyzer(cache_dir=self.cache_dir)
         if mode == '1d':
-            self.analyzer.add_all_geometries()
+            self.analyzer.add_tier_geometries(tier=tier)
             dummy = self.analyzer.analyze(
                 np.random.randint(0, 256, data_size, dtype=np.uint8))
         elif mode == '2d':
@@ -115,11 +127,22 @@ class Runner:
         self.n_metrics = len(self.metric_names)
         self.bonf_alpha = alpha / self.n_metrics
 
+        # Persistent process pool (avoids fork/init overhead per collect call)
+        self._pool = None
+        if n_workers > 1:
+            self._pool = multiprocessing.Pool(
+                processes=n_workers,
+                initializer=_worker_init,
+                initargs=(mode, self.cache_dir, tier),
+            )
+
+        tier_str = f", tier={tier}" if tier != 'complete' else ""
         print(f"Runner: {name}")
         print(f"  mode={mode}, data_size={data_size}, trials={n_trials}, "
               f"metrics={self.n_metrics}"
               + (f", workers={n_workers}" if n_workers > 1 else "")
-              + (", cache=on" if cache else ""))
+              + (", cache=on" if cache else "")
+              + tier_str)
 
     # ----------------------------------------------------------
     # RNG helpers
@@ -136,24 +159,36 @@ class Runner:
         """Analyze chunks, return {metric_name: [values]}.
 
         When n_workers > 1, chunks are processed in parallel using
-        multiprocessing.  Each worker creates its own GeometryAnalyzer
-        to avoid pickling issues.
+        the persistent process pool.  Workers return lightweight
+        (geometry_name, metrics_dict) tuples instead of full
+        AnalysisResult objects to minimize IPC overhead.
         """
         out = {m: [] for m in self.metric_names}
 
-        if self.n_workers > 1 and len(chunks) > 1:
-            results = _parallel_analyze(
-                chunks, self.mode, self.cache_dir, self.n_workers)
+        if self._pool is not None and len(chunks) > 1:
+            results = self._pool.map(_worker_analyze, chunks)
+            for chunk_result in results:
+                for geom_name, metrics in chunk_result:
+                    for mn, mv in metrics.items():
+                        key = f"{geom_name}:{mn}"
+                        if key in out and np.isfinite(mv):
+                            out[key].append(mv)
         else:
-            results = [self.analyzer.analyze(chunk) for chunk in chunks]
-
-        for res in results:
-            for r in res.results:
-                for mn, mv in r.metrics.items():
-                    key = f"{r.geometry_name}:{mn}"
-                    if key in out and np.isfinite(mv):
-                        out[key].append(mv)
+            for chunk in chunks:
+                res = self.analyzer.analyze(chunk)
+                for r in res.results:
+                    for mn, mv in r.metrics.items():
+                        key = f"{r.geometry_name}:{mn}"
+                        if key in out and np.isfinite(mv):
+                            out[key].append(mv)
         return out
+
+    def close(self):
+        """Shut down the persistent process pool."""
+        if self._pool is not None:
+            self._pool.close()
+            self._pool.join()
+            self._pool = None
 
     def shuffle_chunks(self, chunks):
         """Return shuffled copies of each chunk."""
