@@ -320,9 +320,9 @@ def make_figure(config_data, example_fields, pair_results):
         ax.set_yticks([])
 
     # Row 1: Key metrics
-    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
-                       'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope']
+    compare_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                       'Surface:gaussian_curvature_mean', 'Persistent Homology 2D:persistence_entropy',
+                       'Conformal 2D:structure_isotropy', 'Spectral Power 2D:spectral_slope']
 
     for j in range(n):
         metric = compare_metrics[j]

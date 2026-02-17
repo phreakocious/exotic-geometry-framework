@@ -400,13 +400,13 @@ def make_figure(runner, d1, d2, d3, d4, d5):
     # Truncate names for readability
     short_names1 = [n if len(n) <= 35 else n[:33] + '..' for n in names1]
     axes[0].set_yticks(y_pos)
-    axes[0].set_yticklabels(short_names1, fontsize=5.5)
-    axes[0].set_xlabel('Selectivity (std of normalized scores)', fontsize=7)
+    axes[0].set_yticklabels(short_names1, fontsize=7)
+    axes[0].set_xlabel('Selectivity (std of normalized scores)', fontsize=8)
     axes[0].set_title('D1: Top Specialist Sensors', fontsize=10, fontweight='bold')
     axes[0].invert_yaxis()
     for bar, val, tgt in zip(axes[0].patches, vals1, targets1):
         axes[0].text(bar.get_width() + 0.005, bar.get_y() + bar.get_height() / 2,
-                     f'{val:.3f} [{tgt}]', va='center', fontsize=5, color='#cccccc')
+                     f'{val:.3f} [{tgt}]', va='center', fontsize=6.5, color='#cccccc')
 
     # D2: Entropy Correlation histogram
     corrs = [x[1] for x in d2['correlations']]
@@ -430,13 +430,13 @@ def make_figure(runner, d1, d2, d3, d4, d5):
     y_pos3 = np.arange(len(names3))
     axes[2].barh(y_pos3, vals3, color='#e67e22', alpha=0.9, height=0.7)
     axes[2].set_yticks(y_pos3)
-    axes[2].set_yticklabels(short_names3, fontsize=5.5)
-    axes[2].set_xlabel('log10(SNR)', fontsize=7)
+    axes[2].set_yticklabels(short_names3, fontsize=7)
+    axes[2].set_xlabel('log10(SNR)', fontsize=8)
     axes[2].set_title('D3: Loudest Sensors (SNR)', fontsize=10, fontweight='bold')
     axes[2].invert_yaxis()
     for bar, snr_raw in zip(axes[2].patches, [x[1] for x in top_snr]):
         axes[2].text(bar.get_width() + 0.1, bar.get_y() + bar.get_height() / 2,
-                     f'{snr_raw:.1e}', va='center', fontsize=5, color='#cccccc')
+                     f'{snr_raw:.1e}', va='center', fontsize=6.5, color='#cccccc')
 
     # D4: Most Unique — horizontal bars
     top_unique = d4['loneliness'][:15]
@@ -446,13 +446,13 @@ def make_figure(runner, d1, d2, d3, d4, d5):
     y_pos4 = np.arange(len(names4))
     axes[3].barh(y_pos4, vals4, color='#2ecc71', alpha=0.9, height=0.7)
     axes[3].set_yticks(y_pos4)
-    axes[3].set_yticklabels(short_names4, fontsize=5.5)
-    axes[3].set_xlabel('Max |correlation| with any other metric', fontsize=7)
+    axes[3].set_yticklabels(short_names4, fontsize=7)
+    axes[3].set_xlabel('Max |correlation| with any other metric', fontsize=8)
     axes[3].set_title('D4: Most Orthogonal Sensors', fontsize=10, fontweight='bold')
     axes[3].invert_yaxis()
     for bar, val in zip(axes[3].patches, vals4):
         axes[3].text(bar.get_width() + 0.01, bar.get_y() + bar.get_height() / 2,
-                     f'{val:.3f}', va='center', fontsize=5, color='#cccccc')
+                     f'{val:.3f}', va='center', fontsize=6.5, color='#cccccc')
 
     # D5: Rare Detectors by target type
     targets = [x[1] for x in d5['special_cases']]

@@ -572,7 +572,7 @@ def direction_5(d1_results):
 # =========================================================================
 # FIGURE
 # =========================================================================
-def make_figure(d1_results, geo_scores, svd_data, greedy_curve):
+def make_figure(d1_results, geo_scores, svd_data, greedy_curve, metric_names=None):
     print("\nGenerating figure...", flush=True)
 
     plt.rcParams.update({
@@ -594,10 +594,11 @@ def make_figure(d1_results, geo_scores, svd_data, greedy_curve):
     cases = list(d1_results.keys())
     short_names = [c.replace('_vs_random', '').replace('_vs_', ' vs ') for c in cases]
     simple_vals = [d1_results[c]['simple'] / N_SIMPLE * 100 for c in cases]
-    full_vals = [d1_results[c]['full'] / 131 * 100 for c in cases]
+    n_framework = len(metric_names)
+    full_vals = [d1_results[c]['full'] / n_framework * 100 for c in cases]
     x = np.arange(len(cases))
     ax.bar(x - 0.2, simple_vals, 0.35, color='#FF9800', alpha=0.85, label=f'Simple ({N_SIMPLE})')
-    ax.bar(x + 0.2, full_vals, 0.35, color='#2196F3', alpha=0.85, label='Framework (131)')
+    ax.bar(x + 0.2, full_vals, 0.35, color='#2196F3', alpha=0.85, label=f'Framework ({n_framework})')
     ax.set_xticks(x)
     ax.set_xticklabels(short_names, fontsize=7, rotation=30, ha='right')
     ax.set_ylabel('% metrics significant', fontsize=9)
@@ -628,7 +629,7 @@ def make_figure(d1_results, geo_scores, svd_data, greedy_curve):
     ax.axvline(x=r99, color='#2196F3', linestyle=':', linewidth=1, label=f'99%: {r99}d')
     ax.set_xlabel('Dimensions', fontsize=9)
     ax.set_ylabel('Cumulative variance %', fontsize=9)
-    ax.set_title(f'D3: Effective dimensionality ({n_active} → {r95} at 95%)',
+    ax.set_title(f'D3a: Effective dimensionality ({n_active} → {r95} at 95%)',
                  fontsize=11, fontweight='bold')
     ax.legend(fontsize=8, facecolor='#333', edgecolor='#666')
 
@@ -638,7 +639,7 @@ def make_figure(d1_results, geo_scores, svd_data, greedy_curve):
                 'o-', color='#9C27B0', markersize=3, linewidth=1)
     ax.set_xlabel('Component', fontsize=9)
     ax.set_ylabel('% variance (log scale)', fontsize=9)
-    ax.set_title('D3: Singular value spectrum (first 50)', fontsize=11, fontweight='bold')
+    ax.set_title('D3b: Singular value spectrum (first 50)', fontsize=11, fontweight='bold')
 
     # D4: Greedy addition curve
     ax = _dark_ax(fig.add_subplot(gs[2, 0]))
@@ -698,7 +699,7 @@ if __name__ == "__main__":
     svd_data = direction_3(analyzer, metric_names)
     greedy_curve = direction_4(d1_results)
     direction_5(d1_results)
-    make_figure(d1_results, geo_scores, svd_data, greedy_curve)
+    make_figure(d1_results, geo_scores, svd_data, greedy_curve, metric_names)
 
     # Final verdict
     print(f"\n{'=' * 78}")
@@ -709,7 +710,7 @@ if __name__ == "__main__":
         f = case_data['full']
         gain = f - s
         print(f"  {case_name:30s}: Simple={s:2d}/{N_SIMPLE}, "
-              f"Full={f:3d}/131, Gain=+{gain}")
+              f"Full={f:3d}/{len(metric_names)}, Gain=+{gain}")
 
     S, cum_var, r90, r95, r99, n_active = svd_data
     print(f"\n  Effective dimensionality: {r95} at 95% variance (from {n_active} active metrics)")

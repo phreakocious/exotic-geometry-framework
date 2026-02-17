@@ -763,9 +763,10 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     ax2.set_xticks(range(len(bar_labels)))
     ax2.set_xticklabels(bar_labels, fontsize=9, color=FG)
     ax2.set_ylabel('Sig metrics (forward vs reversed)', color=FG, fontsize=9)
+    offset = max(max(bar_vals) * 0.04, 0.5) if bar_vals else 0.5
     for i, v in enumerate(bar_vals):
-        ax2.text(i, v + 0.3, str(v), ha='center', color=FG, fontsize=11,
-                 fontweight='bold')
+        ax2.text(i, v + offset, str(v), ha='center', color=FG, fontsize=11,
+                 fontweight='bold', clip_on=True)
 
     # Inset: top discriminating metrics
     if d2['rev_sig']:
@@ -793,9 +794,10 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     ax3.set_xticks(range(len(surr_labels)))
     ax3.set_xticklabels(surr_labels, fontsize=8, color=FG)
     ax3.set_ylabel('Sig metrics (real vs surrogate)', color=FG, fontsize=9)
+    offset3 = max(max(surr_vals) * 0.04, 0.5) if surr_vals else 0.5
     for i, v in enumerate(surr_vals):
-        ax3.text(i, v + 0.3, str(v), ha='center', color=FG, fontsize=11,
-                 fontweight='bold')
+        ax3.text(i, v + offset3, str(v), ha='center', color=FG, fontsize=11,
+                 fontweight='bold', clip_on=True)
 
     # Annotate linear vs nonlinear decomposition
     if d3['n_vs_full_shuf'] > 0:
@@ -823,9 +825,10 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     ax4.set_xticks(range(len(res_labels)))
     ax4.set_xticklabels(res_labels, fontsize=8, color=FG)
     ax4.set_ylabel('Significant metrics', color=FG, fontsize=9)
+    offset4 = max(max(res_vals) * 0.04, 0.5) if res_vals else 0.5
     for i, v in enumerate(res_vals):
-        ax4.text(i, v + 0.3, str(v), ha='center', color=FG, fontsize=11,
-                 fontweight='bold')
+        ax4.text(i, v + offset4, str(v), ha='center', color=FG, fontsize=11,
+                 fontweight='bold', clip_on=True)
 
     ax4.set_title('D4: Residue-Conditioned Geometry', fontsize=11,
                   fontweight='bold', color=FG)

@@ -345,9 +345,10 @@ class Runner:
         ax.set_ylabel(f"Sig metrics (of {self.n_metrics})")
         ax.set_title(title, fontsize=11)
         for bar, val in zip(bars, values):
+            label = f"{val:.1f}" if isinstance(val, float) else str(val)
             ax.text(bar.get_x() + bar.get_width() / 2,
                     bar.get_height() + 0.8,
-                    str(val), ha='center', fontsize=9, color='white')
+                    label, ha='center', fontsize=9, color='white')
 
     def plot_line(self, ax, x, y, title, xlabel='', ylabel='',
                   color='#e74c3c', label=None, annotate=True):
@@ -360,7 +361,8 @@ class Runner:
         ax.set_title(title, fontsize=11)
         if annotate:
             for xi, yi in zip(x, y):
-                ax.annotate(str(yi), (xi, yi), textcoords="offset points",
+                label = f"{yi:.1f}" if isinstance(yi, float) else str(yi)
+                ax.annotate(label, (xi, yi), textcoords="offset points",
                             xytext=(0, 10), ha='center', fontsize=9,
                             color='white')
         if label:

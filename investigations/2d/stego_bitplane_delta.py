@@ -68,7 +68,7 @@ def main():
     # Show clean tension profile (mean)
     print("")
     print("Clean Tension Profile (Bit 7 -> Bit 0):")
-    t_means = [np.mean(clean_profile[p]['SpatialField:tension_mean']) for p in range(8)]
+    t_means = [np.mean(clean_profile[p]['Spatial Field:tension_mean']) for p in range(8)]
     print("  " + " -> ".join([f"{v:.3f}" for v in t_means]))
     
     # 2. Test Stego Shocks

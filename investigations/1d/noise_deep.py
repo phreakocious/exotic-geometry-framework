@@ -575,8 +575,8 @@ def make_figure(d1, d3, d4, survival, ranked):
 
     # D5: Top 20 most robust metrics (survival profile)
     ax = _dark_ax(fig.add_subplot(gs[2, :]))
-    top_metrics = ranked[:20]
-    labels = [f"{m.split(':')[0][:20]}: {m.split(':',1)[1][:20]}" for m, s in top_metrics]
+    top_metrics = ranked[:15]
+    labels = [f"{m.split(':')[0][:22]}: {m.split(':',1)[1][:22]}" for m, s in top_metrics]
     max_noise_vals = [s['max_noise'] for m, s in top_metrics]
     n_levels_vals = [s['n_levels'] for m, s in top_metrics]
 
@@ -589,7 +589,7 @@ def make_figure(d1, d3, d4, survival, ranked):
     ax2.tick_params(colors='#FFD700', labelsize=7)
 
     ax.set_yticks(x)
-    ax.set_yticklabels(labels, fontsize=6.5)
+    ax.set_yticklabels(labels, fontsize=7.5)
     ax.set_xlabel('Max noise fraction survived', fontsize=9)
     ax.set_title('D5: Most noise-robust metrics (Hénon map)', fontsize=10, fontweight='bold')
     ax.legend(fontsize=7, facecolor='#333', edgecolor='#666', loc='lower right')
@@ -614,7 +614,7 @@ if __name__ == "__main__":
     print(f"Metrics: {N_METRICS}, Bonferroni α={BONF:.2e}\n")
 
     d1 = direction_1(analyzer)
-    d2 = direction_2(analyzer)
+    # D2 (Spiral anomaly) skipped — Spiral geometry was removed from framework
     d3 = direction_3(analyzer)
     d4 = direction_4(analyzer)
     survival, ranked = direction_5(analyzer)
@@ -638,12 +638,7 @@ if __name__ == "__main__":
                       f"{len(geos)} geometries")
                 break
 
-    # 2. Spiral anomaly
-    print("\n  D2 — Spiral anomaly:")
-    for (sig_name, nf), data in d2.items():
-        if data['spiral_sig']:
-            print(f"    {sig_name}@noise={nf}: {len(data['spiral_sig'])} spiral metrics sig "
-                  f"(total={data['total_sig']})")
+    # D2 (Spiral anomaly) — skipped, Spiral geometry removed from framework
 
     # 3. Stochastic resonance
     print("\n  D3 — Stochastic resonance:")

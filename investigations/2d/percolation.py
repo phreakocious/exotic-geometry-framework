@@ -301,10 +301,10 @@ def make_figure(prob_data, example_fields, cluster_info, all_pairs):
     ax_lg.tick_params(labelsize=8)
 
     # Row 2: Key SpatialFieldGeometry metrics vs p
-    plot_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                    'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
-                    'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope',
-                    'MinkowskiFunctional:euler_mean', 'MultiscaleFractal:box_counting_dim']
+    plot_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                    'Surface:gaussian_curvature_mean', 'Persistent Homology 2D:persistence_entropy',
+                    'Conformal 2D:structure_isotropy', 'Spectral Power 2D:spectral_slope',
+                    'Minkowski Functionals:euler_mean', 'Multiscale Fractal 2D:box_counting_dim']
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3',
               '#9C27B0', '#00BCD4', '#FFEB3B', '#FF5722']
 

@@ -29,10 +29,10 @@ Both are valid detections, but the distinction matters for interpretation. For e
 
 The framework has two geometry sets that are used independently:
 
-- **1D (byte streams)**: 24 geometries, ~131 metrics — used for all `investigations/1d/` and the classifier
+- **1D (byte streams)**: 44 geometries, 233 metrics — used for all `investigations/1d/` and the classifier
 - **2D (spatial fields)**: 8 geometries, 80 metrics — used for `investigations/2d/` (images, cellular automata, etc.)
 
-A given investigation uses one set or the other, so the number of statistical tests per comparison is either ~131 or ~80. Without correction, we'd expect ~7 or ~4 false positives at alpha=0.05.
+A given investigation uses one set or the other, so the number of statistical tests per comparison is either 233 or 80. Without correction, we'd expect ~12 or ~4 false positives at alpha=0.05.
 
 **Important**: the Bonferroni divisor is the number of metrics, NOT the number of metrics times conditions. Each pairwise comparison is a separate family of tests.
 
@@ -42,7 +42,7 @@ Bonferroni correction divides alpha by the number of tests:
 alpha_corrected = 0.05 / n_tests
 ```
 
-For 1D (131 metrics): alpha = 0.000382. For 2D (80 metrics): alpha = 0.000625. Only results surviving the relevant threshold are reported.
+For 1D (233 metrics): alpha = 0.000215. For 2D (80 metrics): alpha = 0.000625. Only results surviving the relevant threshold are reported.
 
 This is conservative (some real effects may be missed), which is intentional — we prefer missed detections over false positives.
 
@@ -117,13 +117,13 @@ Beyond pairwise statistical testing, the framework includes a signature-based cl
 
 ### Training
 
-A signature is built by running the analysis pipeline across many trials (typically 50) of a system's output, recording the mean and standard deviation of every metric at multiple delay-embedding scales (tau = 1, 2, 5, 10). This produces a high-dimensional profile: 131 metrics x 4 scales = 524 dimensions.
+A signature is built by running the analysis pipeline across many trials (typically 50) of a system's output, recording the mean and standard deviation of every metric at multiple delay-embedding scales (tau = 1, 2, 5, 10). This produces a high-dimensional profile: 233 metrics x 4 scales = 932 dimensions.
 
 ### Classification
 
 Given an unknown byte stream, the classifier:
 
-1. Computes the same 524-dimensional metric vector
+1. Computes the same 932-dimensional metric vector
 2. For each signature, computes per-metric z-scores: `|observed - mean| / std`
 3. Filters out constant metrics (`std < 1e-8`) and non-finite values
 4. Ranks signatures by **median z-score** (robust to outlier metrics)

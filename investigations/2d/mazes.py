@@ -427,9 +427,9 @@ def make_figure(algo_data, example_fields, pair_results):
         ax.set_yticks([])
 
     # Row 1: Key metrics
-    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
-                       'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope']
+    compare_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                       'Surface:gaussian_curvature_mean', 'Persistent Homology 2D:persistence_entropy',
+                       'Conformal 2D:structure_isotropy', 'Spectral Power 2D:spectral_slope']
 
     for j in range(min(n, len(compare_metrics))):
         metric = compare_metrics[j]
@@ -469,7 +469,7 @@ def make_figure(algo_data, example_fields, pair_results):
     # Row 3: Anisotropy profile — Binary Tree should stand out
     ax_aniso = fig.add_subplot(gs[3, :3])
     for i, name in enumerate(names):
-        vals = algo_data[name].get('SpatialField:anisotropy_mean', [])
+        vals = algo_data[name].get('Spatial Field:anisotropy_mean', [])
         if vals:
             ax_aniso.hist(vals, bins=15, alpha=0.5, color=colors[i],
                          label=name, density=True)
@@ -483,7 +483,7 @@ def make_figure(algo_data, example_fields, pair_results):
     # Coherence profile
     ax_coh = fig.add_subplot(gs[3, 3:])
     for i, name in enumerate(names):
-        vals = algo_data[name].get('SpatialField:coherence_score', [])
+        vals = algo_data[name].get('Spatial Field:coherence_score', [])
         if vals:
             ax_coh.hist(vals, bins=15, alpha=0.5, color=colors[i],
                        label=name, density=True)

@@ -2146,7 +2146,16 @@ def main(tier='complete'):
         _granks[:, _j] = (_grd(_col) / _gn
                           if np.std(_col) > 1e-15 else 0.5)
     _gcount = np.sum(_granks > 0.90, axis=1).astype(float)
-    _gcount = _gcount * _degeneracy_factor  # discount low-complexity sources
+    # Recompute degeneracy factor for global relevance (same logic as direction_8_views)
+    _complexity_names_g = {'Cantor Set:coverage', 'Torus T^2:coverage'}
+    _cidx_g = [j for j, mn in enumerate(runner.metric_names) if mn in _complexity_names_g]
+    if _cidx_g:
+        _cranks_g = np.column_stack([_grd(X[:, j]) / _gn for j in _cidx_g])
+        _complexity_g = np.mean(_cranks_g, axis=1)
+    else:
+        _complexity_g = np.ones(len(X))
+    _degeneracy_factor_g = np.clip(_complexity_g / 0.25, 0.3, 1.0)
+    _gcount = _gcount * _degeneracy_factor_g  # discount low-complexity sources
     _gcmax = _gcount.max()
     global_relevance = (_gcount / _gcmax if _gcmax > 1e-15
                         else np.zeros(len(_gcount)))

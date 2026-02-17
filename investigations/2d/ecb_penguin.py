@@ -278,8 +278,8 @@ def make_figure(all_results, test_images):
              ha='center', fontsize=9, color='#999', style='italic')
 
     # Row 2: Metric bars — ECB vs CBC vs CTR vs Random for 'circle'
-    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                       'Surface:gaussian_curvature_mean', 'SpectralPower:spectral_slope']
+    compare_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                       'Surface:gaussian_curvature_mean', 'Spectral Power 2D:spectral_slope']
     mode_colors = {'ECB': '#ff3333', 'CBC': '#4CAF50', 'CTR': '#2196F3', 'random': '#999999'}
     mode_list = ['ECB', 'CBC', 'CTR', 'random']
     mode_labels = ['ECB', 'CBC', 'CTR', 'Random']

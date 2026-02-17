@@ -1,40 +1,38 @@
 #!/usr/bin/env python3
 """
-Investigation: Surrogate Testing — Do Exotic Geometries Detect Nonlinear Structure?
+Investigation: Surrogate Testing — Nonlinear Structure Detection
 
-The ablation study showed simple features detect the same phenomena as the full
-framework. This investigation asks the harder question: can exotic geometries
-detect structure that simple features PROVABLY CANNOT?
+Tests whether exotic geometric embeddings detect nonlinear structure in
+time series beyond what standard nonlinear analysis tools can find.
 
 Method: IAAFT surrogates (Schreiber & Schmitz, 1996) preserve both the power
-spectrum AND the marginal distribution of a signal. By construction, any method
-based on linear statistics (entropy, autocorrelation, spectral slope) will
-FAIL to distinguish original from surrogate. Only methods sensitive to nonlinear
-or higher-order structure can succeed.
+spectrum AND the marginal distribution of a signal. By construction, linear
+statistics fail to distinguish original from IAAFT surrogate.
 
-If exotic geometries distinguish original from IAAFT surrogate where simple
-features cannot, that proves they capture genuinely new information.
+Three-tier comparison:
+  Tier 1 — Linear baseline (11 features): entropy, autocorrelation, spectral
+           slope. Should detect 0 vs IAAFT (by construction).
+  Tier 2 — Nonlinear baseline (11 features): permutation entropy, mutual
+           information, Lempel-Ziv complexity, time reversal asymmetry.
+           Standard tools a competent analyst would use before reaching for
+           geometric methods.
+  Tier 3 — Framework (233 metrics), partitioned into:
+           (a) Standard nonlinear: geometries that repackage known nonlinear
+               analysis (Information Theory, HOS, Hölder, Spectral,
+               Predictability, Zipf, Multifractal, p-Variation, Attractor,
+               Recurrence, Visibility Graph)
+           (b) Geometric: actual manifold embeddings (Torus, Hyperbolic,
+               root systems, quasicrystals, Thurston geometries, etc.)
 
-7 test signals:
-  1. lorenz_x     — Lorenz attractor x-component (deterministic chaos)
-  2. henon_x      — Hénon map x-component (low-dimensional chaos)
-  3. logistic     — Logistic map r=3.99 (1D chaos)
-  4. heartbeat    — Synthetic ECG (periodic + nonlinear waveform)
-  5. prime_gaps   — Prime gap sequence (number-theoretic structure)
-  6. collatz      — Collatz 3n+1 sequence (arithmetic dynamics)
-  7. coupled_ar   — Coupled AR processes (nonlinear interaction)
-
-Three surrogate types:
-  - Shuffle: destroys all temporal structure (sanity check)
-  - FT surrogate: preserves spectrum, randomizes phases (linear null)
-  - IAAFT surrogate: preserves spectrum AND distribution (strongest null)
+7 test signals: Lorenz, Hénon, logistic map, synthetic ECG, prime gaps,
+Collatz, coupled AR with bounded nonlinearity.
 
 Directions:
-  D1: Simple baseline vs IAAFT surrogates (should fail — 0 sig expected)
-  D2: Full framework vs IAAFT surrogates (the key test)
-  D3: Which geometries detect nonlinear structure? (geometry-by-geometry)
-  D4: Effect size comparison: shuffle vs FT vs IAAFT (structure hierarchy)
-  D5: The smoking gun — signals where simple=0 but exotic>0
+  D1: Three-tier comparison — linear vs nonlinear vs framework
+  D2: Framework decomposition — standard-nonlinear vs geometric metrics
+  D3: Geometry-by-geometry ranking (geometric lenses only)
+  D4: Structure hierarchy — shuffle vs FT vs IAAFT
+  D5: The honest test — geometric detections beyond nonlinear baseline
 
 Methodology: N_TRIALS=25, DATA_SIZE=2000, Cohen's d > 0.8, Bonferroni correction.
 """
@@ -43,6 +41,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 import numpy as np
+from math import factorial
 from scipy import stats
 from exotic_geometry_framework import GeometryAnalyzer
 import matplotlib.pyplot as plt
@@ -51,7 +50,16 @@ import matplotlib.gridspec as gridspec
 N_TRIALS = 25
 DATA_SIZE = 2000
 ALPHA = 0.05
-IAAFT_ITERATIONS = 100  # convergence iterations for IAAFT
+IAAFT_ITERATIONS = 100
+
+# Framework metric partition: geometries that are standard nonlinear analysis
+# repackaged as geometry classes (NOT genuine geometric embeddings)
+STANDARD_NONLINEAR_GEOS = {
+    'Information Theory', 'Higher-Order Statistics', 'Hölder Regularity',
+    'Spectral Analysis', 'Predictability', 'Zipf–Mandelbrot (8-bit)',
+    'Zipf–Mandelbrot (16-bit)', 'Multifractal Spectrum', 'p-Variation',
+    'Attractor Reconstruction', 'Recurrence Quantification', 'Visibility Graph',
+}
 
 
 # =========================================================================
@@ -235,17 +243,18 @@ def gen_collatz(trial, size):
 
 
 def gen_coupled_ar(trial, size):
-    """Two coupled AR(1) processes with nonlinear interaction.
-    x[t] = 0.8*x[t-1] + 0.3*y[t-1]^2 + noise
-    y[t] = 0.6*y[t-1] + 0.2*x[t-1] + noise
-    The x^2 coupling creates nonlinear structure invisible to linear methods.
+    """Coupled AR processes with bounded nonlinear interaction.
+    x[t] = 0.6*x[t-1] + 0.4*tanh(y[t-1]) + noise
+    y[t] = 0.6*y[t-1] + 0.4*x[t-1]^2/(1+x[t-1]^2) + noise
+    Bounded nonlinear coupling (tanh, logistic) prevents divergence
+    while creating structure invisible to linear methods.
     """
     rng = np.random.default_rng(42 + trial)
     x = np.zeros(size + 500)
     y = np.zeros(size + 500)
     for t in range(1, size + 500):
-        x[t] = 0.8 * x[t-1] + 0.3 * y[t-1]**2 + 0.5 * rng.standard_normal()
-        y[t] = 0.6 * y[t-1] + 0.2 * x[t-1] + 0.5 * rng.standard_normal()
+        x[t] = 0.6 * x[t-1] + 0.4 * np.tanh(y[t-1]) + 0.3 * rng.standard_normal()
+        y[t] = 0.6 * y[t-1] + 0.4 * x[t-1]**2 / (1 + x[t-1]**2) + 0.3 * rng.standard_normal()
     return to_uint8(x[500:])
 
 
@@ -261,7 +270,7 @@ SIGNALS = {
 
 
 # =========================================================================
-# SIMPLE BASELINE
+# TIER 1: LINEAR BASELINE
 # =========================================================================
 
 def compute_simple_features(data):
@@ -312,23 +321,142 @@ N_SIMPLE = len(SIMPLE_NAMES)
 
 
 # =========================================================================
+# TIER 2: NONLINEAR BASELINE
+# =========================================================================
+
+def _permutation_entropy(x, order=3):
+    """Bandt-Pompe permutation entropy."""
+    n = len(x)
+    perms = {}
+    for i in range(n - order + 1):
+        pattern = tuple(np.argsort(x[i:i+order]).tolist())
+        perms[pattern] = perms.get(pattern, 0) + 1
+    total = sum(perms.values())
+    probs = np.array(list(perms.values())) / total
+    return float(-np.sum(probs * np.log2(probs)))
+
+
+def _lempel_ziv_complexity(data):
+    """Lempel-Ziv complexity on binarized sequence (normalized)."""
+    binary = (data > np.median(data)).astype(int)
+    s = ''.join(map(str, binary))
+    n = len(s)
+    if n == 0:
+        return 0.0
+    vocabulary = set()
+    w = ''
+    c = 0
+    for char in s:
+        w += char
+        if w not in vocabulary:
+            vocabulary.add(w)
+            c += 1
+            w = ''
+    if w:
+        c += 1
+    return c / (n / max(np.log2(n), 1))
+
+
+def _time_reversal_asymmetry(x, lag=1):
+    """Time reversal asymmetry statistic (3rd order)."""
+    n = len(x)
+    if n <= lag:
+        return 0.0
+    return float(np.mean((x[lag:] - x[:-lag])**3))
+
+
+def _histogram_mutual_info(x, lag, n_bins=16):
+    """Histogram-based mutual information at given lag."""
+    if lag >= len(x):
+        return 0.0
+    a = x[:-lag]
+    b = x[lag:]
+    hist_ab, _, _ = np.histogram2d(a, b, bins=n_bins)
+    total = np.sum(hist_ab)
+    if total == 0:
+        return 0.0
+    p_ab = hist_ab / total
+    p_a = np.sum(p_ab, axis=1)
+    p_b = np.sum(p_ab, axis=0)
+    mi = 0.0
+    for i in range(n_bins):
+        for j in range(n_bins):
+            if p_ab[i, j] > 0 and p_a[i] > 0 and p_b[j] > 0:
+                mi += p_ab[i, j] * np.log2(p_ab[i, j] / (p_a[i] * p_b[j]))
+    return mi
+
+
+def compute_nonlinear_baseline(data):
+    """Standard nonlinear features a competent analyst would compute
+    before reaching for geometric methods. All O(n) or O(n*order)."""
+    x = data.astype(np.float64)
+    features = {}
+
+    # Permutation entropy (orders 3, 5, 7) — ordinal pattern structure
+    for order in [3, 5, 7]:
+        features[f'perm_entropy_{order}'] = _permutation_entropy(x, order)
+
+    # Forbidden permutation fraction (order 4) — determinism indicator
+    n = len(x)
+    order = 4
+    possible = factorial(order)
+    observed = len(set(tuple(np.argsort(x[i:i+order]).tolist())
+                       for i in range(n - order + 1)))
+    features['forbidden_frac_4'] = 1 - observed / possible
+
+    # Lempel-Ziv complexity — compressibility
+    features['lz_complexity'] = _lempel_ziv_complexity(data)
+
+    # Time reversal asymmetry — irreversibility (nonlinearity indicator)
+    features['trev_asym_1'] = _time_reversal_asymmetry(x, 1)
+    features['trev_asym_3'] = _time_reversal_asymmetry(x, 3)
+
+    # Mutual information (histogram-based, lags 1, 3, 5) — nonlinear dependence
+    features['mi_lag1'] = _histogram_mutual_info(x, 1)
+    features['mi_lag3'] = _histogram_mutual_info(x, 3)
+    features['mi_lag5'] = _histogram_mutual_info(x, 5)
+
+    # Turning point ratio — structural complexity
+    diffs = np.diff(np.sign(np.diff(x)))
+    features['turning_points'] = float(np.sum(diffs != 0)) / max(len(diffs), 1)
+
+    return features
+
+
+NONLINEAR_NAMES = list(compute_nonlinear_baseline(
+    np.random.default_rng(0).integers(0, 256, 200, dtype=np.uint8)).keys())
+N_NONLINEAR = len(NONLINEAR_NAMES)
+
+
+# =========================================================================
 # UTILITIES
 # =========================================================================
 
-# Discover framework metrics
+# Discover framework metrics and partition into standard vs geometric
 _analyzer = GeometryAnalyzer().add_all_geometries()
 _dummy = _analyzer.analyze(np.random.default_rng(0).integers(0, 256, 200, dtype=np.uint8))
 METRIC_NAMES = []
+STANDARD_METRICS = []
+GEOMETRIC_METRICS = []
 for _r in _dummy.results:
     for _mn in sorted(_r.metrics.keys()):
-        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
+        key = f"{_r.geometry_name}:{_mn}"
+        METRIC_NAMES.append(key)
+        if _r.geometry_name in STANDARD_NONLINEAR_GEOS:
+            STANDARD_METRICS.append(key)
+        else:
+            GEOMETRIC_METRICS.append(key)
 N_METRICS = len(METRIC_NAMES)
+N_STD = len(STANDARD_METRICS)
+N_GEO = len(GEOMETRIC_METRICS)
 BONF_SIMPLE = ALPHA / N_SIMPLE
+BONF_NONLINEAR = ALPHA / N_NONLINEAR
 BONF_FULL = ALPHA / N_METRICS
 del _analyzer, _dummy, _r, _mn
 
-print(f"Simple: {N_SIMPLE} features, Framework: {N_METRICS} metrics")
-print(f"Bonferroni: simple α={BONF_SIMPLE:.2e}, framework α={BONF_FULL:.2e}")
+print(f"Linear baseline: {N_SIMPLE} features")
+print(f"Nonlinear baseline: {N_NONLINEAR} features")
+print(f"Framework: {N_METRICS} metrics ({N_STD} standard-nonlinear, {N_GEO} geometric)")
 
 
 def cohens_d(a, b):
@@ -345,6 +473,16 @@ def collect_simple(data_arrays):
     out = {f: [] for f in SIMPLE_NAMES}
     for arr in data_arrays:
         feats = compute_simple_features(arr)
+        for f, v in feats.items():
+            if np.isfinite(v):
+                out[f].append(v)
+    return out
+
+
+def collect_nonlinear(data_arrays):
+    out = {f: [] for f in NONLINEAR_NAMES}
+    for arr in data_arrays:
+        feats = compute_nonlinear_baseline(arr)
         for f, v in feats.items():
             if np.isfinite(v):
                 out[f].append(v)
@@ -408,24 +546,20 @@ def generate_all(analyzer):
             ft_surrs.append(ft_surrogate(orig, np.random.default_rng(6000 + t)))
             iaaft_surrs.append(iaaft_surrogate(orig, np.random.default_rng(7000 + t)))
 
-        # Collect metrics
-        orig_simple = collect_simple(originals)
-        orig_full = collect_framework(analyzer, originals)
-
-        shuf_simple = collect_simple(shuffle_surrs)
-        shuf_full = collect_framework(analyzer, shuffle_surrs)
-
-        ft_simple = collect_simple(ft_surrs)
-        ft_full = collect_framework(analyzer, ft_surrs)
-
-        iaaft_simple = collect_simple(iaaft_surrs)
-        iaaft_full = collect_framework(analyzer, iaaft_surrs)
-
+        # Collect all three tiers
         all_data[name] = {
-            'orig_simple': orig_simple, 'orig_full': orig_full,
-            'shuf_simple': shuf_simple, 'shuf_full': shuf_full,
-            'ft_simple': ft_simple, 'ft_full': ft_full,
-            'iaaft_simple': iaaft_simple, 'iaaft_full': iaaft_full,
+            'orig_simple': collect_simple(originals),
+            'orig_nonlinear': collect_nonlinear(originals),
+            'orig_full': collect_framework(analyzer, originals),
+            'shuf_simple': collect_simple(shuffle_surrs),
+            'shuf_nonlinear': collect_nonlinear(shuffle_surrs),
+            'shuf_full': collect_framework(analyzer, shuffle_surrs),
+            'ft_simple': collect_simple(ft_surrs),
+            'ft_nonlinear': collect_nonlinear(ft_surrs),
+            'ft_full': collect_framework(analyzer, ft_surrs),
+            'iaaft_simple': collect_simple(iaaft_surrs),
+            'iaaft_nonlinear': collect_nonlinear(iaaft_surrs),
+            'iaaft_full': collect_framework(analyzer, iaaft_surrs),
         }
         print("done")
 
@@ -433,75 +567,90 @@ def generate_all(analyzer):
 
 
 # =========================================================================
-# D1: SIMPLE BASELINE VS IAAFT (should fail)
+# D1: THREE-TIER COMPARISON
 # =========================================================================
 def direction_1(all_data):
     print("\n" + "=" * 78)
-    print("D1: SIMPLE BASELINE VS IAAFT SURROGATES")
-    print("  (By construction, linear features should fail here)")
+    print("D1: THREE-TIER COMPARISON — LINEAR VS NONLINEAR VS FRAMEWORK")
     print("=" * 78)
+    print(f"  Linear: {N_SIMPLE} features (entropy, autocorrelation, spectral)")
+    print(f"  Nonlinear: {N_NONLINEAR} features (permutation entropy, MI, LZ, TRA)")
+    print(f"  Framework: {N_METRICS} metrics ({N_STD} standard + {N_GEO} geometric)")
 
     d1 = {}
     for name in SIGNALS:
         d = all_data[name]
-        n_sig, findings = count_sig(d['orig_simple'], d['iaaft_simple'],
-                                     SIMPLE_NAMES, BONF_SIMPLE)
-        d1[name] = n_sig
-        status = "PASS (detected)" if n_sig > 0 else "FAIL (as expected)"
-        print(f"  {name:15s}: {n_sig:2d}/{N_SIMPLE} sig — {status}")
-        for m, dval, p in findings[:3]:
-            print(f"    {m:25s}  d={dval:+.2f}")
+        lin_sig, _ = count_sig(d['orig_simple'], d['iaaft_simple'],
+                               SIMPLE_NAMES, BONF_SIMPLE)
+        nl_sig, nl_findings = count_sig(d['orig_nonlinear'], d['iaaft_nonlinear'],
+                                        NONLINEAR_NAMES, BONF_NONLINEAR)
+        fw_sig, _ = count_sig(d['orig_full'], d['iaaft_full'],
+                              METRIC_NAMES, BONF_FULL)
+        d1[name] = {'linear': lin_sig, 'nonlinear': nl_sig, 'framework': fw_sig}
+        print(f"\n  {name:15s}: linear={lin_sig:2d}  nonlinear={nl_sig:2d}  framework={fw_sig:3d}")
+        for m, dval, p in nl_findings[:3]:
+            print(f"    NL: {m:25s}  d={dval:+.2f}")
 
     return d1
 
 
 # =========================================================================
-# D2: FULL FRAMEWORK VS IAAFT (the key test)
+# D2: FRAMEWORK DECOMPOSITION — STANDARD VS GEOMETRIC
 # =========================================================================
 def direction_2(all_data):
     print("\n" + "=" * 78)
-    print("D2: FULL FRAMEWORK VS IAAFT SURROGATES")
-    print("  (This is the key test — can exotic geometry see nonlinear structure?)")
+    print("D2: FRAMEWORK DECOMPOSITION — STANDARD-NONLINEAR VS GEOMETRIC")
     print("=" * 78)
+    print(f"  Standard nonlinear ({N_STD} metrics): {', '.join(sorted(STANDARD_NONLINEAR_GEOS))}")
+    print(f"  Geometric ({N_GEO} metrics): actual manifold embeddings")
 
     d2 = {}
     for name in SIGNALS:
         d = all_data[name]
-        n_sig, findings = count_sig(d['orig_full'], d['iaaft_full'],
-                                     METRIC_NAMES, BONF_FULL)
-        d2[name] = {'n_sig': n_sig, 'findings': findings}
-        print(f"\n  {name:15s}: {n_sig:3d}/{N_METRICS} sig")
-        for m, dval, p in findings[:5]:
-            print(f"    {m:50s}  d={dval:+.2f}")
+        # Use BONF_FULL (not partition-specific) so std+geo = framework total
+        std_sig, std_findings = count_sig(d['orig_full'], d['iaaft_full'],
+                                          STANDARD_METRICS, BONF_FULL)
+        geo_sig, geo_findings = count_sig(d['orig_full'], d['iaaft_full'],
+                                          GEOMETRIC_METRICS, BONF_FULL)
+        d2[name] = {
+            'standard': std_sig, 'geometric': geo_sig,
+            'std_findings': std_findings, 'geo_findings': geo_findings,
+        }
+        print(f"\n  {name:15s}: standard={std_sig:3d}/{N_STD}  geometric={geo_sig:3d}/{N_GEO}")
+        if geo_findings:
+            print(f"    Top geometric:")
+            for m, dval, p in geo_findings[:3]:
+                print(f"      {m:50s}  d={dval:+.2f}")
 
     return d2
 
 
 # =========================================================================
-# D3: GEOMETRY-BY-GEOMETRY NONLINEAR DETECTION
+# D3: GEOMETRY-BY-GEOMETRY RANKING (GEOMETRIC ONLY)
 # =========================================================================
 def direction_3(all_data):
     print("\n" + "=" * 78)
-    print("D3: WHICH GEOMETRIES DETECT NONLINEAR STRUCTURE?")
+    print("D3: GEOMETRIC LENSES — NONLINEAR DETECTION RANKING")
+    print("  (Excluding standard nonlinear analysis repackaged as geometry)")
     print("=" * 78)
 
-    geometry_names = sorted(set(m.split(':')[0] for m in METRIC_NAMES))
-    geo_to_metrics = {g: [m for m in METRIC_NAMES if m.startswith(g + ':')]
-                      for g in geometry_names}
+    # Only rank genuinely geometric lenses
+    geo_names = sorted(set(m.split(':')[0] for m in GEOMETRIC_METRICS))
+    geo_to_metrics = {g: [m for m in GEOMETRIC_METRICS if m.startswith(g + ':')]
+                      for g in geo_names}
 
-    geo_scores = {g: 0 for g in geometry_names}
-
+    geo_scores = {g: 0 for g in geo_names}
     for name in SIGNALS:
         d = all_data[name]
-        for geo in geometry_names:
+        for geo in geo_names:
             metrics = geo_to_metrics[geo]
-            bonf_geo = ALPHA / max(len(metrics), 1)
-            n_sig, _ = count_sig(d['orig_full'], d['iaaft_full'], metrics, bonf_geo)
+            # Use BONF_FULL for consistency with D1/D2 (not per-geometry correction)
+            n_sig, _ = count_sig(d['orig_full'], d['iaaft_full'], metrics, BONF_FULL)
             geo_scores[geo] += n_sig
 
     ranked = sorted(geo_scores.items(), key=lambda x: -x[1])
-    print(f"\n  {'Geometry':<45s} {'Nonlinear detections':>20s}")
-    print(f"  {'─'*45} {'─'*20}")
+    print(f"\n  {'Geometry':<45s} {'Detections':>10s}")
+    print(f"  {'─'*45} {'─'*10}")
     for geo, score in ranked:
         bar = '█' * min(score, 40)
         print(f"  {geo:<45s} {score:>5d}  {bar}")
@@ -535,47 +684,58 @@ def direction_4(all_data):
 
 
 # =========================================================================
-# D5: SMOKING GUN — WHERE SIMPLE=0 BUT EXOTIC>0
+# D5: THE HONEST TEST — GEOMETRIC VALUE-ADD
 # =========================================================================
 def direction_5(all_data, d1, d2):
     print("\n" + "=" * 78)
-    print("D5: THE SMOKING GUN — SIMPLE=0, EXOTIC>0")
+    print("D5: THE HONEST TEST — DO GEOMETRIC EMBEDDINGS ADD VALUE?")
+    print("  Comparing: nonlinear baseline vs geometric-only framework metrics")
     print("=" * 78)
 
-    smoking_guns = []
+    value_add = []
     for name in SIGNALS:
-        simple_sig = d1[name]
-        exotic_sig = d2[name]['n_sig']
-        exotic_findings = d2[name]['findings']
+        nl_sig = d1[name]['nonlinear']
+        geo_sig = d2[name]['geometric']
+        geo_findings = d2[name]['geo_findings']
+        has_value = geo_sig > 0
 
-        is_gun = simple_sig == 0 and exotic_sig > 0
-        marker = " *** SMOKING GUN ***" if is_gun else ""
-        print(f"\n  {name:15s}: simple={simple_sig:2d}, exotic={exotic_sig:3d}{marker}")
+        print(f"\n  {name:15s}: nonlinear_baseline={nl_sig:2d}  geometric={geo_sig:3d}"
+              f"{'  ← geometric adds value' if has_value and nl_sig == 0 else ''}")
 
-        if is_gun and exotic_findings:
-            smoking_guns.append(name)
-            print(f"  Nonlinear structure detected by:")
-            for m, dval, p in exotic_findings[:10]:
-                geo = m.split(':')[0]
-                print(f"    {geo:35s} | {m.split(':',1)[1]:25s}  d={dval:+.2f}")
+        if has_value:
+            value_add.append(name)
+            for m, dval, p in geo_findings[:5]:
+                if np.isfinite(dval):
+                    print(f"    {m:50s}  d={dval:+.2f}")
 
-    if smoking_guns:
-        print(f"\n  SMOKING GUNS FOUND: {len(smoking_guns)}")
-        print(f"  Signals: {', '.join(smoking_guns)}")
-        print(f"  These prove exotic geometry detects nonlinear structure")
-        print(f"  that no combination of linear features can replicate.")
+    print(f"\n  Summary:")
+    print(f"  Signals where geometric embeddings detect nonlinear structure: "
+          f"{len(value_add)}/{len(SIGNALS)}")
+
+    # The key question: do geometric lenses find anything the nonlinear
+    # baseline misses?
+    geo_only = [n for n in value_add if d1[n]['nonlinear'] == 0]
+    if geo_only:
+        print(f"  Signals where nonlinear baseline=0 but geometric>0: "
+              f"{', '.join(geo_only)}")
+        print(f"  These {len(geo_only)} signal(s) show genuinely geometric detection")
+        print(f"  beyond standard nonlinear tools.")
     else:
-        print(f"\n  No pure smoking guns found.")
-        print(f"  Simple baseline may have leaked some detections")
-        print(f"  (IAAFT is approximate, not perfect).")
+        both = [n for n in value_add if d1[n]['nonlinear'] > 0]
+        if both:
+            print(f"  Nonlinear baseline also detects on the same signals.")
+            print(f"  Geometric metrics provide ADDITIONAL detections but are")
+            print(f"  not the ONLY path to detecting nonlinear structure.")
+        else:
+            print(f"  No signals with geometric-only detections found.")
 
-    return smoking_guns
+    return value_add
 
 
 # =========================================================================
 # FIGURE
 # =========================================================================
-def make_figure(all_data, d1, d2, d4, geo_scores, smoking_guns):
+def make_figure(all_data, d1, d2, d4, geo_scores, value_add):
     print("\nGenerating figure...", flush=True)
 
     plt.rcParams.update({
@@ -588,89 +748,132 @@ def make_figure(all_data, d1, d2, d4, geo_scores, smoking_guns):
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(20, 22), facecolor='#181818')
+    fig = plt.figure(figsize=(20, 24), facecolor='#181818')
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.4, wspace=0.3,
                            height_ratios=[1.0, 1.0, 1.2])
 
     names = list(SIGNALS.keys())
     x = np.arange(len(names))
 
-    # D1+D2: Simple vs Exotic against IAAFT
+    # D1: Three-tier comparison
     ax = _dark_ax(fig.add_subplot(gs[0, 0]))
-    simple_vals = [d1[n] for n in names]
-    exotic_vals = [d2[n]['n_sig'] for n in names]
-    ax.bar(x - 0.2, simple_vals, 0.35, color='#FF9800', alpha=0.85, label=f'Simple ({N_SIMPLE})')
-    ax.bar(x + 0.2, exotic_vals, 0.35, color='#2196F3', alpha=0.85, label=f'Framework ({N_METRICS})')
+    lin_vals = [d1[n]['linear'] for n in names]
+    nl_vals = [d1[n]['nonlinear'] for n in names]
+    fw_vals = [d1[n]['framework'] for n in names]
+    width = 0.25
+    ax.bar(x - width, lin_vals, width, color='#FF9800', alpha=0.85,
+           label=f'Linear ({N_SIMPLE})')
+    ax.bar(x, nl_vals, width, color='#4CAF50', alpha=0.85,
+           label=f'Nonlinear ({N_NONLINEAR})')
+    ax.bar(x + width, fw_vals, width, color='#2196F3', alpha=0.85,
+           label=f'Framework ({N_METRICS})')
     ax.set_xticks(x)
     ax.set_xticklabels(names, fontsize=7, rotation=30, ha='right')
     ax.set_ylabel('Sig metrics vs IAAFT', fontsize=9)
-    ax.set_title('D1+D2: Simple vs exotic — IAAFT surrogates', fontsize=11, fontweight='bold')
-    ax.legend(fontsize=8, facecolor='#333', edgecolor='#666')
-    # Mark smoking guns
-    for i, n in enumerate(names):
-        if n in smoking_guns:
-            ax.annotate('★', (i + 0.2, exotic_vals[i] + 1), fontsize=14,
-                       color='#FFD700', ha='center', fontweight='bold')
+    ax.set_title('D1: Three-tier comparison — linear vs nonlinear vs framework',
+                 fontsize=10, fontweight='bold')
+    ax.legend(fontsize=7, facecolor='#333', edgecolor='#666')
 
     # D4: Structure hierarchy
     ax = _dark_ax(fig.add_subplot(gs[0, 1]))
     shuf_vals = [d4[n]['shuffle'] for n in names]
     ft_vals = [d4[n]['ft'] for n in names]
     iaaft_vals = [d4[n]['iaaft'] for n in names]
-    width = 0.25
     ax.bar(x - width, shuf_vals, width, color='#E91E63', alpha=0.85, label='Shuffle')
     ax.bar(x, ft_vals, width, color='#4CAF50', alpha=0.85, label='FT')
     ax.bar(x + width, iaaft_vals, width, color='#2196F3', alpha=0.85, label='IAAFT')
     ax.set_xticks(x)
     ax.set_xticklabels(names, fontsize=7, rotation=30, ha='right')
     ax.set_ylabel('Sig metrics', fontsize=9)
-    ax.set_title('D4: Structure hierarchy (what each surrogate preserves)', fontsize=11, fontweight='bold')
-    ax.legend(fontsize=8, facecolor='#333', edgecolor='#666')
+    ax.set_title('D4: Structure hierarchy (what each surrogate preserves)',
+                 fontsize=10, fontweight='bold')
+    ax.legend(fontsize=7, facecolor='#333', edgecolor='#666')
 
-    # D3: Geometry ranking for nonlinear detection
-    ax = _dark_ax(fig.add_subplot(gs[1, :]))
+    # D2: Framework decomposition — standard vs geometric
+    ax = _dark_ax(fig.add_subplot(gs[1, 0]))
+    std_vals = [d2[n]['standard'] for n in names]
+    geo_vals = [d2[n]['geometric'] for n in names]
+    ax.bar(x - 0.2, std_vals, 0.35, color='#FF9800', alpha=0.85,
+           label=f'Std nonlinear ({N_STD})')
+    ax.bar(x + 0.2, geo_vals, 0.35, color='#9C27B0', alpha=0.85,
+           label=f'Geometric ({N_GEO})')
+    ax.set_xticks(x)
+    ax.set_xticklabels(names, fontsize=7, rotation=30, ha='right')
+    ax.set_ylabel('Sig metrics vs IAAFT', fontsize=9)
+    ax.set_title('D2: Framework decomposition — standard vs geometric',
+                 fontsize=10, fontweight='bold')
+    ax.legend(fontsize=7, facecolor='#333', edgecolor='#666')
+
+    # D3: Geometric geometry ranking (only geometric, score > 0)
+    ax = _dark_ax(fig.add_subplot(gs[1, 1]))
     ranked = sorted(geo_scores.items(), key=lambda x: -x[1])
-    geo_names_sorted = [g[0][:30] for g in ranked]
-    geo_vals_sorted = [g[1] for g in ranked]
-    colors = ['#2196F3' if v > 0 else '#666' for v in geo_vals_sorted]
-    ax.barh(range(len(geo_names_sorted)), geo_vals_sorted, color=colors, alpha=0.85)
-    ax.set_yticks(range(len(geo_names_sorted)))
-    ax.set_yticklabels(geo_names_sorted, fontsize=7)
-    ax.set_xlabel('Total nonlinear detections (across 7 signals)', fontsize=9)
-    ax.set_title('D3: Which geometries detect nonlinear structure?', fontsize=11, fontweight='bold')
-    ax.invert_yaxis()
-
-    # D5: Smoking gun detail
-    ax = _dark_ax(fig.add_subplot(gs[2, :]))
-    if smoking_guns:
-        # Show top 15 exotic findings across smoking gun signals
-        all_findings = []
-        for name in smoking_guns:
-            for m, dval, p in d2[name]['findings'][:5]:
-                all_findings.append((name, m, dval))
-        all_findings.sort(key=lambda x: -abs(x[2]))
-        all_findings = all_findings[:15]
-
-        labels = [f"{f[0]}: {f[1].split(':',1)[1][:30]}" for f in all_findings]
-        d_vals = [abs(f[2]) for f in all_findings]
-        geos = [f[1].split(':')[0][:20] for f in all_findings]
-
-        colors_bar = ['#E91E63' if d > 5 else '#FF9800' if d > 2 else '#4CAF50'
-                      for d in d_vals]
-        ax.barh(range(len(labels)), d_vals, color=colors_bar, alpha=0.85)
-        ax.set_yticks(range(len(labels)))
-        ax.set_yticklabels(labels, fontsize=7)
-        ax.set_xlabel('|Cohen\'s d| (effect size)', fontsize=9)
-        ax.set_title(f'D5: Smoking gun detections ({len(smoking_guns)} signals)',
-                     fontsize=11, fontweight='bold')
+    ranked = [(g, s) for g, s in ranked if s > 0]
+    n_zero = sum(1 for s in geo_scores.values() if s == 0)
+    if ranked:
+        geo_names_sorted = [g[0] for g in ranked]
+        geo_vals_sorted = [g[1] for g in ranked]
+        ax.barh(range(len(geo_names_sorted)), geo_vals_sorted,
+                color='#9C27B0', alpha=0.85)
+        ax.set_yticks(range(len(geo_names_sorted)))
+        ax.set_yticklabels(geo_names_sorted, fontsize=6)
+        ax.set_xlabel('Nonlinear detections (across 7 signals)', fontsize=8)
         ax.invert_yaxis()
-    else:
-        ax.text(0.5, 0.5, 'No pure smoking guns found\n(IAAFT approximation may leak)',
-                transform=ax.transAxes, ha='center', va='center', fontsize=14,
-                color='#666')
-        ax.set_title('D5: No smoking guns', fontsize=11, fontweight='bold')
+    title_d3 = 'D3: Geometric lenses — nonlinear detection'
+    if n_zero > 0:
+        title_d3 += f'\n({n_zero} with 0 omitted)'
+    ax.set_title(title_d3, fontsize=10, fontweight='bold')
 
-    fig.suptitle('Surrogate Testing: Do Exotic Geometries Detect Nonlinear Structure?',
+    # D5: Top geometric detections (log scale, colored by signal)
+    ax = _dark_ax(fig.add_subplot(gs[2, :]))
+    if value_add:
+        all_findings = []
+        for name in value_add:
+            for m, dval, p in d2[name]['geo_findings'][:5]:
+                if np.isfinite(dval):
+                    all_findings.append((name, m, dval))
+        all_findings.sort(key=lambda x: -abs(x[2]))
+        all_findings = all_findings[:20]
+
+        if all_findings:
+            labels = [f"{f[0]}: {f[1].split(':',1)[1][:30]}" for f in all_findings]
+            d_vals = [abs(f[2]) for f in all_findings]
+            signal_names_list = [f[0] for f in all_findings]
+
+            # Color by signal
+            signal_palette = {}
+            palette = ['#E91E63', '#2196F3', '#4CAF50', '#FF9800', '#9C27B0',
+                       '#00BCD4', '#FFEB3B']
+            for i, s in enumerate(SIGNALS):
+                signal_palette[s] = palette[i % len(palette)]
+            colors_bar = [signal_palette[s] for s in signal_names_list]
+
+            ax.barh(range(len(labels)), d_vals, color=colors_bar, alpha=0.85)
+            if max(d_vals) / max(min(d_vals), 0.1) > 20:
+                ax.set_xscale('log')
+                ax.set_xlabel("|Cohen's d| (log scale)", fontsize=9)
+            else:
+                ax.set_xlabel("|Cohen's d|", fontsize=9)
+            ax.set_yticks(range(len(labels)))
+            ax.set_yticklabels(labels, fontsize=7)
+            ax.invert_yaxis()
+
+            # Legend
+            from matplotlib.patches import Patch
+            seen = []
+            handles = []
+            for s in signal_names_list:
+                if s not in seen:
+                    seen.append(s)
+                    handles.append(Patch(facecolor=signal_palette[s], label=s))
+            ax.legend(handles=handles, fontsize=7, facecolor='#333',
+                      edgecolor='#666', loc='lower right')
+
+    ax.set_title(f'D5: Top geometric detections — {len(value_add)} of '
+                 f'{len(SIGNALS)} signals with geometric value-add '
+                 f'(manifold embeddings only)',
+                 fontsize=10, fontweight='bold')
+
+    fig.suptitle('Surrogate Testing: Do Geometric Embeddings Detect Nonlinear Structure?',
                  fontsize=14, fontweight='bold', color='white', y=0.995)
     fig.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                 '..', '..', 'figures', 'surrogate.png'),
@@ -690,33 +893,46 @@ if __name__ == "__main__":
     d2 = direction_2(all_data)
     geo_scores = direction_3(all_data)
     d4 = direction_4(all_data)
-    smoking_guns = direction_5(all_data, d1, d2)
-    make_figure(all_data, d1, d2, d4, geo_scores, smoking_guns)
+    value_add = direction_5(all_data, d1, d2)
+    make_figure(all_data, d1, d2, d4, geo_scores, value_add)
 
     print(f"\n{'=' * 78}")
     print("VERDICT")
     print(f"{'=' * 78}")
     for name in SIGNALS:
-        s = d1[name]
-        e = d2[name]['n_sig']
+        t = d1[name]
+        s = d2[name]
         h = d4[name]
-        gun = " ★" if name in smoking_guns else ""
-        print(f"  {name:15s}: simple={s:2d}  exotic={e:3d}  "
-              f"(shuf={h['shuffle']:3d} FT={h['ft']:3d} IAAFT={h['iaaft']:3d}){gun}")
+        has_geo = " ◆" if name in value_add else ""
+        print(f"  {name:15s}: linear={t['linear']:2d}  nonlinear={t['nonlinear']:2d}  "
+              f"framework={t['framework']:3d}  "
+              f"(std={s['standard']:3d} geo={s['geometric']:3d})"
+              f"{has_geo}")
 
-    n_guns = len(smoking_guns)
-    total_exotic = sum(d2[n]['n_sig'] for n in SIGNALS)
-    total_simple = sum(d1[n] for n in SIGNALS)
-    print(f"\n  Smoking guns: {n_guns}/{len(SIGNALS)} signals")
-    print(f"  Total simple detections (vs IAAFT): {total_simple}")
-    print(f"  Total exotic detections (vs IAAFT): {total_exotic}")
-    if total_exotic > 0 and total_simple == 0:
-        print(f"\n  ★ FRAMEWORK DETECTS PURELY NONLINEAR STRUCTURE ★")
-        print(f"  Simple features: 0 detections. Exotic geometries: {total_exotic}.")
-        print(f"  This proves the geometric embeddings capture information")
-        print(f"  that no combination of linear features can replicate.")
-    elif total_exotic > total_simple:
-        print(f"\n  Framework detects more nonlinear structure than simple baseline.")
-        print(f"  Gain: +{total_exotic - total_simple} detections beyond simple features.")
+    total_fw = sum(d1[n]['framework'] for n in SIGNALS)
+    total_nl = sum(d1[n]['nonlinear'] for n in SIGNALS)
+    total_lin = sum(d1[n]['linear'] for n in SIGNALS)
+    total_std = sum(d2[n]['standard'] for n in SIGNALS)
+    total_geo = sum(d2[n]['geometric'] for n in SIGNALS)
+
+    print(f"\n  Total detections vs IAAFT:")
+    print(f"    Linear baseline:           {total_lin:4d}")
+    print(f"    Nonlinear baseline:        {total_nl:4d}")
+    print(f"    Framework (all):           {total_fw:4d}")
+    print(f"      ├─ Standard nonlinear:   {total_std:4d}")
+    print(f"      └─ Geometric:            {total_geo:4d}")
+
+    if total_geo > 0:
+        print(f"\n  Geometric embeddings contribute {total_geo} detections.")
+        if total_nl > 0:
+            print(f"  But nonlinear baseline also finds {total_nl} — geometry is")
+            print(f"  not the ONLY path to detecting nonlinear structure.")
+            print(f"  Geometric embeddings provide complementary detections")
+            print(f"  via manifold topology, not uniquely indispensable ones.")
+        else:
+            print(f"  Nonlinear baseline finds 0 — geometric embeddings are")
+            print(f"  the only tools here that detect nonlinear structure.")
     else:
-        print(f"\n  No evidence that exotic geometries detect unique nonlinear structure.")
+        print(f"\n  Geometric embeddings contribute 0 detections.")
+        print(f"  All framework value comes from standard nonlinear analysis")
+        print(f"  repackaged as geometry classes.")

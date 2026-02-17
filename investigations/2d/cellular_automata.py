@@ -246,9 +246,9 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
         ax.set_xticks([])
         ax.set_yticks([])
 
-    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
-                       'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope']
+    compare_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                       'Surface:gaussian_curvature_mean', 'Persistent Homology 2D:persistence_entropy',
+                       'Conformal 2D:structure_isotropy', 'Spectral Power 2D:spectral_slope']
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0', '#00BCD4']
 
     for j in range(min(n, len(compare_metrics))):
@@ -293,7 +293,7 @@ def make_figure(rule_data, example_fields, pair_results, epoch_data, epoch_examp
         ax.set_xticks([])
         ax.set_yticks([])
 
-    evo_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins']
+    evo_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins']
     for j, metric in enumerate(evo_metrics):
         ax = fig.add_subplot(gs[3, 4 + j])
         means = [np.mean(epoch_data[ep][metric]) for ep in epochs]

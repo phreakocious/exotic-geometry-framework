@@ -161,7 +161,7 @@ def direction_2(runner):
         for m, d, p in findings[:3]:
             print(f"    {m:45s} d={d:+8.2f}")
 
-    return dict(ns=ns)
+    return dict(ns=ns, findings=findings)
 
 
 def direction_3(runner):
@@ -251,9 +251,19 @@ def make_figure(runner, d1, d2, d3, d4, d5):
     runner.plot_heatmap(axes[0], d1['matrix'], d1['names'],
                         "D1: Wavefunction Taxonomy")
 
-    # D2: Coherence Bar
+    # D2: Coherence Bar + top findings
     runner.plot_bars(axes[1], ["Coh vs Dec"], [d2['ns']],
                      "D2: Coherence Signature")
+    if d2.get('findings'):
+        lines = ["Top discriminators:"]
+        for m, d_val, p in d2['findings'][:5]:
+            short = m.split(':')[1] if ':' in m else m
+            lines.append(f"  {short}: d={d_val:+.1f}")
+        axes[1].text(0.98, 0.95, "\n".join(lines), transform=axes[1].transAxes,
+                     fontsize=7, va='top', ha='right', color='#aaa',
+                     fontfamily='monospace',
+                     bbox=dict(boxstyle='round,pad=0.3', facecolor='#222',
+                               edgecolor='#444'))
 
     # D3: Energy Sweep Line
     runner.plot_line(axes[2], d3['levels'], d3['ns_list'],

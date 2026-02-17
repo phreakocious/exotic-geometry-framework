@@ -314,9 +314,9 @@ def make_figure(model_data, example_fields, pair_results):
         ax.set_yticks([])
 
     # Row 1: Key metrics as grouped bars
-    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
-                       'Conformal2D:structure_isotropy', 'SpectralPower:spectral_slope']
+    compare_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                       'Surface:gaussian_curvature_mean', 'Persistent Homology 2D:persistence_entropy',
+                       'Conformal 2D:structure_isotropy', 'Spectral Power 2D:spectral_slope']
 
     for j, metric in enumerate(compare_metrics[:3]):
         ax = fig.add_subplot(gs[1, j])

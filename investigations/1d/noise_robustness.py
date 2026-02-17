@@ -557,8 +557,8 @@ def make_figure(results, thresholds, geo_scores, geo_max_noise, d4, d5):
     })
 
     fig = plt.figure(figsize=(20, 22), facecolor='#181818')
-    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.3,
-                           height_ratios=[1.0, 1.0, 1.0])
+    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.35,
+                           left=0.12, height_ratios=[1.0, 1.0, 1.0])
 
     signal_colors = {
         'lorenz': '#E91E63',
@@ -587,7 +587,9 @@ def make_figure(results, thresholds, geo_scores, geo_max_noise, d4, d5):
     ax.set_title('D1: Framework detection vs noise level', fontsize=11, fontweight='bold')
     ax.legend(fontsize=8, facecolor='#333', edgecolor='#666')
     ax.axhline(y=0, color='#666', linestyle='--', linewidth=0.5)
-    ax.annotate('clean →', (38, 2), fontsize=7, color='#888')
+    ax.axvline(x=37, color='#555', linestyle=':', linewidth=0.5)
+    ax.annotate('clean', (37.5, ax.get_ylim()[1] * 0.95), fontsize=7, color='#aaa',
+                ha='left', va='top')
 
     # D2: Framework vs standard thresholds
     ax = _dark_ax(fig.add_subplot(gs[0, 1]))
@@ -599,19 +601,19 @@ def make_figure(results, thresholds, geo_scores, geo_max_noise, d4, d5):
     ax.bar(x + 0.18, std_thresh, 0.32, color='#FF9800', alpha=0.85, label='Standard (Trev)')
     ax.set_xticks(x)
     ax.set_xticklabels(sig_names, fontsize=8)
-    ax.set_ylabel('Max noise fraction tolerated', fontsize=9)
+    ax.set_ylabel('Max noise-to-signal ratio tolerated', fontsize=9)
     ax.set_title('D2: Noise tolerance — framework vs standard test', fontsize=11, fontweight='bold')
     ax.legend(fontsize=8, facecolor='#333', edgecolor='#666')
 
     # D3: Geometry robustness ranking (top 15)
     ax = _dark_ax(fig.add_subplot(gs[1, 0]))
     ranked = sorted(geo_scores.items(), key=lambda x: -x[1])[:15]
-    geo_names = [g[0][:30] for g in ranked]
+    geo_names = [g[0] for g in ranked]
     geo_vals = [g[1] for g in ranked]
     colors = ['#2196F3' if v > 5 else '#4CAF50' if v > 0 else '#666' for v in geo_vals]
     ax.barh(range(len(geo_names)), geo_vals, color=colors, alpha=0.85)
     ax.set_yticks(range(len(geo_names)))
-    ax.set_yticklabels(geo_names, fontsize=7)
+    ax.set_yticklabels(geo_names, fontsize=7.5)
     ax.set_xlabel('Total sig detections (across signals × noise levels)', fontsize=8)
     ax.set_title('D3: Most noise-robust geometries', fontsize=11, fontweight='bold')
     ax.invert_yaxis()
@@ -648,10 +650,13 @@ def make_figure(results, thresholds, geo_scores, geo_max_noise, d4, d5):
                  fontsize=12, fontweight='bold')
     ax.legend(fontsize=9, facecolor='#333', edgecolor='#666')
     ax.axhline(y=0, color='#666', linestyle='--', linewidth=0.5)
-    ax.annotate('clean →', (38, 2), fontsize=8, color='#888')
+    ax.axvline(x=37, color='#555', linestyle=':', linewidth=0.5)
+    ax.annotate('clean', (37.5, ax.get_ylim()[1] * 0.95), fontsize=8, color='#aaa',
+                ha='left', va='top')
 
     fig.suptitle('Nonlinearity Detection Under Noise',
-                 fontsize=14, fontweight='bold', color='white', y=0.995)
+                 fontsize=14, fontweight='bold', color='white', y=0.98)
+    gs.update(top=0.95)
     fig.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                 '..', '..', 'figures', 'noise_robustness.png'),
                 dpi=180, bbox_inches='tight', facecolor='#181818')

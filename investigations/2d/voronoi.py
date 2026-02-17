@@ -337,9 +337,9 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
         ax.set_yticks([])
 
     # Row 1: Key metrics
-    compare_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                       'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
-                       'SpectralPower:spectral_slope']
+    compare_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                       'Surface:gaussian_curvature_mean', 'Persistent Homology 2D:persistence_entropy',
+                       'Spectral Power 2D:spectral_slope']
 
     for j in range(min(n, len(compare_metrics))):
         metric = compare_metrics[j]
@@ -381,7 +381,7 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
     ax_ms = fig.add_subplot(gs[3, :3])
     scales = [1, 2, 4, 8]
     for i, name in enumerate(names):
-        means = [np.mean(proc_data[name][f'SpatialField:multiscale_coherence_{s}']) for s in scales]
+        means = [np.mean(proc_data[name][f'Spatial Field:multiscale_coherence_{s}']) for s in scales]
         ax_ms.plot(scales, means, 'o-', color=colors[i], label=name.replace('_', ' '),
                    markersize=5, linewidth=1.5)
     ax_ms.set_xlabel('Scale', fontsize=9)
@@ -392,7 +392,7 @@ def make_figure(proc_data, example_fields, example_points, pair_results):
 
     ax_tens = fig.add_subplot(gs[3, 3:])
     for i, name in enumerate(names):
-        vals = proc_data[name].get('SpatialField:tension_mean', [])
+        vals = proc_data[name].get('Spatial Field:tension_mean', [])
         if vals:
             ax_tens.hist(vals, bins=12, alpha=0.5, color=colors[i],
                         label=name.replace('_', ' '), density=True)

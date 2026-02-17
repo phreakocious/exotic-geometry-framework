@@ -584,7 +584,7 @@ def make_figure(all_data, random_data, d1_results, d4_results):
     ax.set_xticks(range(len(names)))
     ax.set_xticklabels(names, fontsize=7, rotation=45, ha='right')
     ax.set_ylabel('Sig metrics (orig vs shuf)', fontsize=9)
-    ax.set_title('D4: Ordering dependence', fontsize=11, fontweight='bold')
+    ax.set_title('D2: Ordering dependence', fontsize=11, fontweight='bold')
 
     # Pairwise matrix for all 8 encodings
     ax = _dark_ax(fig.add_subplot(gs[1, :]))
@@ -608,7 +608,7 @@ def make_figure(all_data, random_data, d1_results, d4_results):
                 ax.text(j, i, f'{int(mat[i,j])}', ha='center', va='center',
                        fontsize=7, fontweight='bold',
                        color='white' if mat[i,j] > mat.max()/2 else '#aaa')
-    ax.set_title('All pairwise comparisons (sig metrics)', fontsize=11, fontweight='bold')
+    ax.set_title('D3: Pairwise distance matrix (sig metrics)', fontsize=11, fontweight='bold')
     plt.colorbar(im, ax=ax, shrink=0.6)
 
     fig.suptitle('Additive & Structural Number Theory: Geometric Signatures',

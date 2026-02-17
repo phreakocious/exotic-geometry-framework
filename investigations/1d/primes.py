@@ -638,7 +638,7 @@ def make_figure(metric_names, d1, d2, d3, d4, d5):
     FG = '#e0e0e0'
 
     fig = plt.figure(figsize=(22, 14), facecolor=BG)
-    gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.35, wspace=0.30)
+    gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.45, wspace=0.30)
 
     def _dark_ax(ax):
         ax.set_facecolor(BG)

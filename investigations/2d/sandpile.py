@@ -301,9 +301,9 @@ def make_figure(drop_data, example_fields, pair_results):
         spine.set_linewidth(2)
 
     # Row 1: Metrics vs drop count
-    plot_metrics = ['SpatialField:coherence_score', 'SpatialField:n_basins',
-                    'Surface:gaussian_curvature_mean', 'PersistentHomology2D:persistence_entropy',
-                    'SpectralPower:spectral_slope']
+    plot_metrics = ['Spatial Field:coherence_score', 'Spatial Field:n_basins',
+                    'Surface:gaussian_curvature_mean', 'Persistent Homology 2D:persistence_entropy',
+                    'Spectral Power 2D:spectral_slope']
     colors = ['#E91E63', '#FF9800', '#4CAF50', '#2196F3', '#9C27B0']
 
     for j, metric in enumerate(plot_metrics):

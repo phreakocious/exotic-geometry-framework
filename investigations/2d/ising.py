@@ -2,7 +2,7 @@
 """
 Investigation: 2D Ising Phase Transition & Procedural Noise Fingerprinting
 
-1. ISING MODEL: Can SpatialFieldGeometry detect the phase transition at T_c ≈ 2.269?
+1. ISING MODEL: Can Spatial Field geometry detect the phase transition at T_c ≈ 2.269?
    - Temperature scan from ordered (T=1) to disordered (T=∞)
    - Expected: sharp metric changes near T_c, all T distinguishable from random
 
@@ -180,9 +180,9 @@ def run_ising(analyzer):
     print("|m|=0.000")
 
     # Temperature scan table
-    key_metrics = ['SpatialField:tension_mean', 'SpatialField:curvature_mean',
-                   'SpatialField:anisotropy_mean', 'SpatialField:n_basins',
-                   'SpatialField:coherence_score', 'SpatialField:multiscale_coherence_4']
+    key_metrics = ['Spatial Field:tension_mean', 'Spatial Field:curvature_mean',
+                   'Spatial Field:anisotropy_mean', 'Spatial Field:n_basins',
+                   'Spatial Field:coherence_score', 'Spatial Field:multiscale_coherence_4']
     all_T = temperatures + ['inf']
 
     print(f"\n{'Metric':>25s}", end="")
@@ -413,11 +413,11 @@ def make_figure(ising_data):
 
     curve_metrics = [
         ('|Magnetization|', None),
-        ('SpatialField:tension_mean', 'Tension (gradient energy)'),
-        ('SpatialField:multiscale_coherence_4', 'Multi-scale coherence (4x)'),
-        ('SpatialField:n_basins', 'Basin count'),
+        ('Spatial Field:tension_mean', 'Tension (gradient energy)'),
+        ('Spatial Field:multiscale_coherence_4', 'Multi-scale coherence (4x)'),
+        ('Spatial Field:n_basins', 'Basin count'),
         ('Surface:gaussian_curvature_mean', 'Gaussian curvature'),
-        ('SpectralPower:spectral_slope', 'Spectral slope'),
+        ('Spectral Power 2D:spectral_slope', 'Spectral slope'),
     ]
 
     T_arr = np.array(temperatures)
@@ -450,7 +450,7 @@ def make_figure(ising_data):
         ax.set_title(title, fontsize=9, fontweight='bold', color=FG)
         ax.set_xlim(0.2, 5.5)
 
-    fig.suptitle('Ising Model Phase Transition via SpatialFieldGeometry',
+    fig.suptitle('Ising Model Phase Transition via Spatial Field Geometry',
                  fontsize=14, fontweight='bold', y=0.98, color=FG)
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'figures', 'ising.png')
     fig.savefig(out, dpi=180, bbox_inches='tight', facecolor=BG)

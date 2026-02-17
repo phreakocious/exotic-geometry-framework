@@ -81,8 +81,7 @@ def gen_random(rng, size):
 
 def direction_1(runner):
     """D1: Confusion Matrix"""
-    print("
-" + "=" * 60)
+    print("\n" + "=" * 60)
     print("D1: CONFUSION MATRIX")
     print("=" * 60)
     
@@ -103,8 +102,7 @@ def direction_1(runner):
 
 def direction_2(runner, d1_metrics):
     """D2: Rare Sensor Hunt"""
-    print("
-" + "=" * 60)
+    print("\n" + "=" * 60)
     print("D2: THE 'RARE SENSOR' HUNT")
     print("=" * 60)
     
@@ -114,8 +112,7 @@ def direction_2(runner, d1_metrics):
     
     _, findings = runner.compare(met_a, met_b)
     
-    print(f"
-Top 10 Sensors for {pair[0]} vs {pair[1]}:")
+    print(f"\nTop 10 Sensors for {pair[0]} vs {pair[1]}:")
     for m, d, p in findings[:10]:
         print(f"  {m:40s} d={d:+.2f} (p={p:.1e})")
         
@@ -123,8 +120,7 @@ Top 10 Sensors for {pair[0]} vs {pair[1]}:")
 
 def direction_3(runner):
     """D3: Transform Sweep"""
-    print("
-" + "=" * 60)
+    print("\n" + "=" * 60)
     print("D3: TRANSFORM SWEEP")
     print("=" * 60)
     
@@ -151,8 +147,7 @@ def direction_3(runner):
 
 def direction_4(runner):
     """D4: Stationarity (Local Entropy Variance)"""
-    print("
-" + "=" * 60)
+    print("\n" + "=" * 60)
     print("D4: STATIONARITY")
     print("=" * 60)
     
@@ -176,8 +171,7 @@ def direction_4(runner):
 
 def direction_5(runner):
     """D5: Algebraic Sensors (GCD)"""
-    print("
-" + "=" * 60)
+    print("\n" + "=" * 60)
     print("D5: ALGEBRAIC SENSOR (GCD)")
     print("=" * 60)
     
