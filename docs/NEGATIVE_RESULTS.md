@@ -1,6 +1,6 @@
 # Negative Results
 
-What the framework cannot detect, and why. These results are as important as the positive findings — they define the boundaries of geometric analysis and prevent misapplication.
+What the framework cannot detect, and why. These results are as important as the positive findings --- they define the boundaries of geometric analysis and prevent misapplication.
 
 ## The Fundamental Limit: Random vs AES-CTR
 
@@ -30,12 +30,12 @@ A systematic study of 10 generators (`rng.py`) confirms that modern PRNGs are ge
 | **SFC64** | GOOD | Small Fast Chaotic; 0 sig |
 | **SHA-256 CTR** | CRYPTO | Hash-based; cryptographically indistinguishable by design |
 
-**Borderline (1 sig — essentially passes):**
+**Borderline (1 sig --- essentially passes):**
 
 | PRNG | Category | Detection |
 |------|----------|-----------|
 | **MT19937** | GOOD | 1 metric (S² × ℝ sphere_concentration, d=-1.27). Not reproducible at other sequence lengths |
-| **MINSTD** | WEAK | 1 geometric metric; standard chi2 and entropy catch 2/11 — distributional bias is the weakness |
+| **MINSTD** | WEAK | 1 geometric metric; standard chi2 and entropy catch 2/11 --- distributional bias is the weakness |
 
 **Undetected raw but revealed by delay embedding:**
 
@@ -49,7 +49,7 @@ Note: The earlier `prng.py` tested XorShift32 (which passes); `rng.py` tests the
 
 | Map | Why It Passes |
 |-----|--------------|
-| **Standard map** | Uniformly mixing on the torus — ergodic measure equals Lebesgue measure |
+| **Standard map** | Uniformly mixing on the torus --- ergodic measure equals Lebesgue measure |
 | **Arnold cat map** | Same: uniformly mixing, Anosov diffeomorphism |
 
 These maps are genuinely chaotic but produce uniform distributions in their phase space. Their Lyapunov exponents are positive (they ARE chaotic), but their invariant measure is uniform, so byte-level statistics see them as random. This is mathematically correct.
@@ -73,7 +73,7 @@ Six embedding techniques tested across two carriers (`stego_deep.py`):
 | **GBM** (Geometric Brownian Motion) | d = 0 | GBM returns ARE IID normal by construction |
 | **Ornstein-Uhlenbeck** | d = 0 | Mean-reversion is too subtle after byte quantization |
 
-Other financial models (GARCH, regime-switching, jump-diffusion) ARE detectable, but all are geometrically closer to random than to chaos. Markets are not chaotic systems — they're noisy with occasional structure.
+Other financial models (GARCH, regime-switching, jump-diffusion) ARE detectable, but all are geometrically closer to random than to chaos. Markets are not chaotic systems --- they're noisy with occasional structure.
 
 ## Near-Identical Rules
 
@@ -105,13 +105,35 @@ Key methodological improvement: **phase-rotation permutation null**. The raw enr
 | **D6: Per-subject** | +0.305 excess, t=13.89, p<0.0001, 101/109 positive | Real signal, but not φ-specific |
 | **D8: Surrogate** | p=0.127, enrichment survives IAAFT | Spectral property, not nonlinear |
 
-**What IS real:** EEG spectral peaks show reproducible geometric lattice alignment across subjects — the per-subject test is overwhelming (t=13.89). There IS non-trivial spectral organization in resting-state EEG.
+**What IS real:** EEG spectral peaks show reproducible geometric lattice alignment across subjects --- the per-subject test is overwhelming (t=13.89). There IS non-trivial spectral organization in resting-state EEG.
 
 **What ISN'T supported:** The specific claim that this organization follows a golden ratio lattice anchored at 7.5 Hz with zero free parameters. The same data is equally or better described by ratios 2, e, π, or 5/3, and the optimal anchor frequency is not 7.5 Hz. The 2D heatmap shows the claimed (f₀, r) pair sitting in a mediocre region of the parameter landscape.
 
-**Why the original result may have appeared stronger:** The original analysis tests enrichment/depletion at φⁿ positions without comparing against alternative ratios or using a phase-rotation null. Without these controls, the alpha peak's proximity to a φ attractor (9.6 Hz) produces apparent enrichment. The "< 2% error" claim reflects the goodness-of-fit of a geometric sequence to broadly-spaced peaks — any ratio in [1.5, 1.7] achieves comparable fit with appropriately chosen f₀.
+**Why the original result may have appeared stronger:** The original analysis tests enrichment/depletion at φⁿ positions without comparing against alternative ratios or using a phase-rotation null. Without these controls, the alpha peak's proximity to a φ attractor (9.6 Hz) produces apparent enrichment. The "< 2% error" claim reflects the goodness-of-fit of a geometric sequence to broadly-spaced peaks --- any ratio in [1.5, 1.7] achieves comparable fit with appropriately chosen f₀.
 
 ![EEG Golden Ratio Analysis](figures/eeg_phi.png)
+
+### D9 Response: Noble-Position Enrichment (u=1/φ)
+
+A critique argued that the phi-lattice theory predicts enrichment at u=1/φ=0.618 (the "maximally irrational" noble position in the Stern-Brocot tree), not at u=0.5 (band centers). The argument: in nonlinear oscillator mode-locking, Arnold tongues are widest at rational frequency ratios, so oscillators accumulate at the most irrational position within each lattice cell --- u=1/φ rather than u=0.5. This is theoretically motivated (not post-hoc), so we tested it directly.
+
+| Test | Result | Implication |
+|------|--------|-------------|
+| **u=0.618, w=0.05** (their exact claim) | obs=+0.277, null=0.000±0.171, **p=0.060** | Marginal; does not reach p<0.05 |
+| **u=0.618, w=0.15** (their position, our width) | obs=+0.199, null=+0.003±0.135, **p=0.075** | Also non-significant |
+| **Phase target sweep** | Best target: u=0.575 (neither 0.5 nor 0.618) | Actual peak between both predictions |
+| **Width sensitivity** | p ranges 0.063--0.152 across w=0.02--0.20 | No width reaches significance |
+| **Kuiper's V omnibus** | V=0.094, p(asymptotic)≈0, **p(phase-rotation)=0.614** | Phase IS non-uniform, but NOT f₀-specific |
+| **D2 re-ranking** | φ rank improves from #5 → **#1** of 12 ratios | But still p=0.071 --- trend, not evidence |
+| **D4 rescan** | Global optimum: (4.33, 4.00), far from (7.5, φ) | New metric doesn't rescue the claimed parameters |
+
+**What the critique gets right:** u=0.618 is a better test position than u=0.5, and φ does rank #1/12 under this metric (up from #5/12). The noble-number framework is more favorable to the golden ratio hypothesis than the band-center framework.
+
+**What the critique gets wrong:** The effect is marginal (p=0.06), not significant. The Kuiper omnibus test is decisive: the phase distribution is non-uniform (p≈0 asymptotically), but this non-uniformity is entirely explained by the shape of the peak frequency distribution --- alpha dominance, not f₀-specific lattice alignment. The phase-rotation null produces equally non-uniform distributions (p=0.614). The (f₀, r) parameter space still does not favor the claimed values under either metric.
+
+**On the claim of p<0.05 in 4/6 datasets:** Likely due to different peak extraction methods (FOOOF, GED spatial coherence vs our median-filter 1/f subtraction) and possibly no phase-rotation null control. A genuine geometric law should not depend on the peak extraction algorithm.
+
+![D9 Noble-Position Response](figures/eeg_phi_d9.png)
 
 → `investigations/1d/eeg_phi.py`
 
@@ -135,7 +157,7 @@ Several geometry metrics produce misleading results on low-cardinality or degene
 |---------|---------|------------|-----|
 | Binary-valued data breaks quasicrystal binarization | `(data > median)` produces all-ones when majority value = max | Median threshold is degenerate for ≤4 unique values | Use midpoint of unique values for low-cardinality data |
 | Quasicrystal tests passed for wrong reasons | Octonacci/Dodecagonal tests passed with perfect scores | Degenerate binarization gave CV=0, mapped to score 1.0 | Fixed binarization; tests now pass via spectral metrics |
-| Subword complexity indistinguishable for small n | p(n) for n=3–11 cannot separate long-period periodic from quasicrystalline | Window too short relative to period; both saturate complexity bound | Rely on spectral metrics (ratio_symmetry, acf_self_similarity) for QC specificity |
+| Subword complexity indistinguishable for small n | p(n) for n=3--11 cannot separate long-period periodic from quasicrystalline | Window too short relative to period; both saturate complexity bound | Rely on spectral metrics (ratio_symmetry, acf_self_similarity) for QC specificity |
 | PersistentHomology duplicates from uint8 delay embedding | TDA algorithms choke on massive point duplicates (256 possible values → repeated coordinates) | Discrete data creates degenerate point clouds | Deduplicate points before computing persistent homology |
 | Multifractal negative-q moments unreliable | Structure function moments diverge or become numerically unstable for q < 0 | Negative moments amplify small values; uint8 data has exact zeros | Use positive-q moments only for uint8 data |
 | NVG equal-height ambiguity | Natural Visibility Graph gives inconsistent results on plateaus | Original definition ambiguous on whether equal-height intermediaries block visibility | Strict definition: equal-height intermediaries BLOCK visibility |

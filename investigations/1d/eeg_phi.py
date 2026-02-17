@@ -172,6 +172,39 @@ def phase_rotation_null(u_values, n_perm=N_PERM, rng=None):
     return null
 
 
+def enrichment_at(u_values, target, width):
+    """Density enrichment at a specific phase position.
+    Returns (observed - expected) / expected. Zero = uniform."""
+    n = len(u_values)
+    if n < 10:
+        return 0.0
+    # Circular distance on [0, 1)
+    d = np.abs(u_values - target)
+    d = np.minimum(d, 1.0 - d)
+    near = np.sum(d < width)
+    expected = n * 2 * width
+    return (near - expected) / expected if expected > 0 else 0.0
+
+
+def kuiper_v(u_values):
+    """Kuiper's V test for circular non-uniformity.
+    Returns (V, p_value) using asymptotic approximation."""
+    n = len(u_values)
+    u_sorted = np.sort(u_values)
+    i = np.arange(1, n + 1)
+    D_plus = np.max(i / n - u_sorted)
+    D_minus = np.max(u_sorted - (i - 1) / n)
+    V = D_plus + D_minus
+    # Stephens (1970) finite-sample correction
+    Vstar = V * (np.sqrt(n) + 0.155 + 0.24 / np.sqrt(n))
+    # Asymptotic survival function
+    p = 0.0
+    for j in range(1, 100):
+        p += (4 * j**2 * Vstar**2 - 1) * np.exp(-2 * j**2 * Vstar**2)
+    p = 2.0 * p
+    return V, min(max(p, 0.0), 1.0)
+
+
 # =========================================================================
 # CONTROLS
 # =========================================================================
@@ -481,6 +514,158 @@ def direction_8(eeg_signals):
 
 
 # =========================================================================
+# D9: NOBLE-POSITION ENRICHMENT (response to u=1/φ critique)
+# =========================================================================
+def direction_9(all_peaks):
+    """D9: Test enrichment at u=1/φ=0.618 vs u=0.5.
+    Addresses critique that phi-lattice theory predicts noble-position
+    enrichment at u=1/φ, not band-center enrichment at u=0.5."""
+    print("\n" + "=" * 78)
+    print("D9: NOBLE-POSITION ENRICHMENT (u=1/φ vs u=0.5)")
+    print("=" * 78)
+
+    u = lattice_phase(all_peaks, F0_CLAIMED, PHI)
+    rng = np.random.default_rng(900)
+    inv_phi = 1.0 / PHI  # 0.6180339...
+
+    # ── Part A: Targeted tests ──────────────────────────────────────────
+    print(f"\n  Peaks: {len(u)}")
+    print(f"  1/φ = {inv_phi:.6f}")
+    tests = [
+        ('u=0.500 w=0.15', 0.500, 0.15),   # our original
+        ('u=0.618 w=0.15', inv_phi, 0.15),  # their position, our width
+        ('u=0.618 w=0.05', inv_phi, 0.05),  # their exact claim
+        ('u=0.500 w=0.05', 0.500, 0.05),    # our position, their width
+    ]
+
+    targeted = {}
+    for label, target, width in tests:
+        obs = enrichment_at(u, target, width)
+        null = np.empty(N_PERM)
+        for i in range(N_PERM):
+            delta = rng.uniform()
+            u_shifted = (u + delta) % 1.0
+            null[i] = enrichment_at(u_shifted, target, width)
+        p = np.mean(null >= obs)
+        targeted[label] = (target, width, obs, null.mean(), null.std(), p)
+        sig = " ***" if p < 0.01 else " *" if p < 0.05 else ""
+        print(f"  {label}:  obs={obs:+.4f}  null={null.mean():+.4f}±{null.std():.4f}  p={p:.4f}{sig}")
+
+    # ── Part B: Phase target sweep ──────────────────────────────────────
+    # Where does enrichment actually peak? Agnostic to theory.
+    print("\n  Phase target sweep (width=0.05):")
+    targets = np.linspace(0, 1, 200, endpoint=False)
+    sweep_obs = np.array([enrichment_at(u, t, 0.05) for t in targets])
+
+    # Null envelope at subset of targets
+    null_idx = np.linspace(0, len(targets) - 1, 40, dtype=int)
+    sweep_null_mean = np.full(len(targets), np.nan)
+    sweep_null_95 = np.full(len(targets), np.nan)
+    for idx in null_idx:
+        t = targets[idx]
+        nl = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            delta = rng.uniform()
+            u_shifted = (u + delta) % 1.0
+            nl[i] = enrichment_at(u_shifted, t, 0.05)
+        sweep_null_mean[idx] = nl.mean()
+        sweep_null_95[idx] = np.percentile(nl, 95)
+    valid = ~np.isnan(sweep_null_mean)
+    sweep_null_mean = np.interp(np.arange(len(targets)),
+                                np.where(valid)[0], sweep_null_mean[valid])
+    sweep_null_95 = np.interp(np.arange(len(targets)),
+                              np.where(valid)[0], sweep_null_95[valid])
+
+    sweep_excess = sweep_obs - sweep_null_mean
+    best_target = targets[np.argmax(sweep_excess)]
+    idx_05 = np.argmin(np.abs(targets - 0.5))
+    idx_618 = np.argmin(np.abs(targets - inv_phi))
+    print(f"    Best target: u={best_target:.3f} (excess={sweep_excess.max():+.4f})")
+    print(f"    At u=0.500:  excess={sweep_excess[idx_05]:+.4f}")
+    print(f"    At u=0.618:  excess={sweep_excess[idx_618]:+.4f}")
+
+    # ── Part C: Width sensitivity at u=0.618 ────────────────────────────
+    print("\n  Width sensitivity at u=0.618:")
+    widths = np.array([0.02, 0.03, 0.05, 0.07, 0.10, 0.15, 0.20])
+    width_results = []
+    for w in widths:
+        obs_w = enrichment_at(u, inv_phi, w)
+        nl = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            delta = rng.uniform()
+            u_shifted = (u + delta) % 1.0
+            nl[i] = enrichment_at(u_shifted, inv_phi, w)
+        p_w = np.mean(nl >= obs_w)
+        width_results.append((w, obs_w, nl.mean(), p_w))
+        sig = " ***" if p_w < 0.01 else " *" if p_w < 0.05 else ""
+        print(f"    w={w:.2f}: obs={obs_w:+.4f}  null={nl.mean():+.4f}  p={p_w:.4f}{sig}")
+
+    # ── Part D: Kuiper's V omnibus ──────────────────────────────────────
+    # Raw Kuiper (vs uniform)
+    V_raw, p_raw = kuiper_v(u)
+    # Phase-rotation Kuiper (controls for peak frequency distribution)
+    V_null = np.empty(N_PERM_SWEEP)
+    for i in range(N_PERM_SWEEP):
+        delta = rng.uniform()
+        u_shifted = (u + delta) % 1.0
+        V_null[i] = kuiper_v(u_shifted)[0]
+    p_rot = np.mean(V_null >= V_raw)
+    print(f"\n  Kuiper's V omnibus:")
+    print(f"    V={V_raw:.4f}, p(asymptotic)={p_raw:.6f}")
+    print(f"    p(phase-rotation null)={p_rot:.4f}")
+    if p_raw < 0.01:
+        print(f"    Phase distribution IS non-uniform (p={p_raw:.2e})")
+        if p_rot > 0.05:
+            print(f"    But non-uniformity is NOT f₀-specific (phase-rot p={p_rot:.4f})")
+        else:
+            print(f"    And non-uniformity IS f₀-specific (phase-rot p={p_rot:.4f})")
+
+    # ── Part E: D2 re-ranking with u=0.618 metric ──────────────────────
+    print(f"\n  D2 re-ranking (u=0.618, w=0.05):")
+    ratio_618 = {}
+    for name, r in NAMED_RATIOS.items():
+        u_r = lattice_phase(all_peaks, F0_CLAIMED, r)
+        obs_r = enrichment_at(u_r, inv_phi, 0.05)
+        nl = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            delta = rng.uniform()
+            u_shifted = (u_r + delta) % 1.0
+            nl[i] = enrichment_at(u_shifted, inv_phi, 0.05)
+        p_r = np.mean(nl >= obs_r)
+        excess_r = obs_r - nl.mean()
+        ratio_618[name] = (r, obs_r, nl.mean(), excess_r, p_r)
+
+    phi_excess = ratio_618['φ'][3]
+    n_better = sum(1 for v in ratio_618.values() if v[3] > phi_excess)
+    print(f"    φ excess: {phi_excess:+.4f}, rank: #{n_better + 1}/{len(ratio_618)}")
+    for name in sorted(ratio_618, key=lambda n: -ratio_618[n][3]):
+        v = ratio_618[name]
+        sig = " ***" if v[4] < 0.01 else " *" if v[4] < 0.05 else ""
+        print(f"    {name:8s}: excess={v[3]:+.4f}  p={v[4]:.4f}{sig}")
+
+    # ── Part F: D4 heatmap with u=0.618 metric ─────────────────────────
+    print(f"\n  D4 re-scan (u=0.618, w=0.05):")
+    f0_g = np.linspace(3.0, 15.0, 100)
+    r_g = np.linspace(1.2, 4.0, 100)
+    heatmap_618 = np.zeros((len(r_g), len(f0_g)))
+    for i, r in enumerate(r_g):
+        for j, f0 in enumerate(f0_g):
+            u_tmp = lattice_phase(all_peaks, f0, r)
+            heatmap_618[i, j] = enrichment_at(u_tmp, inv_phi, 0.05)
+    best_ij = np.unravel_index(np.argmax(heatmap_618), heatmap_618.shape)
+    best_r_618 = r_g[best_ij[0]]
+    best_f0_618 = f0_g[best_ij[1]]
+    claimed_ij = (np.argmin(np.abs(r_g - PHI)), np.argmin(np.abs(f0_g - 7.5)))
+    print(f"    Global optimum: f₀={best_f0_618:.2f}, r={best_r_618:.3f} "
+          f"(score={heatmap_618[best_ij]:+.4f})")
+    print(f"    At claimed (7.5, φ): score={heatmap_618[claimed_ij]:+.4f}")
+
+    return (targeted, targets, sweep_obs, sweep_null_mean, sweep_null_95,
+            width_results, V_raw, p_raw, p_rot, ratio_618,
+            f0_g, r_g, heatmap_618, best_f0_618, best_r_618)
+
+
+# =========================================================================
 # FIGURE
 # =========================================================================
 def make_figure(all_peaks, u_d1, obs_d1, null_d1,
@@ -672,6 +857,158 @@ def make_figure(all_peaks, u_d1, obs_d1, null_d1,
     print(f"\nFigure saved: {out}")
 
 
+def make_figure_d9(u_d1, targeted, targets, sweep_obs, sweep_null_mean,
+                   sweep_null_95, width_results, V_raw, p_raw, p_rot,
+                   ratio_618, f0_g, r_g, heatmap_618, best_f0_618,
+                   best_r_618):
+    """D9 response figure: noble-position enrichment tests."""
+    inv_phi = 1.0 / PHI
+    fig = plt.figure(figsize=(20, 10), facecolor='#111111')
+    gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.35, wspace=0.35,
+                           left=0.05, right=0.96, top=0.91, bottom=0.08)
+    fig.suptitle("D9: Noble-Position Enrichment — u=1/φ vs u=0.5",
+                 color='white', fontsize=14, fontweight='bold')
+
+    def dax(pos):
+        ax = fig.add_subplot(pos)
+        ax.set_facecolor('#181818')
+        for s in ax.spines.values():
+            s.set_color('#444444')
+        ax.tick_params(colors='#cccccc', labelsize=7)
+        return ax
+
+    # ── P1: Phase histogram with both targets marked ────────────────────
+    ax1 = dax(gs[0, 0])
+    bins = np.linspace(0, 1, 51)
+    ax1.hist(u_d1, bins=bins, color='#44aaff', alpha=0.7, density=True,
+             edgecolor='#333', lw=0.4)
+    ax1.axhline(1.0, color='#666', lw=1, ls=':', label='Uniform')
+    ax1.axvline(0.5, color='#ff6666', lw=2, ls='--', label='u=0.5 (PKL)')
+    ax1.axvline(inv_phi, color='#44ff44', lw=2, ls='--', label=f'u=1/φ={inv_phi:.3f}')
+    # Shade both windows (width=0.05)
+    ax1.axvspan(0.5 - 0.05, 0.5 + 0.05, alpha=0.10, color='red')
+    ax1.axvspan(inv_phi - 0.05, inv_phi + 0.05, alpha=0.10, color='green')
+    # Annotate targeted test results
+    for label, (tgt, w, obs, nm, ns, p) in targeted.items():
+        if 'w=0.05' in label:
+            x = tgt
+            y_off = 1.15 if tgt > 0.55 else 1.25
+            ax1.annotate(f'p={p:.4f}', xy=(x, y_off), fontsize=7,
+                         color='#44ff44' if tgt > 0.55 else '#ff6666',
+                         ha='center', va='bottom')
+    ax1.set_xlabel('u = log_φ(f/f₀) mod 1', color='#ccc', fontsize=8)
+    ax1.set_ylabel('Density', color='#ccc', fontsize=8)
+
+    V_str = f'Kuiper V={V_raw:.3f}'
+    k_color = '#44ff44' if p_rot < 0.05 else '#ff6666'
+    ax1.set_title(f'Phase distribution  ({V_str}, p_rot={p_rot:.4f})',
+                  color='white', fontsize=9)
+    ax1.legend(fontsize=6, facecolor='#222', edgecolor='#444', labelcolor='#ccc',
+               loc='upper left')
+
+    # ── P2: Phase target sweep ──────────────────────────────────────────
+    ax2 = dax(gs[0, 1])
+    ax2.fill_between(targets, sweep_null_mean, sweep_null_95,
+                     color='#ff6666', alpha=0.15, label='Null 95% CI')
+    ax2.plot(targets, sweep_null_mean, color='#ff6666', lw=0.5, alpha=0.5)
+    ax2.plot(targets, sweep_obs, color='#44aaff', lw=1, label='Observed')
+    ax2.axvline(0.5, color='#ff6666', lw=1.5, ls='--', alpha=0.7, label='u=0.5')
+    ax2.axvline(inv_phi, color='#44ff44', lw=1.5, ls='--', alpha=0.7,
+                label=f'u=1/φ')
+    best_t = targets[np.argmax(sweep_obs - sweep_null_mean)]
+    ax2.axvline(best_t, color='#ffaa00', lw=1.5, ls=':', alpha=0.7,
+                label=f'Best u={best_t:.3f}')
+    ax2.set_xlabel('Target phase position u', color='#ccc', fontsize=8)
+    ax2.set_ylabel('Enrichment (w=0.05)', color='#ccc', fontsize=8)
+    ax2.set_title('Phase target sweep', color='white', fontsize=9)
+    ax2.legend(fontsize=5.5, facecolor='#222', edgecolor='#444', labelcolor='#ccc')
+
+    # ── P3: D4 heatmap with u=0.618 metric ─────────────────────────────
+    ax3 = dax(gs[0, 2])
+    extent = [f0_g[0], f0_g[-1], r_g[0], r_g[-1]]
+    vmax = max(abs(heatmap_618.min()), abs(heatmap_618.max()))
+    im = ax3.imshow(heatmap_618, aspect='auto', origin='lower', extent=extent,
+                    cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    ax3.plot(F0_CLAIMED, PHI, 'w*', markersize=12,
+             label=f'Claimed ({F0_CLAIMED}, φ)')
+    ax3.plot(best_f0_618, best_r_618, 'g+', markersize=10, mew=2,
+             label=f'Best ({best_f0_618:.1f}, {best_r_618:.2f})')
+    ax3.set_xlabel('f₀ (Hz)', color='#ccc', fontsize=8)
+    ax3.set_ylabel('Ratio r', color='#ccc', fontsize=8)
+    ax3.set_title('D4 rescan (u=0.618, w=0.05)', color='white', fontsize=9)
+    ax3.legend(fontsize=6, facecolor='#222', edgecolor='#444', labelcolor='#ccc',
+               loc='upper right')
+    cb = fig.colorbar(im, ax=ax3, fraction=0.046, pad=0.04)
+    cb.ax.tick_params(labelsize=6, colors='#ccc')
+
+    # ── P4: Width sensitivity ───────────────────────────────────────────
+    ax4 = dax(gs[1, 0])
+    ws = [wr[0] for wr in width_results]
+    ps = [wr[3] for wr in width_results]
+    obs_vals = [wr[1] for wr in width_results]
+    null_vals = [wr[2] for wr in width_results]
+    ax4.semilogy(ws, ps, 'o-', color='#44aaff', lw=1.5, ms=5, label='p-value')
+    ax4.axhline(0.05, color='#ff6666', lw=1, ls='--', label='p=0.05')
+    ax4.axhline(0.01, color='#ff4444', lw=1, ls=':', alpha=0.5, label='p=0.01')
+    ax4.set_xlabel('Window half-width', color='#ccc', fontsize=8)
+    ax4.set_ylabel('p-value (log scale)', color='#ccc', fontsize=8)
+    ax4.set_title('Width sensitivity at u=0.618', color='white', fontsize=9)
+    ax4.legend(fontsize=6, facecolor='#222', edgecolor='#444', labelcolor='#ccc')
+    ax4.set_ylim(bottom=1e-4, top=1.1)
+
+    # ── P5: D2 re-ranking comparison ────────────────────────────────────
+    ax5 = dax(gs[1, 1])
+    sorted_names = sorted(ratio_618, key=lambda n: -ratio_618[n][3])
+    excesses = [ratio_618[n][3] for n in sorted_names]
+    p_vals = [ratio_618[n][4] for n in sorted_names]
+    colors5 = ['#ff4444' if n == 'φ' else '#44ff44' if p < 0.05
+                else '#888888' for n, p in zip(sorted_names, p_vals)]
+    y_pos = range(len(sorted_names))
+    ax5.barh(y_pos, excesses, color=colors5, alpha=0.7, edgecolor='#333', lw=0.4)
+    ax5.set_yticks(y_pos)
+    ax5.set_yticklabels(sorted_names, fontsize=7, color='#ccc')
+    ax5.axvline(0, color='#444', lw=0.5)
+    ax5.set_xlabel('Excess enrichment over null', color='#ccc', fontsize=8)
+    ax5.set_title('D2 re-ranking (u=0.618, w=0.05)', color='white', fontsize=9)
+    # Annotate p-values
+    for i, (name, ex, p) in enumerate(zip(sorted_names, excesses, p_vals)):
+        ax5.text(max(ex, 0) + 0.001, i, f'p={p:.3f}', va='center',
+                 fontsize=6, color='#ccc')
+
+    # ── P6: Summary ────────────────────────────────────────────────────
+    ax6 = dax(gs[1, 2])
+    ax6.axis('off')
+    lines = [
+        "SUMMARY — D9: Noble-Position Test",
+        "",
+        "Critique: enrichment should be tested",
+        f"at u=1/φ={inv_phi:.4f}, not u=0.5",
+        "",
+    ]
+    for label, (tgt, w, obs, nm, ns, p) in targeted.items():
+        status = "SIG" if p < 0.05 else "n.s."
+        lines.append(f"{label}: p={p:.4f} [{status}]")
+    lines.append("")
+
+    phi_rank = sum(1 for v in ratio_618.values() if v[3] > ratio_618['φ'][3]) + 1
+    lines.append(f"φ rank (u=0.618 metric): #{phi_rank}/{len(ratio_618)}")
+    lines.append(f"D4 optimum: f₀={best_f0_618:.1f}, r={best_r_618:.2f}")
+    lines.append(f"  vs claimed: f₀=7.5, r=φ={PHI:.3f}")
+    lines.append("")
+    lines.append(f"Kuiper V={V_raw:.4f}")
+    lines.append(f"  p(asymptotic)={p_raw:.2e}")
+    lines.append(f"  p(phase-rot)={p_rot:.4f}")
+
+    text = '\n'.join(lines)
+    ax6.text(0.05, 0.95, text, transform=ax6.transAxes, fontsize=8,
+             color='#cccccc', fontfamily='monospace', verticalalignment='top')
+
+    out = os.path.join(FIG_DIR, 'eeg_phi_d9.png')
+    fig.savefig(out, dpi=180)
+    plt.close(fig)
+    print(f"\nD9 figure saved: {out}")
+
+
 # =========================================================================
 # MAIN
 # =========================================================================
@@ -736,6 +1073,13 @@ def main():
     # ── D8 ──
     d8_orig, d8_surr = direction_8(eeg_signals)
 
+    # ── D9 ──
+    d9 = direction_9(all_peaks)
+    (d9_targeted, d9_targets, d9_sweep_obs, d9_sweep_null_mean,
+     d9_sweep_null_95, d9_width_results, d9_V, d9_p_raw, d9_p_rot,
+     d9_ratio_618, d9_f0_g, d9_r_g, d9_heatmap, d9_best_f0,
+     d9_best_r) = d9
+
     # ── Figure ──
     make_figure(all_peaks, u_d1, obs_d1, null_d1,
                 named_d2, sweep_r, sweep_obs, null_95_d2, null_mean_d2,
@@ -771,6 +1115,24 @@ def main():
     if len(d8_orig) >= 3 and len(d8_surr) >= 3:
         _, p = stats.ttest_ind(d8_orig, d8_surr)
         print(f"  D8 surrogate: p={p:.4f}")
+
+    # D9 summary
+    inv_phi = 1.0 / PHI
+    print(f"\n  D9 noble-position (u=1/φ={inv_phi:.4f}):")
+    for label, (tgt, w, obs, nm, ns, p) in d9_targeted.items():
+        status = "SIG" if p < 0.05 else "n.s."
+        print(f"    {label}: p={p:.4f} [{status}]")
+    phi_rank = sum(1 for v in d9_ratio_618.values()
+                   if v[3] > d9_ratio_618['φ'][3]) + 1
+    print(f"    φ rank (u=0.618 metric): #{phi_rank}/{len(d9_ratio_618)}")
+    print(f"    D4 optimum: f₀={d9_best_f0:.1f}, r={d9_best_r:.2f}")
+    print(f"    Kuiper V={d9_V:.4f}, p(phase-rot)={d9_p_rot:.4f}")
+
+    # ── D9 Figure ──
+    make_figure_d9(u_d1, d9_targeted, d9_targets, d9_sweep_obs,
+                   d9_sweep_null_mean, d9_sweep_null_95, d9_width_results,
+                   d9_V, d9_p_raw, d9_p_rot, d9_ratio_618,
+                   d9_f0_g, d9_r_g, d9_heatmap, d9_best_f0, d9_best_r)
 
 
 if __name__ == '__main__':

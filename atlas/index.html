@@ -12,9 +12,18 @@
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://nullphase.net/sa/" />
-    <meta property="og:title" content="Structure Atlas | 3D Data Visualization | nullphase" />
-    <meta property="og:description" content="3D projection of data structural fingerprints. Discover hidden relationships in complex data across domains." />
-    <meta property="og:image" content="https://nullphase.net/apple-touch-icon.png" />
+    <meta property="og:title" content="Structure Atlas" />
+    <meta property="og:description" content="179 data sources from 16 domains, projected through 233 exotic geometry metrics into a 3D phase space. Interactive." />
+    <meta property="og:image" content="https://nullphase.net/sa/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Structure Atlas" />
+    <meta name="twitter:description" content="179 data sources from 16 domains, projected through 233 exotic geometry metrics into a 3D phase space. Interactive." />
+    <meta name="twitter:image" content="https://nullphase.net/sa/og-image.png" />
+    <script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>
 
     <script async src="https://unpkg.com/es-module-shims@1.10.1/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -219,7 +228,7 @@
     <div id="ui">
         <div class="glass-card">
             <h1>Structure Atlas</h1>
-            <p id="atlas-subtitle">3D phase space projection</p>
+            <p id="atlas-subtitle">3D phase space projection - PCA</p>
             <p style="font-size: 0.75rem; color: #666; line-height: 1.5; margin-top: 8px;">
                 <span id="sourceCount" style="color: #ddd;">...</span> data sources from <span id="domainCount" style="color: #ddd;">...</span> <span title="Categories of data origin: chaos, noise, medical, financial, etc." style="border-bottom: 1px dotted #666; cursor: help;">domains</span>.
                 Projected from <span id="metricCount" style="color: #ddd;">...</span> <span title="Numerical measurements extracted by each geometry. Each geometry produces multiple metrics that capture different structural properties of the data." style="border-bottom: 1px dotted #666; cursor: help;">metrics</span> across <span id="geomCount" style="color: #ddd;">33</span> <a href="https://github.com/phreakocious/exotic-geometry-framework" target="_blank" title="Mathematical spaces (hyperbolic, symplectic, projective, etc.) used as lenses to reveal hidden structure in byte sequences.">exotic geometries</a> from <span id="sampleSize" style="color: #ddd;">16384</span> uint8 samples.
@@ -992,9 +1001,21 @@
                 const view = data.views[viewName];
                 rawPCs = view.pc.map(p => p.slice(0, 3));
                 targetClusters = view.labels;
-                targetAllClusters = [...new Set(view.labels)].sort((a, b) => a - b);
+                targetAllClusters = [...new Set(view.labels)].sort((a, b) => a - b)
+                    .filter(cId => !view.clusters || view.clusters[String(cId)]);
             }
-            const viewSpread = meanStd(rawPCs);
+            // For subset views (Empirical, Chaotic, etc.), measure spread
+            // only from sources that belong to a defined cluster --- excluded
+            // sources sit at the origin and would deflate the spread.
+            let spreadPCs = rawPCs;
+            if (viewName !== null) {
+                const vc = data.views[viewName].clusters;
+                if (vc) {
+                    const labels = data.views[viewName].labels;
+                    spreadPCs = rawPCs.filter((_, i) => vc[String(labels[i])]);
+                }
+            }
+            const viewSpread = meanStd(spreadPCs);
             if (baseSpread && viewSpread > 1e-6) {
                 atlasScale = TARGET_VISUAL_SPREAD / viewSpread;
                 scaleSlider.value = Math.round(atlasScale * 100);
@@ -1208,7 +1229,9 @@
             const subtitle = document.getElementById('atlas-subtitle');
 
             if (viewName === null) {
-                subtitle.textContent = '3D phase space projection';
+                subtitle.textContent = '3D phase space projection - PCA';
+                document.getElementById('sourceCount').textContent = data.sources.length;
+                document.getElementById('domainCount').textContent = new Set(data.sources.map(s => s.domain)).size;
                 document.getElementById('metricCount').textContent = data.n_metrics || '...';
                 document.getElementById('geomCount').textContent = geometries ? geometries.length : (data.n_geometries || 33);
 
@@ -1231,6 +1254,13 @@
             } else {
                 const view = data.views[viewName];
                 subtitle.innerHTML = `<span style="color:#ddd">${viewName}</span> lens: ${view.question}`;
+                // Count visible sources (those with a cluster entry in this view)
+                const viewClusterIds = view.clusters ? new Set(Object.keys(view.clusters)) : null;
+                const visibleSources = viewClusterIds
+                    ? data.sources.filter((s, i) => viewClusterIds.has(String(view.labels[i])))
+                    : data.sources;
+                document.getElementById('sourceCount').textContent = visibleSources.length;
+                document.getElementById('domainCount').textContent = new Set(visibleSources.map(s => s.domain)).size;
                 document.getElementById('metricCount').textContent = view.n_metrics;
                 document.getElementById('geomCount').textContent = view.geometries.length;
 
@@ -2455,8 +2485,10 @@
             container.appendChild(clSection);
 
             const clusterPalette = ['#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c', '#e74c3c', '#fd79a8'];
-            const allClusters = [...new Set(data.sources.map(s => s.cluster))].sort((a,b)=>a-b);
-            
+            const viewClustersMap = currentView && data.views[currentView] && data.views[currentView].clusters;
+            const allClusters = [...new Set(data.sources.map(s => s.cluster))].sort((a,b)=>a-b)
+                .filter(cId => !viewClustersMap || viewClustersMap[String(cId)]);
+
             allClusters.forEach((cId, idx) => {
                 const item = document.createElement('div');
                 item.className = 'legend-item';
@@ -2588,6 +2620,8 @@
 
                     // In explorer mode, show z-score values; in PCA mode, show raw PC coords
                     let coordHtml;
+                    const coordRow = (label, val) =>
+                        `<tr><td style="color:#666; padding-right:8px; white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis;">${label}</td><td style="color:#ddd; text-align:right; font-variant-numeric:tabular-nums;">${val}</td></tr>`;
                     if (explorerActive && explorerZScores) {
                         const si = points.findIndex(p => p.userData === s);
                         const nMet = data.metric_names.length;
@@ -2597,9 +2631,9 @@
                         const zx = si >= 0 ? explorerZScores[si * nMet + xi].toFixed(2) : '?';
                         const zy = si >= 0 ? explorerZScores[si * nMet + yi].toFixed(2) : '?';
                         const zz = si >= 0 ? explorerZScores[si * nMet + zi].toFixed(2) : '?';
-                        coordHtml = `<div style="font-size:10px; color:#aaa;">${axLabel('pc1',0)}: ${zx}σ &nbsp; ${axLabel('pc2',1)}: ${zy}σ &nbsp; ${axLabel('pc3',2)}: ${zz}σ</div>`;
+                        coordHtml = `<table style="font-size:10px; border-collapse:collapse; margin-top:4px;">${coordRow(axLabel('pc1',0), zx+'σ')}${coordRow(axLabel('pc2',1), zy+'σ')}${coordRow(axLabel('pc3',2), zz+'σ')}</table>`;
                     } else {
-                        coordHtml = `<div style="font-size:10px; color:#aaa;">${axLabel('pc1',0)}: ${s.pc[0].toFixed(1)} &nbsp; ${axLabel('pc2',1)}: ${s.pc[1].toFixed(1)} &nbsp; ${axLabel('pc3',2)}: ${s.pc[2].toFixed(1)}</div>`;
+                        coordHtml = `<table style="font-size:10px; border-collapse:collapse; margin-top:4px;">${coordRow(axLabel('pc1',0), s.pc[0].toFixed(1))}${coordRow(axLabel('pc2',1), s.pc[1].toFixed(1))}${coordRow(axLabel('pc3',2), s.pc[2].toFixed(1))}</table>`;
                     }
 
                     tooltip.innerHTML = `
@@ -2660,10 +2694,10 @@
             requestAnimationFrame(animate);
             controls.update();
 
-            // Only update walls/labels when camera moves
+            // Update walls/labels when camera moves OR points are animating
             const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
             const cameraMoved = cx !== lastCamX || cy !== lastCamY || cz !== lastCamZ;
-            if (cameraMoved) {
+            if (cameraMoved || viewAnimationId !== null) {
                 lastCamX = cx; lastCamY = cy; lastCamZ = cz;
                 updateWalls();
                 updateLabels();
