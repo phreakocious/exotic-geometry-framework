@@ -111,7 +111,9 @@ Key methodological improvement: **phase-rotation permutation null**. The raw enr
 
 **Why the original result may have appeared stronger:** The original analysis tests enrichment/depletion at φⁿ positions without comparing against alternative ratios or using a phase-rotation null. Without these controls, the alpha peak's proximity to a φ attractor (9.6 Hz) produces apparent enrichment. The "< 2% error" claim reflects the goodness-of-fit of a geometric sequence to broadly-spaced peaks — any ratio in [1.5, 1.7] achieves comparable fit with appropriately chosen f₀.
 
-See `investigations/1d/eeg_phi.py`. Figure: `docs/figures/eeg_phi.png`.
+![EEG Golden Ratio Analysis](figures/eeg_phi.png)
+
+→ `investigations/1d/eeg_phi.py`
 
 ## Byte Quantization Limits
 
@@ -124,3 +126,20 @@ Converting continuous data to uint8 (0-255) loses information. Some structures a
 | IEEE 754 float structure | Raw float64 bytes have exponent/mantissa structure that confounds temporal analysis |
 
 **Mitigation**: Use `data_mode='auto'` for float data, or `encode_float_to_unit()` for explicit control over the quantization.
+
+## Degenerate and Pathological Data
+
+Several geometry metrics produce misleading results on low-cardinality or degenerate data. These were discovered through adversarial probing and fixed, but the underlying lesson is important: **always verify the mechanism, not just the result**.
+
+| Problem | Symptom | Root Cause | Fix |
+|---------|---------|------------|-----|
+| Binary-valued data breaks quasicrystal binarization | `(data > median)` produces all-ones when majority value = max | Median threshold is degenerate for ≤4 unique values | Use midpoint of unique values for low-cardinality data |
+| Quasicrystal tests passed for wrong reasons | Octonacci/Dodecagonal tests passed with perfect scores | Degenerate binarization gave CV=0, mapped to score 1.0 | Fixed binarization; tests now pass via spectral metrics |
+| Subword complexity indistinguishable for small n | p(n) for n=3–11 cannot separate long-period periodic from quasicrystalline | Window too short relative to period; both saturate complexity bound | Rely on spectral metrics (ratio_symmetry, acf_self_similarity) for QC specificity |
+| PersistentHomology duplicates from uint8 delay embedding | TDA algorithms choke on massive point duplicates (256 possible values → repeated coordinates) | Discrete data creates degenerate point clouds | Deduplicate points before computing persistent homology |
+| Multifractal negative-q moments unreliable | Structure function moments diverge or become numerically unstable for q < 0 | Negative moments amplify small values; uint8 data has exact zeros | Use positive-q moments only for uint8 data |
+| NVG equal-height ambiguity | Natural Visibility Graph gives inconsistent results on plateaus | Original definition ambiguous on whether equal-height intermediaries block visibility | Strict definition: equal-height intermediaries BLOCK visibility |
+| Signed-area chirality is drift-sensitive | Chirality metric dominated by random walk drift rather than intrinsic left/right asymmetry | Cumulative signed area grows with drift² | Use sin(turn_angle) mean for drift-invariant chirality |
+| Fibonacci word special-cased as Sturmian | Using p(n) = n+1 (Sturmian bound) as the general quasicrystal complexity metric | Fibonacci is the ONLY binary Sturmian sequence; other QC words have higher complexity | Don't use Sturmian bound as the general QC metric |
+
+**The meta-lesson**: Low-entropy, low-cardinality, or degenerate inputs can cause metrics to hit boundary conditions that produce apparently valid but mechanistically wrong results. The Structure Atlas uses a degeneracy discount factor to downweight sources with low Cantor/Torus coverage, preventing these pathological cases from inflating the structure space.
