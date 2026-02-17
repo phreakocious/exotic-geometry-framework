@@ -1,8 +1,8 @@
 # Complete Findings
 
-All validated discoveries and negative results from 67 investigations.
+All validated discoveries and negative results from 68 investigations.
 
-## Validated Positive Findings (141)
+## Validated Positive Findings (147)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
@@ -227,16 +227,16 @@ All validated discoveries and negative results from 67 investigations.
 | 55 | Lenia continuous CA: 15/15 configs | d = 249 | `2d/lenia.py` |
 | 56 | Near-identical rules detected: GoL ≈ HighLife, Kruskal ≈ AldousBroder | d ≈ 0 | Various 2D |
 
-### Structure Atlas (56 sources, 13 domains)
+### Structure Atlas (179 sources, 16 domains)
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
-| 57 | 56 data sources from 13 domains mapped into 141-metric structure space | 7.7 effective dimensions, PC1+2 = 40.7% | `1d/structure_atlas.py` |
+| 57 | 179 data sources from 16 domains mapped into 233-metric structure space | 8.9 effective dimensions, PC1+2 = 40.0% | `1d/structure_atlas.py` |
 | 58 | Cross-domain twins: EEG Eyes Closed ↔ Bearing Outer (d=0.084), NASDAQ ↔ Accel Stairs (d=0.16), Kepler Non-planet ↔ Accel Sit (d=0.17) | cosine distance in z-scored metric space | `1d/structure_atlas.py` |
-| 58a | Synthetic DNA ↔ DNA Chimp (d=0.001) — synthetic generator essentially nails real chimp DNA | closest pair across all 56 sources | `1d/structure_atlas.py` |
+| 58a | Synthetic DNA ↔ DNA Chimp (d=0.001) — synthetic generator essentially nails real chimp DNA | closest pair across all 179 sources | `1d/structure_atlas.py` |
 | 58b | fBm H=0.3 ↔ fBm H=0.7 (d=0.002) — two Hurst exponents geometrically indistinguishable | despite Hurst parameter being a key discriminator in 1-on-1 tests | `1d/structure_atlas.py` |
 | 59 | DNA (synthetic and real) forms isolated cluster (d=0.001-0.05 within, d>0.4 to everything else) | 4 bio sources, uniquely distinctive | `1d/structure_atlas.py` |
 | 60 | White Noise ≈ AES Encrypted (d=0.074) — pseudo-random cluster confirmed | Cluster 5: chaos + noise + AES + gzip + Pi | `1d/structure_atlas.py` |
-| 61 | Surrogate decomposition: ECG Supraventr. most sequential (87/141 metrics disrupted by shuffling) | White Noise/AES = 0 disrupted | `1d/structure_atlas.py` |
+| 61 | Surrogate decomposition: ECG Supraventr. most sequential (87/233 metrics disrupted by shuffling) | White Noise/AES = 0 disrupted | `1d/structure_atlas.py` |
 | 61a | Pi (base 256) has more metrics disrupted by rolling (69) than by shuffling (45) | positional structure beyond sequential autocorrelation | `1d/structure_atlas.py` |
 | 61b | Chaos maps are time-asymmetric: Henon (26 rev), Logistic (25), Tent (23) metrics disrupted by reversal | consistent with iterative map's forward direction | `1d/structure_atlas.py` |
 | 62 | Financial returns time-asymmetric at 12K bytes (Nikkei: 18, NYSE: 17, NASDAQ: 15 metrics disrupted by reversal) | markets have geometric time arrow | `1d/structure_atlas.py` |
@@ -277,7 +277,17 @@ All validated discoveries and negative results from 67 investigations.
 |---|---------|-------------|---------------|
 | 78 | Network protocol byte streams have distinct geometric signatures | protocol fingerprinting | `1d/network_protocols.py` |
 
-## Negative Results (24)
+### Neuroscience / EEG
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 79a | EEG spectral peaks show reproducible geometric lattice alignment across 109 subjects | per-subject excess enrichment +0.305, t=13.89, p<0.0001; 101/109 positive | `1d/eeg_phi.py` |
+| 79b | φ (golden ratio) is NOT uniquely preferred as a spectral scaling ratio — ranks 5th of 12 ratios tested | excess: φ=+0.308, 5/3=+0.327, π=+0.554, 2=+0.446, e=+0.357 | `1d/eeg_phi.py` |
+| 79c | Claimed f₀=7.5 Hz does not reach 95% significance vs phase-rotation null | p>0.05; Schumann 7.83 Hz shows higher excess (+0.384 vs +0.266) | `1d/eeg_phi.py` |
+| 79d | 2D (f₀, r) joint heatmap: global optimum at (4.94, 3.92), far from claimed (7.5, φ) | score at optimum +0.913 vs +0.342 at claim | `1d/eeg_phi.py` |
+| 79e | Per-band: only gamma (31.8–51.4 Hz) significant (p=0.024); alpha (p=0.277) and high beta (negative enrichment) fail | φⁿ claim predicts ALL bands | `1d/eeg_phi.py` |
+| 79f | φ structure survives IAAFT surrogation → spectral property, not nonlinear phase coupling | p=0.127 | `1d/eeg_phi.py` |
+
+## Negative Results (25)
 
 These are equally important — they define the boundaries of what geometric analysis can and cannot do.
 
@@ -307,6 +317,7 @@ These are equally important — they define the boundaries of what geometric ana
 | 19 | **π digits indistinguishable from random in base-256 AND base-10** (0 sig vs random, 0 vs shuffled, 0 across positions 0K-48K, 0 under delay embedding τ=1-5) | Strong geometric evidence for normality of π |
 | 19a | **e and √2 digits also indistinguishable from random** (same battery: all 0 sig) | Evidence extends to e and √2 |
 | 20 | **Protein sequential ordering is negligible** — globular vs shuffled = 1 sig, IAAFT = 0 for both classes | Glob-vs-IDP is compositional (AA frequencies), not sequential |
+| 21 | **EEG φⁿ lattice claim not supported** — φ ranks 5th of 12 ratios, f₀=7.5 not optimal (p>0.05 vs null), only gamma band significant | Real spectral organization exists but is not φ-specific |
 | 21 | **CF(Sqrt2) vs shuffled = 0 sig** — constant sequence shuffled is identical (`1d/math_constants.py`) | Validates methodology (not a failure) |
 | 22 | **Base-10 digits of Pi/e/Phi/Sqrt2 all indistinguishable from each other (0 sig)** (`1d/math_constants.py`) | Normal number digits = i.i.d. uniform |
 
@@ -323,6 +334,8 @@ The deep prime gap investigations (`primes_deep.py`, `primes_deep2.py`) trace th
 The number theory investigations reveal that classical limit theorems leave substantial geometric structure unexplained. The Mertens function M(n) — whose random-walk behavior is equivalent to RH — has 37 metrics beyond what a random walk with matching step probabilities can produce. Zeta zero spacings differ from the GUE/Wigner prediction in 90 metrics. Even the divisor function d(n) has 85 metrics of sequential correlation destroyed by shuffling. These results suggest that exotic geometries detect multiplicative number-theoretic structure that standard probabilistic models do not capture.
 
 The continued fractions investigation provides a striking validation of Khinchin's theorem: π's CF coefficients are geometrically indistinguishable from iid Gauss-Kuzmin samples (0 sig, 0 ordering dependence), confirming that "almost all" applies to π as far as 131 exotic geometric metrics can detect. ln 2 shows a faint crack (11 sig vs GK), while algebraic constants are trivially distinguishable. The √2 control (constant sequence, 0 ordering sig) and random self-check (0 sig) validate the methodology.
+
+The EEG golden ratio investigation (`eeg_phi.py`) demonstrates the framework's value as a hypothesis-testing tool for external claims. Using 109 subjects from PhysioNet and a phase-rotation permutation null, the investigation found that while EEG spectral peaks do show reproducible geometric organization (101/109 subjects positive, t=13.89), the specific claim of φⁿ lattice structure anchored at f₀=7.5 Hz is not supported. The golden ratio ranks 5th among 12 tested scaling ratios, the claimed f₀ is not the optimal anchor, and a 2D joint (f₀, r) heatmap shows the claimed parameters sitting in a mediocre region of the landscape. The lesson: proper null models (phase-rotation instead of uniform) and comparison against alternative hypotheses (multiple ratios, not just φ) are essential for claims of specific mathematical organization in biological data.
 
 The RNG quality testing investigation (`rng.py`) provides a clean validation story: 10 generators spanning a quality gradient from cryptographic to historically broken. CRYPTO/GOOD generators return 0 significant metrics (self-check urandom vs urandom also 0), while RANDU (44 sig) and Middle-Square (78 sig) are massively detected. Geometric metrics outperform standard statistical tests by 11x on the worst generators. Delay embedding newly reveals XorShift128 (undetected raw), and RANDU is detectable from just 500 bytes. Different weaknesses have distinct geometric fingerprints — Penrose quasicrystal metrics detect lattice structure (d=-37), while Higher-Order Statistics catches nonlinear correlations.
 

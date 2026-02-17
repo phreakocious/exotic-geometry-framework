@@ -26,7 +26,7 @@ A systematic study of 10 generators (`rng.py`) confirms that modern PRNGs are ge
 
 | PRNG | Category | Why It Passes |
 |------|----------|--------------|
-| **PCG64** | GOOD | NumPy default, passes BigCrush; 0 sig across all 131 metrics |
+| **PCG64** | GOOD | NumPy default, passes BigCrush; 0 sig across all 233 metrics |
 | **SFC64** | GOOD | Small Fast Chaotic; 0 sig |
 | **SHA-256 CTR** | CRYPTO | Hash-based; cryptographically indistinguishable by design |
 
@@ -86,6 +86,32 @@ Some systems that differ in definition produce indistinguishable geometric signa
 | **Sandpile 10k ≈ 50k iterations** | Both have reached SOC steady state; additional iterations don't change the statistics |
 
 These "failures" are actually correct: the framework detects that these systems produce the same statistical structure, which is the ground truth.
+
+## EEG Golden Ratio Architecture (φⁿ Hypothesis)
+
+**The claim that EEG spectral peaks follow f₀ × φⁿ organization anchored at f₀ = 7.5 Hz (Pletzer et al. 2010, Lacy 2026) is not supported by our independent analysis.**
+
+Data: PhysioNet eegmmidb v1.0.0, 109 subjects, 64 channels each, eyes-closed resting baseline. 86,337 spectral peaks extracted via Welch PSD + median-filter 1/f subtraction.
+
+Key methodological improvement: **phase-rotation permutation null**. The raw enrichment score is biased by alpha-peak dominance. Adding a random offset δ ~ U(0,1) to all lattice phases preserves the peak distribution shape but destroys alignment with f₀, giving a proper baseline.
+
+| Test | Result | Implication |
+|------|--------|-------------|
+| **D1: Lattice enrichment** | obs=+0.309, null=-0.003±0.267, **p=0.213** | Not significant after null correction |
+| **D2: Ratio specificity** | φ ranks 5th of 12; π, 2, e, 5/3 all higher excess | φ is not uniquely preferred |
+| **D3: f₀ anchoring** | f₀=7.5 does not reach 95% null threshold; best f₀=3.04 Hz | Claimed anchor is not optimal |
+| **D4: 2D (f₀, r) heatmap** | Global optimum at (4.94, 3.92); claimed (7.5, φ) in mediocre region | Joint parameter space doesn't peak at claim |
+| **D5: Per-band** | Only gamma significant (p=0.024); alpha fails (p=0.277) | Effect is band-specific, not universal |
+| **D6: Per-subject** | +0.305 excess, t=13.89, p<0.0001, 101/109 positive | Real signal, but not φ-specific |
+| **D8: Surrogate** | p=0.127, enrichment survives IAAFT | Spectral property, not nonlinear |
+
+**What IS real:** EEG spectral peaks show reproducible geometric lattice alignment across subjects — the per-subject test is overwhelming (t=13.89). There IS non-trivial spectral organization in resting-state EEG.
+
+**What ISN'T supported:** The specific claim that this organization follows a golden ratio lattice anchored at 7.5 Hz with zero free parameters. The same data is equally or better described by ratios 2, e, π, or 5/3, and the optimal anchor frequency is not 7.5 Hz. The 2D heatmap shows the claimed (f₀, r) pair sitting in a mediocre region of the parameter landscape.
+
+**Why the original result may have appeared stronger:** The original analysis tests enrichment/depletion at φⁿ positions without comparing against alternative ratios or using a phase-rotation null. Without these controls, the alpha peak's proximity to a φ attractor (9.6 Hz) produces apparent enrichment. The "< 2% error" claim reflects the goodness-of-fit of a geometric sequence to broadly-spaced peaks — any ratio in [1.5, 1.7] achieves comparable fit with appropriately chosen f₀.
+
+See `investigations/1d/eeg_phi.py`. Figure: `docs/figures/eeg_phi.png`.
 
 ## Byte Quantization Limits
 
