@@ -156,6 +156,22 @@ To test whether the marginal D9 result depends on peak extraction methodology, w
 
 **Summary:** The enrichment pattern is extraction-method-dependent. The phase target sweep yields u=0.880 for FOOOF vs u=0.575 for medfilt — qualitatively different phase structures from the same underlying data. One (method × band × window × target) combination reaches p=0.025, but this does not survive the Kuiper omnibus test (p=0.513) and represents a single point in a large space of analytical choices.
 
+### D11: Non-Motor-Imagery Replication (Bonn Dataset)
+
+A critique argued that PhysioNet eegmmidb is a motor-imagery paradigm where anticipatory mu desynchronization could disrupt resting spectral organization, weakening any phi signal. To address this, we tested on the Bonn/Andrzejak clinical EEG dataset (no motor tasks): 100 recordings per class, reconstructed into 23-second pseudo-segments (23 × 178 points at 173.61 Hz), peaks extracted via both medfilt and FOOOF.
+
+| Class | N peaks (medfilt) | u=0.618 w=0.05 p | FOOOF p |
+|-------|:-----------------:|:-----------------:|:-------:|
+| **Eyes Closed (healthy)** | 1,184 | **0.639** | 0.593 |
+| **Eyes Open (healthy)** | 1,120 | **0.780** | 0.848 |
+| **Seizure (ictal)** | 1,481 | **0.138** | 0.121 |
+
+Ratio ranking on pooled healthy peaks (classes 4+5): φ excess = −0.112, rank **#4/12**. The excess is *negative* — phi is a worse-than-average ratio on this dataset. Kuiper omnibus on healthy pooled: p=0.360.
+
+The seizure class shows the strongest (non-significant) phi trend, which is the **opposite** of what the hypothesis predicts: if phi reflects healthy neural organization, it should be strongest in resting EEG and disrupted during seizure.
+
+**Verdict:** The motor-imagery objection does not hold. Phi enrichment is absent in a pure clinical EEG dataset with no motor tasks. Two independent datasets (PhysioNet eegmmidb, Bonn/Andrzejak), two extraction methods (medfilt, FOOOF), multiple test configurations — all null.
+
 → `investigations/1d/eeg_phi.py`
 
 ## Byte Quantization Limits

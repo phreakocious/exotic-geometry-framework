@@ -296,6 +296,9 @@ All validated discoveries and negative results from 68 investigations.
 | 79n | Alpha-only FOOOF per-ch, u=0.618, w=0.15: p=0.025 — sole significant combination tested | Kuiper p=0.513; φ rank #4/12; one point in a large analytical space | `1d/eeg_phi.py` |
 | 79o | FOOOF parameter sensitivity: p=0.28–0.44 across all settings on averaged PSDs | stable across parameter choices | `1d/eeg_phi.py` |
 | 79p | Phase target sweep differs between methods: FOOOF u=0.880, medfilt u=0.575 | enrichment pattern is extraction-dependent | `1d/eeg_phi.py` |
+| 79q | Bonn dataset (non-motor-imagery): phi enrichment absent in healthy resting EEG | Eyes Closed p=0.64, Eyes Open p=0.78; φ rank #4/12 with negative excess | `1d/eeg_phi.py` |
+| 79r | Seizure shows strongest (non-significant) Bonn phi trend — opposite of prediction | Seizure p=0.13 (medfilt), p=0.12 (FOOOF); healthy should be strongest if real | `1d/eeg_phi.py` |
+| 79s | Motor-imagery objection refuted: phi absent in Bonn clinical EEG (no motor tasks) | Kuiper phase-rot p=0.36 on healthy pooled; dataset choice is not the issue | `1d/eeg_phi.py` |
 | 80a | All 8 EEG classes (5 Bonn + 3 PhysioNet) massively non-random | 146-178/235 sig metrics vs shuffled; self-check 0/235 | `1d/eeg_geometry.py` |
 | 80b | Seizure EEG has massive nonlinear structure (survives IAAFT) | 71/235 sig vs IAAFT; healthy EO=24, eyes closed=9 | `1d/eeg_geometry.py` |
 | 80c | PhysioNet resting EEG has ZERO nonlinear structure — entirely spectral | Occipital=0, Frontal=0, Central=0 vs IAAFT | `1d/eeg_geometry.py` |

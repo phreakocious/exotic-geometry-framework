@@ -168,6 +168,56 @@ gen_eeg_seizure = _gen_eeg_class(1)     # Seizure activity
 gen_eeg_tumor = _gen_eeg_class(2)       # Tumor area (eyes open)
 gen_eeg_healthy = _gen_eeg_class(3)     # Healthy area (eyes open)
 gen_eeg_eyes_closed = _gen_eeg_class(4) # Eyes closed
+gen_eeg_eyes_open = _gen_eeg_class(5)   # Eyes open (healthy)
+
+
+# --- PhysioNet eegmmidb resting EEG ---
+_PHYSIONET_DATA = None
+
+def _load_physionet():
+    """Load PhysioNet eegmmidb eyes-closed resting baseline (run 2).
+    Returns list of 1D float64 arrays (one per channel across 109 subjects)."""
+    global _PHYSIONET_DATA
+    if _PHYSIONET_DATA is not None:
+        return _PHYSIONET_DATA
+    import mne
+    eeg_path = '/tmp/eeg_geometry'
+    signals = []
+    for subj in range(1, 110):
+        try:
+            files = mne.datasets.eegbci.load_data(
+                subjects=subj, runs=[2],
+                path=eeg_path, update_path=False, verbose=False)
+            raw = mne.io.read_raw_edf(files[0], preload=True, verbose=False)
+            raw.filter(1.0, 55.0, verbose=False)
+            data = raw.get_data()
+            for ch in range(data.shape[0]):
+                signals.append(data[ch])
+        except Exception:
+            pass
+    _PHYSIONET_DATA = signals
+    return signals
+
+
+def gen_eeg_resting(rng, size):
+    """PhysioNet resting EEG: concatenate random channels, contiguous, uint8.
+    Each channel is ~9760 samples (61s at 160 Hz). For size > 9760,
+    concatenate channels from different subjects to avoid tiling artifacts."""
+    signals = _load_physionet()
+    parts = []
+    remaining = size
+    while remaining > 0:
+        sig = signals[rng.integers(len(signals))]
+        take = min(remaining, len(sig))
+        max_start = len(sig) - take
+        start = rng.integers(max_start + 1) if max_start > 0 else 0
+        parts.append(sig[start:start + take])
+        remaining -= take
+    block = np.concatenate(parts)[:size]
+    lo, hi = block.min(), block.max()
+    if hi - lo < 1e-15:
+        hi = lo + 1.0
+    return ((block - lo) / (hi - lo) * 255).astype(np.uint8)
 
 
 # --- Financial time series (stock indices, Kaggle) ---
@@ -648,6 +698,11 @@ register("EEG Healthy", gen_eeg_healthy, "medical",
          "Bonn EEG healthy area", signature=False)
 register("EEG Eyes Closed", gen_eeg_eyes_closed, "medical",
          "Bonn EEG eyes closed", signature=False)
+register("EEG Eyes Open", gen_eeg_eyes_open, "medical",
+         "Bonn EEG eyes open (healthy)", signature=False)
+register("EEG Resting", gen_eeg_resting, "medical",
+         "PhysioNet resting EEG, contiguous blocks, 109 subjects",
+         signature=False)
 
 register("NYSE Returns", gen_stock_sp500, "financial",
          "NYSE Composite log returns", signature=False)
@@ -1168,6 +1223,10 @@ def direction_6(runner, domains):
 
         seq_frac = n_shuf / len(runner.metric_names)
 
+        # Per-metric shuffled means (for surrogate-contrast view)
+        shuf_means = [float(np.nanmean(shuf_metrics.get(m, [np.nan])))
+                      for m in runner.metric_names]
+
         entry = {
             'shuffled_sig': n_shuf,
             'rolled_sig': n_roll,
@@ -1176,6 +1235,7 @@ def direction_6(runner, domains):
             'rolled_d': d_roll,
             'reversed_d': d_rev,
             'seq_fraction': seq_frac,
+            'shuffled_means': shuf_means,
         }
         results[name] = entry
 
@@ -1206,7 +1266,14 @@ def direction_6(runner, domains):
     for name, r in ranked_rev[:5]:
         print(f"    {name:20s}  {r['reversed_sig']:3d} metrics disrupted")
 
-    return results
+    # Build shuffled means matrix (n_sources × n_metrics)
+    n_metrics = len(runner.metric_names)
+    shuffled_matrix = np.full((len(SOURCES), n_metrics), np.nan)
+    for i, (name, _, _) in enumerate(SOURCES):
+        if name in results and 'shuffled_means' in results[name]:
+            shuffled_matrix[i] = results[name]['shuffled_means']
+
+    return results, shuffled_matrix
 
 
 def direction_7(runner, domains):
@@ -1304,7 +1371,8 @@ def direction_7(runner, domains):
 # GEOMETRIC VIEWS — different lenses on the same data
 # ==============================================================
 
-def direction_8_views(names, X, metric_names, domains, view_lenses):
+def direction_8_views(names, X, metric_names, domains, view_lenses,
+                      shuffled_matrix=None):
     """D8: Geometric Views — project data through each family of geometries.
 
     view_lenses is discovered from geometry metadata via GeometryAnalyzer.view_lenses().
@@ -1460,6 +1528,531 @@ def direction_8_views(names, X, metric_names, domains, view_lenses):
             "clusters": view_cluster_desc,
             "relevance": relevance.tolist(),
         }
+
+    # ---- Optimized view: all metrics, but filtered by ANOVA F significance
+    #      and deduplicated.  "All, but only the signal."
+    print(f"\n  Computing Optimized view ...")
+
+    # Group sources by domain (>= 3 per domain for ANOVA)
+    _dom_idx = {}
+    for _i, _n in enumerate(names):
+        _dom_idx.setdefault(domains[_n], []).append(_i)
+    _valid_doms = {d: idx for d, idx in _dom_idx.items() if len(idx) >= 3}
+    n_doms = len(_valid_doms)
+
+    # ANOVA F per metric, with Bonferroni-corrected significance threshold
+    bonf_p = 0.05 / len(metric_names)
+    keep_cols = []
+    kept_names = []
+    for j in range(len(metric_names)):
+        groups = []
+        for _d, _idx in _valid_doms.items():
+            vals = X[_idx, j]
+            vals = vals[np.isfinite(vals)]
+            if len(vals) >= 2:
+                groups.append(vals)
+        if len(groups) >= 2:
+            f_stat, p_val = sp_stats.f_oneway(*groups)
+            if np.isfinite(f_stat) and p_val < bonf_p:
+                keep_cols.append(j)
+                kept_names.append(metric_names[j])
+
+    print(f"    ANOVA filter: {len(keep_cols)} / {len(metric_names)} metrics "
+          f"pass Bonferroni p < {bonf_p:.1e}")
+
+    if len(keep_cols) >= 5:
+        X_opt = X[:, keep_cols]
+        opt_metric_names = kept_names
+
+        # Deduplicate (same |Spearman ρ| > 0.95 as other views)
+        rho_opt = np.abs(sp_stats.spearmanr(X_opt, axis=0).statistic)
+        if rho_opt.ndim == 0:
+            rho_opt = np.array([[1.0]])
+        dist_opt = np.clip(1.0 - rho_opt, 0, None)
+        np.fill_diagonal(dist_opt, 0)
+        dist_opt = (dist_opt + dist_opt.T) / 2.0
+        Z_opt_corr = linkage(squareform(dist_opt, checks=False), method='average')
+        clust_opt = fcluster(Z_opt_corr, t=0.05, criterion='distance')
+        col_var_opt = np.var(X_opt, axis=0)
+        keep_opt = []
+        for c in sorted(set(clust_opt)):
+            members = np.where(clust_opt == c)[0]
+            best = members[np.argmax(col_var_opt[members])]
+            keep_opt.append(best)
+        keep_opt = sorted(keep_opt)
+        n_before_opt = X_opt.shape[1]
+        X_opt = X_opt[:, keep_opt]
+        opt_metric_names = [opt_metric_names[k] for k in keep_opt]
+        n_after_opt = len(keep_opt)
+        if n_after_opt < n_before_opt:
+            print(f"    dedup: {n_before_opt} → {n_after_opt} metrics")
+
+        # Which geometry families contributed?
+        opt_geos = sorted(set(m.split(':')[0] for m in opt_metric_names))
+
+        # PCA + clustering
+        coords_opt, varexp_opt, cumvar_opt, Z_opt, Vt_opt = principal_projection(X_opt)
+        clusters_opt, labels_opt, order_opt, link_opt = cluster_atlas(Z_opt, names)
+
+        pr_opt = np.sum(varexp_opt) ** 2 / np.sum(varexp_opt ** 2)
+
+        # Axes info
+        axes_opt = {}
+        for pc_idx in range(min(3, len(Vt_opt))):
+            loadings = np.abs(Vt_opt[pc_idx])
+            top_idx = np.argsort(loadings)[::-1][:3]
+            geo_load = {}
+            for j in range(len(opt_metric_names)):
+                geo = opt_metric_names[j].split(':')[0]
+                geo_load[geo] = geo_load.get(geo, 0.0) + Vt_opt[pc_idx, j] ** 2
+            top_geo = max(geo_load, key=geo_load.get)
+            top_metric = opt_metric_names[top_idx[0]].split(':')[1]
+            axes_opt[f"pc{pc_idx+1}"] = {
+                "top_geometry": top_geo,
+                "top_metric": top_metric,
+            }
+
+        # Cluster descriptions
+        opt_cluster_desc = {}
+        for c_id, members in clusters_opt.items():
+            domain_counts = Counter(domains[m] for m in members)
+            top_doms = [d for d, _ in domain_counts.most_common(2)]
+            label = ' + '.join(d.replace('_', ' ').title() for d in top_doms)
+            opt_cluster_desc[c_id] = {
+                "label": label,
+                "size": len(members),
+                "members": members,
+                "top_domains": top_doms,
+            }
+        seen_opt = {}
+        for c_id, desc in opt_cluster_desc.items():
+            if desc["label"] in seen_opt:
+                other = seen_opt[desc["label"]]
+                opt_cluster_desc[other]["label"] += " I"
+                desc["label"] += " II"
+            seen_opt[desc["label"]] = c_id
+
+        # Per-source relevance (same as other views)
+        from scipy.stats import rankdata as _rd_opt
+        _n_opt = X_opt.shape[0]
+        _ranks_opt = np.zeros_like(X_opt)
+        for _j in range(X_opt.shape[1]):
+            _col = np.nan_to_num(X_opt[:, _j], nan=0.0)
+            _ranks_opt[:, _j] = (_rd_opt(_col) / _n_opt
+                                 if np.std(_col) > 1e-15 else 0.5)
+        _count_opt = np.sum(_ranks_opt > 0.90, axis=1).astype(float)
+        _count_opt = _count_opt * _degeneracy_factor
+        _cmax_opt = _count_opt.max()
+        relevance_opt = (_count_opt / _cmax_opt if _cmax_opt > 1e-15
+                         else np.zeros(len(_count_opt)))
+
+        print(f"  {'Optimized':15s}  {n_before_opt:3d} metrics ({n_after_opt} effective)  "
+              f"PC1+2={cumvar_opt[1]*100:.1f}%  eff_dim={pr_opt:.1f}  "
+              f"geos: {', '.join(opt_geos[:8])}{'...' if len(opt_geos) > 8 else ''}")
+
+        view_results["Optimized"] = {
+            "coords": coords_opt,
+            "varexp": varexp_opt,
+            "labels": labels_opt,
+            "n_metrics": n_after_opt,
+            "eff_dim": float(pr_opt),
+            "question": "What structure remains after removing noise and redundancy?",
+            "detects": "Domain-discriminating, non-redundant metric subset",
+            "geometries": opt_geos,
+            "axes": axes_opt,
+            "clusters": opt_cluster_desc,
+            "relevance": relevance_opt.tolist(),
+        }
+    else:
+        print(f"    Too few metrics pass ANOVA filter ({len(keep_cols)}), skipping")
+
+    # ---- Empirical view: PCA fitted on real-world sources only,
+    #      synthetic sources projected in as ghosts.
+    print(f"\n  Computing Empirical view ...")
+    EMPIRICAL_DOMAINS = {'astro', 'bearing', 'bio', 'climate', 'financial',
+                         'geophysics', 'medical', 'motion', 'speech'}
+    emp_mask = np.array([domains[n] in EMPIRICAL_DOMAINS for n in names])
+    n_emp = int(emp_mask.sum())
+    print(f"    {n_emp} empirical sources, {len(names) - n_emp} synthetic/exotic")
+
+    if n_emp >= 10:
+        from scipy.stats import rankdata as _rd_emp
+
+        emp_names = [n for n, m in zip(names, emp_mask) if m]
+        emp_domains = {n: domains[n] for n in emp_names}
+        X_emp = X[emp_mask]
+
+        # PCA on empirical sources only
+        R_emp = _rank_normalize(X_emp)
+        emp_mean = R_emp.mean(axis=0)
+        R_emp_c = R_emp - emp_mean
+
+        U_emp, s_emp, Vt_emp = np.linalg.svd(R_emp_c, full_matrices=False)
+        varexp_emp = s_emp**2 / np.sum(s_emp**2)
+        coords_emp_only = U_emp * s_emp
+
+        # Cluster empirical sources only
+        n_pc_clust = min(20, coords_emp_only.shape[1])
+        clusters_emp, labels_emp_only, order_emp, link_emp = cluster_atlas(
+            coords_emp_only[:, :n_pc_clust], emp_names)
+
+        pr_emp = np.sum(varexp_emp)**2 / np.sum(varexp_emp**2)
+
+        # Axes info
+        axes_emp = {}
+        for pc_idx in range(min(3, len(Vt_emp))):
+            loadings = np.abs(Vt_emp[pc_idx])
+            top_idx = np.argsort(loadings)[::-1][:3]
+            geo_load = {}
+            for j in range(len(metric_names)):
+                geo = metric_names[j].split(':')[0]
+                geo_load[geo] = geo_load.get(geo, 0.0) + Vt_emp[pc_idx, j]**2
+            top_geo = max(geo_load, key=geo_load.get)
+            top_metric = metric_names[top_idx[0]].split(':')[1]
+            axes_emp[f"pc{pc_idx+1}"] = {
+                "top_geometry": top_geo,
+                "top_metric": top_metric,
+            }
+
+        # Cluster descriptions (empirical only)
+        emp_cluster_desc = {}
+        for c_id, members in clusters_emp.items():
+            domain_counts = Counter(emp_domains[m] for m in members)
+            top_doms = [d for d, _ in domain_counts.most_common(2)]
+            label = ' + '.join(d.replace('_', ' ').title() for d in top_doms)
+            emp_cluster_desc[c_id] = {
+                "label": label,
+                "size": len(members),
+                "members": members,
+                "top_domains": top_doms,
+            }
+        seen_emp = {}
+        for c_id, desc in emp_cluster_desc.items():
+            if desc["label"] in seen_emp:
+                other = seen_emp[desc["label"]]
+                emp_cluster_desc[other]["label"] += " I"
+                desc["label"] += " II"
+            seen_emp[desc["label"]] = c_id
+
+        # Relevance for empirical sources (ranked within empirical subset)
+        _ranks_emp = np.zeros_like(R_emp)
+        for _j in range(R_emp.shape[1]):
+            _col = np.nan_to_num(R_emp[:, _j], nan=0.0)
+            _ranks_emp[:, _j] = (_rd_emp(_col) / n_emp
+                                 if np.std(_col) > 1e-15 else 0.5)
+        _count_emp = np.sum(_ranks_emp > 0.90, axis=1).astype(float)
+        # Degeneracy factor for empirical sources
+        _cidx_emp = [j for j, mn in enumerate(metric_names)
+                     if mn in {'Information Theory:block_entropy_2',
+                               'Wasserstein:normalized_entropy',
+                               'Cantor Set:coverage', 'Torus T^2:coverage'}]
+        if _cidx_emp:
+            _cranks_emp = np.column_stack(
+                [_rd_emp(X_emp[:, j]) / n_emp for j in _cidx_emp])
+            _complexity_emp = np.mean(_cranks_emp, axis=1)
+        else:
+            _complexity_emp = np.ones(n_emp)
+        _deg_emp = np.clip(_complexity_emp / 0.25, 0.3, 1.0)
+        _count_emp = _count_emp * _deg_emp
+        _cmax_emp = _count_emp.max()
+        relevance_emp_only = (_count_emp / _cmax_emp if _cmax_emp > 1e-15
+                              else np.zeros(n_emp))
+
+        # Expand to full arrays (all sources): synthetic get zeros
+        _n_all = len(names)
+        coords_emp_full = np.zeros((_n_all, coords_emp_only.shape[1]))
+        labels_emp_full = np.zeros(_n_all, dtype=int)
+        relevance_emp_full = np.zeros(_n_all)
+        _ei = 0
+        for _i in range(_n_all):
+            if emp_mask[_i]:
+                coords_emp_full[_i] = coords_emp_only[_ei]
+                labels_emp_full[_i] = labels_emp_only[_ei]
+                relevance_emp_full[_i] = relevance_emp_only[_ei]
+                _ei += 1
+
+        emp_geos = sorted(set(m.split(':')[0] for m in metric_names))
+
+        cumvar_emp = np.cumsum(varexp_emp)
+        print(f"  {'Empirical':15s}  {len(metric_names):3d} metrics  "
+              f"PC1+2={cumvar_emp[1]*100:.1f}%  eff_dim={pr_emp:.1f}  "
+              f"{n_emp} sources")
+
+        view_results["Empirical"] = {
+            "coords": coords_emp_full,
+            "varexp": varexp_emp,
+            "labels": labels_emp_full,
+            "n_metrics": len(metric_names),
+            "eff_dim": float(pr_emp),
+            "question": "How does the real world organize itself, ignoring synthetic constructs?",
+            "detects": "Structure patterns in empirical data only; synthetic sources excluded",
+            "geometries": emp_geos,
+            "axes": axes_emp,
+            "clusters": emp_cluster_desc,
+            "relevance": relevance_emp_full.tolist(),
+        }
+    else:
+        print(f"    Too few empirical sources ({n_emp}), skipping")
+
+    # ---- Chaotic view: only deterministic chaotic sources
+    CHAOTIC_SOURCES = {
+        'Logistic Chaos', 'Henon Map', 'Tent Map', 'Baker Map',
+        'Chirikov Standard Map', 'Logistic Edge-of-Chaos',
+        'Logistic r=3.68 (Banded Chaos)', 'Logistic r=3.9 (Near-Full Chaos)',
+        'Critical Circle Map', 'Coupled Map Lattice',
+        'Lorenz Attractor', 'Rossler Attractor', 'Duffing Oscillator',
+        "Chua's Circuit", 'Double Pendulum', 'Mackey-Glass',
+        'Pomeau-Manneville', 'Kicked Rotor',
+    }
+    print(f"\n  Computing Chaotic view ...")
+    chaos_mask = np.array([n in CHAOTIC_SOURCES for n in names])
+    n_chaos = int(chaos_mask.sum())
+    print(f"    {n_chaos} chaotic sources")
+
+    if n_chaos >= 5:
+        from scipy.stats import rankdata as _rd_ch
+
+        ch_names = [n for n, m in zip(names, chaos_mask) if m]
+        ch_domains = {n: domains[n] for n in ch_names}
+        X_ch = X[chaos_mask]
+
+        R_ch = _rank_normalize(X_ch)
+        ch_mean = R_ch.mean(axis=0)
+        R_ch_c = R_ch - ch_mean
+
+        U_ch, s_ch, Vt_ch = np.linalg.svd(R_ch_c, full_matrices=False)
+        varexp_ch = s_ch**2 / np.sum(s_ch**2)
+        coords_ch_only = U_ch * s_ch
+
+        nc_ch = min(5, n_chaos // 2)
+        n_pc_ch = min(20, coords_ch_only.shape[1])
+        clusters_ch, labels_ch_only, _, _ = cluster_atlas(
+            coords_ch_only[:, :n_pc_ch], ch_names, n_clusters=nc_ch)
+
+        pr_ch = np.sum(varexp_ch)**2 / np.sum(varexp_ch**2)
+        axes_ch = {}
+        for pc_idx in range(min(3, len(Vt_ch))):
+            loadings = np.abs(Vt_ch[pc_idx])
+            top_idx = np.argsort(loadings)[::-1][:3]
+            geo_load = {}
+            for j in range(len(metric_names)):
+                geo = metric_names[j].split(':')[0]
+                geo_load[geo] = geo_load.get(geo, 0.0) + Vt_ch[pc_idx, j]**2
+            top_geo = max(geo_load, key=geo_load.get)
+            top_metric = metric_names[top_idx[0]].split(':')[1]
+            axes_ch[f"pc{pc_idx+1}"] = {
+                "top_geometry": top_geo, "top_metric": top_metric,
+            }
+
+        ch_cluster_desc = {}
+        for c_id, members in clusters_ch.items():
+            domain_counts = Counter(ch_domains[m] for m in members)
+            top_doms = [d for d, _ in domain_counts.most_common(2)]
+            label = ' + '.join(d.replace('_', ' ').title() for d in top_doms)
+            ch_cluster_desc[c_id] = {
+                "label": label, "size": len(members),
+                "members": members, "top_domains": top_doms,
+            }
+        seen_ch = {}
+        for c_id, desc in ch_cluster_desc.items():
+            if desc["label"] in seen_ch:
+                other = seen_ch[desc["label"]]
+                ch_cluster_desc[other]["label"] += " I"
+                desc["label"] += " II"
+            seen_ch[desc["label"]] = c_id
+
+        # Relevance
+        _ranks_ch = np.zeros_like(R_ch)
+        for _j in range(R_ch.shape[1]):
+            _col = np.nan_to_num(R_ch[:, _j], nan=0.0)
+            _ranks_ch[:, _j] = (_rd_ch(_col) / n_chaos
+                                if np.std(_col) > 1e-15 else 0.5)
+        _count_ch = np.sum(_ranks_ch > 0.90, axis=1).astype(float)
+        _cmax_ch = _count_ch.max()
+        rel_ch_only = (_count_ch / _cmax_ch if _cmax_ch > 1e-15
+                       else np.zeros(n_chaos))
+
+        # Expand to full arrays
+        _n_all = len(names)
+        coords_ch_full = np.zeros((_n_all, coords_ch_only.shape[1]))
+        labels_ch_full = np.zeros(_n_all, dtype=int)
+        rel_ch_full = np.zeros(_n_all)
+        _ci = 0
+        for _i in range(_n_all):
+            if chaos_mask[_i]:
+                coords_ch_full[_i] = coords_ch_only[_ci]
+                labels_ch_full[_i] = labels_ch_only[_ci]
+                rel_ch_full[_i] = rel_ch_only[_ci]
+                _ci += 1
+
+        cumvar_ch = np.cumsum(varexp_ch)
+        print(f"  {'Chaotic':15s}  {len(metric_names):3d} metrics  "
+              f"PC1+2={cumvar_ch[1]*100:.1f}%  eff_dim={pr_ch:.1f}  "
+              f"{n_chaos} sources  {nc_ch} clusters")
+
+        view_results["Chaotic"] = {
+            "coords": coords_ch_full,
+            "varexp": varexp_ch,
+            "labels": labels_ch_full,
+            "n_metrics": len(metric_names),
+            "eff_dim": float(pr_ch),
+            "question": "How does the framework distinguish types of deterministic chaos?",
+            "detects": "Structural differences between chaotic systems: maps vs flows, "
+                       "intermittency, dimensionality, route to chaos",
+            "geometries": sorted(set(m.split(':')[0] for m in metric_names)),
+            "axes": axes_ch,
+            "clusters": ch_cluster_desc,
+            "relevance": rel_ch_full.tolist(),
+        }
+    else:
+        print(f"    Too few chaotic sources ({n_chaos}), skipping")
+
+    # ---- Surrogate-Contrast view: features = (real - shuffled),
+    #      showing only sequence-dependent structure.
+    _has_shuffled = (shuffled_matrix is not None
+                     and not np.all(np.isnan(shuffled_matrix)))
+    if _has_shuffled:
+        print(f"\n  Computing Surrogate-Contrast view ...")
+        X_contrast = X - shuffled_matrix
+        X_contrast = np.nan_to_num(X_contrast, nan=0.0)
+
+        # ANOVA filter on contrast values (Bonferroni)
+        _dom_idx_sc = {}
+        for _i, _n in enumerate(names):
+            _dom_idx_sc.setdefault(domains[_n], []).append(_i)
+        _valid_doms_sc = {d: idx for d, idx in _dom_idx_sc.items()
+                          if len(idx) >= 3}
+        bonf_sc = 0.05 / len(metric_names)
+        keep_sc = []
+        kept_sc_names = []
+        for j in range(len(metric_names)):
+            groups = []
+            for _d, _idx in _valid_doms_sc.items():
+                vals = X_contrast[_idx, j]
+                vals = vals[np.isfinite(vals)]
+                if len(vals) >= 2:
+                    groups.append(vals)
+            if len(groups) >= 2:
+                f_stat, p_val = sp_stats.f_oneway(*groups)
+                if np.isfinite(f_stat) and p_val < bonf_sc:
+                    keep_sc.append(j)
+                    kept_sc_names.append(metric_names[j])
+
+        print(f"    ANOVA filter: {len(keep_sc)} / {len(metric_names)} contrast "
+              f"metrics pass Bonferroni")
+
+        if len(keep_sc) >= 5:
+            X_sc = X_contrast[:, keep_sc]
+            sc_metric_names = kept_sc_names
+
+            # Deduplicate (|Spearman ρ| > 0.95)
+            if X_sc.shape[1] > 3:
+                rho_sc = np.abs(sp_stats.spearmanr(X_sc, axis=0).statistic)
+                if rho_sc.ndim == 0:
+                    rho_sc = np.array([[1.0]])
+                dist_sc = np.clip(1.0 - rho_sc, 0, None)
+                np.fill_diagonal(dist_sc, 0)
+                dist_sc = (dist_sc + dist_sc.T) / 2.0
+                Z_sc_corr = linkage(squareform(dist_sc, checks=False),
+                                    method='average')
+                clust_sc = fcluster(Z_sc_corr, t=0.05, criterion='distance')
+                col_var_sc = np.var(X_sc, axis=0)
+                keep_sc_dedup = []
+                for c in sorted(set(clust_sc)):
+                    members = np.where(clust_sc == c)[0]
+                    best = members[np.argmax(col_var_sc[members])]
+                    keep_sc_dedup.append(best)
+                keep_sc_dedup = sorted(keep_sc_dedup)
+                n_before_sc = X_sc.shape[1]
+                X_sc = X_sc[:, keep_sc_dedup]
+                sc_metric_names = [sc_metric_names[k] for k in keep_sc_dedup]
+                n_after_sc = len(keep_sc_dedup)
+                if n_after_sc < n_before_sc:
+                    print(f"    dedup: {n_before_sc} → {n_after_sc} metrics")
+            else:
+                n_after_sc = X_sc.shape[1]
+
+            sc_geos = sorted(set(m.split(':')[0] for m in sc_metric_names))
+
+            coords_sc, varexp_sc, cumvar_sc, Z_sc, Vt_sc = \
+                principal_projection(X_sc)
+            clusters_sc, labels_sc, order_sc, link_sc = \
+                cluster_atlas(Z_sc, names)
+
+            pr_sc = np.sum(varexp_sc)**2 / np.sum(varexp_sc**2)
+
+            # Axes info
+            axes_sc = {}
+            for pc_idx in range(min(3, len(Vt_sc))):
+                loadings = np.abs(Vt_sc[pc_idx])
+                top_idx = np.argsort(loadings)[::-1][:3]
+                geo_load = {}
+                for j in range(len(sc_metric_names)):
+                    geo = sc_metric_names[j].split(':')[0]
+                    geo_load[geo] = geo_load.get(geo, 0.0) + \
+                        Vt_sc[pc_idx, j]**2
+                top_geo = max(geo_load, key=geo_load.get)
+                top_metric = sc_metric_names[top_idx[0]].split(':')[1]
+                axes_sc[f"pc{pc_idx+1}"] = {
+                    "top_geometry": top_geo,
+                    "top_metric": top_metric,
+                }
+
+            # Cluster descriptions
+            sc_cluster_desc = {}
+            for c_id, members in clusters_sc.items():
+                domain_counts = Counter(domains[m] for m in members)
+                top_doms = [d for d, _ in domain_counts.most_common(2)]
+                label = ' + '.join(d.replace('_', ' ').title()
+                                   for d in top_doms)
+                sc_cluster_desc[c_id] = {
+                    "label": label,
+                    "size": len(members),
+                    "members": members,
+                    "top_domains": top_doms,
+                }
+            seen_sc = {}
+            for c_id, desc in sc_cluster_desc.items():
+                if desc["label"] in seen_sc:
+                    other = seen_sc[desc["label"]]
+                    sc_cluster_desc[other]["label"] += " I"
+                    desc["label"] += " II"
+                seen_sc[desc["label"]] = c_id
+
+            # Relevance: based on how much contrast each source has
+            from scipy.stats import rankdata as _rd_sc
+            _n_sc = X_sc.shape[0]
+            _ranks_sc = np.zeros_like(X_sc)
+            for _j in range(X_sc.shape[1]):
+                _col = np.nan_to_num(X_sc[:, _j], nan=0.0)
+                _ranks_sc[:, _j] = (_rd_sc(np.abs(_col)) / _n_sc
+                                    if np.std(_col) > 1e-15 else 0.5)
+            _count_sc = np.sum(_ranks_sc > 0.90, axis=1).astype(float)
+            _cmax_sc = _count_sc.max()
+            relevance_sc = (_count_sc / _cmax_sc if _cmax_sc > 1e-15
+                            else np.zeros(len(_count_sc)))
+
+            print(f"  {'Surrogate-Contrast':15s}  {n_after_sc:3d} metrics  "
+                  f"PC1+2={cumvar_sc[1]*100:.1f}%  eff_dim={pr_sc:.1f}  "
+                  f"geos: {', '.join(sc_geos[:6])}{'...' if len(sc_geos) > 6 else ''}")
+
+            view_results["Surrogate-Contrast"] = {
+                "coords": coords_sc,
+                "varexp": varexp_sc,
+                "labels": labels_sc,
+                "n_metrics": n_after_sc,
+                "eff_dim": float(pr_sc),
+                "question": "What structure survives shuffling? What is sequence-dependent?",
+                "detects": "Sequence-dependent structure only; distributional properties subtracted",
+                "geometries": sc_geos,
+                "axes": axes_sc,
+                "clusters": sc_cluster_desc,
+                "relevance": relevance_sc.tolist(),
+            }
+        else:
+            print(f"    Too few contrast metrics pass filter ({len(keep_sc)}), skipping")
+    else:
+        print(f"\n  Surrogate-Contrast view: SKIP (no shuffled_matrix)")
 
     # Cross-view stability: for each source, how many other sources
     # does it SOMETIMES but not ALWAYS co-cluster with?
@@ -2063,7 +2656,7 @@ def main(tier='complete'):
     make_figure_3d(names, domains, coords, varexp, labels)
 
     # D6: Surrogate decomposition
-    surr_results = direction_6(runner, domains)
+    surr_results, shuffled_matrix = direction_6(runner, domains)
 
     # D7: Multi-scale filtration
     scale_results, scales = direction_7(runner, domains)
@@ -2078,7 +2671,8 @@ def main(tier='complete'):
     geometry_catalog = _analyzer.geometry_catalog()
 
     view_results, stability = direction_8_views(
-        names, X, runner.metric_names, domains, view_lenses)
+        names, X, runner.metric_names, domains, view_lenses,
+        shuffled_matrix=shuffled_matrix)
     make_figure_views(names, domains, coords, varexp, labels,
                       view_results, stability)
 

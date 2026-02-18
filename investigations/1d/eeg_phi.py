@@ -1043,6 +1043,230 @@ def direction_10(all_data):
 
 
 # =========================================================================
+# D11: BONN DATASET PHI TEST (non-motor-imagery replication)
+# =========================================================================
+
+def direction_11():
+    """D11: Test phi enrichment on Bonn EEG dataset.
+
+    Addresses the objection that eegmmidb's motor-imagery paradigm
+    may disrupt resting spectral organization via mu desynchronization.
+    Bonn data is pure clinical EEG (Andrzejak et al. 2001).
+
+    Classes tested:
+      4 = eyes closed (healthy volunteers, surface electrodes)
+      5 = eyes open   (healthy volunteers, surface electrodes)
+      1 = seizure     (ictal — phi should be disrupted if it's real)
+
+    Method: concatenate 23 consecutive 178-point subsegments to reconstruct
+    ~4000-point pseudo-segments (23s at 173.61 Hz), extract peaks, pool,
+    run phase-rotation null on phi enrichment.
+    """
+    import csv
+
+    print("\n" + "=" * 78)
+    print("D11: BONN DATASET PHI TEST (non-motor-imagery)")
+    print("=" * 78)
+
+    BONN_FS = 173.61  # Hz — standard Andrzejak sampling rate
+    BONN_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             '..', '..', 'data', 'eeg',
+                             'Epileptic Seizure Recognition.csv')
+
+    # ── Load Bonn data ───────────────────────────────────────────────
+    print("  Loading Bonn dataset...")
+    with open(BONN_PATH) as f:
+        reader = csv.reader(f)
+        next(reader)  # skip header
+        rows = []
+        for r in reader:
+            rows.append([float(v) for v in r[1:]])  # skip unnamed col
+    arr = np.array(rows)
+    signals = arr[:, :-1]   # (11500, 178)
+    labels = arr[:, -1].astype(int)
+    print(f"    {signals.shape[0]} segments × {signals.shape[1]} points, "
+          f"fs={BONN_FS} Hz")
+
+    # ── Build pseudo-segments by concatenating subsegments ───────────
+    # Kaggle dataset: 100 original recordings × 23 subsegments per class
+    # Each subsegment = 178 points ≈ 1.03s at 173.61 Hz
+    # Concatenate 23 consecutive to get ~4094 points ≈ 23.6s
+    SEGS_PER_BLOCK = 23
+    BONN_CLASSES = {
+        4: 'Eyes Closed (healthy)',
+        5: 'Eyes Open (healthy)',
+        1: 'Seizure (ictal)',
+    }
+
+    inv_phi = 1.0 / PHI
+    rng = np.random.default_rng(2000)
+
+    class_peaks = {}
+    class_n_segs = {}
+
+    for class_id, class_name in BONN_CLASSES.items():
+        mask = labels == class_id
+        pool = signals[mask]  # (2300, 178)
+        n_blocks = len(pool) // SEGS_PER_BLOCK
+
+        peaks_all = []
+        for b in range(n_blocks):
+            # Concatenate consecutive subsegments
+            block = pool[b * SEGS_PER_BLOCK:(b + 1) * SEGS_PER_BLOCK].flatten()
+            # Extract peaks using medfilt method
+            pks = extract_peaks(block, sfreq=BONN_FS)
+            peaks_all.extend(pks)
+
+        peaks_all = np.array(peaks_all)
+        class_peaks[class_id] = peaks_all
+        class_n_segs[class_id] = n_blocks
+        print(f"    Class {class_id} ({class_name}): {n_blocks} blocks, "
+              f"{len(peaks_all)} peaks ({len(peaks_all)/max(n_blocks,1):.1f}/block)")
+
+    # ── Also extract with FOOOF ──────────────────────────────────────
+    try:
+        from specparam import SpectralModel
+        has_fooof = True
+    except ImportError:
+        has_fooof = False
+
+    class_peaks_fooof = {}
+    if has_fooof:
+        print("\n  FOOOF extraction:")
+        for class_id, class_name in BONN_CLASSES.items():
+            mask = labels == class_id
+            pool = signals[mask]
+            n_blocks = len(pool) // SEGS_PER_BLOCK
+            peaks_f = []
+            for b in range(n_blocks):
+                block = pool[b * SEGS_PER_BLOCK:(b + 1) * SEGS_PER_BLOCK].flatten()
+                pks = extract_peaks_fooof(block, sfreq=BONN_FS)
+                peaks_f.extend(pks)
+            peaks_f = np.array(peaks_f)
+            class_peaks_fooof[class_id] = peaks_f
+            print(f"    Class {class_id} ({class_name}): {len(peaks_f)} peaks")
+
+    # ── Phi enrichment tests ─────────────────────────────────────────
+    tests = [
+        ('u=0.500 w=0.15', 0.500, 0.15),
+        ('u=0.618 w=0.15', inv_phi, 0.15),
+        ('u=0.618 w=0.05', inv_phi, 0.05),
+    ]
+
+    print(f"\n  Phi enrichment (medfilt, phase-rotation null):")
+    d11_results = {}
+    for class_id, class_name in BONN_CLASSES.items():
+        peaks = class_peaks[class_id]
+        if len(peaks) < 50:
+            print(f"    Class {class_id}: too few peaks ({len(peaks)})")
+            continue
+        u = lattice_phase(peaks, F0_CLAIMED, PHI)
+        print(f"\n    Class {class_id} ({class_name}), {len(peaks)} peaks:")
+        class_results = {}
+        for label, target, width in tests:
+            obs = enrichment_at(u, target, width)
+            null = np.empty(N_PERM)
+            for i in range(N_PERM):
+                null[i] = enrichment_at((u + rng.uniform()) % 1.0, target, width)
+            p = np.mean(null >= obs)
+            excess = obs - null.mean()
+            class_results[label] = (obs, null.mean(), excess, p)
+            sig = " ***" if p < 0.01 else " *" if p < 0.05 else ""
+            print(f"      {label}: obs={obs:+.4f}  null={null.mean():+.4f}  "
+                  f"excess={excess:+.4f}  p={p:.4f}{sig}")
+        d11_results[class_id] = class_results
+
+    # ── FOOOF enrichment ─────────────────────────────────────────────
+    d11_fooof = {}
+    if has_fooof:
+        print(f"\n  Phi enrichment (FOOOF, phase-rotation null):")
+        for class_id, class_name in BONN_CLASSES.items():
+            peaks = class_peaks_fooof.get(class_id, np.array([]))
+            if len(peaks) < 50:
+                print(f"    Class {class_id}: too few peaks ({len(peaks)})")
+                continue
+            u = lattice_phase(peaks, F0_CLAIMED, PHI)
+            print(f"\n    Class {class_id} ({class_name}), {len(peaks)} peaks:")
+            class_results = {}
+            for label, target, width in tests:
+                obs = enrichment_at(u, target, width)
+                null = np.empty(N_PERM)
+                for i in range(N_PERM):
+                    null[i] = enrichment_at((u + rng.uniform()) % 1.0, target, width)
+                p = np.mean(null >= obs)
+                excess = obs - null.mean()
+                class_results[label] = (obs, null.mean(), excess, p)
+                sig = " ***" if p < 0.01 else " *" if p < 0.05 else ""
+                print(f"      {label}: obs={obs:+.4f}  null={null.mean():+.4f}  "
+                      f"excess={excess:+.4f}  p={p:.4f}{sig}")
+            d11_fooof[class_id] = class_results
+
+    # ── Ratio ranking (D2 replication) ───────────────────────────────
+    print(f"\n  Ratio ranking (healthy pooled, medfilt, u=0.618 w=0.05):")
+    healthy_peaks = np.concatenate([class_peaks[4], class_peaks[5]])
+    if len(healthy_peaks) >= 50:
+        ratio_results = {}
+        for name, r in NAMED_RATIOS.items():
+            u_r = lattice_phase(healthy_peaks, F0_CLAIMED, r)
+            obs_r = enrichment_at(u_r, inv_phi, 0.05)
+            nl = np.empty(N_PERM_SWEEP)
+            for i in range(N_PERM_SWEEP):
+                nl[i] = enrichment_at((u_r + rng.uniform()) % 1.0, inv_phi, 0.05)
+            p_r = np.mean(nl >= obs_r)
+            excess_r = obs_r - nl.mean()
+            ratio_results[name] = (r, obs_r, nl.mean(), excess_r, p_r)
+
+        phi_excess = ratio_results['φ'][3]
+        n_better = sum(1 for v in ratio_results.values() if v[3] > phi_excess)
+        print(f"    φ excess: {phi_excess:+.4f}, rank: #{n_better + 1}/{len(ratio_results)}")
+        for name in sorted(ratio_results, key=lambda n: -ratio_results[n][3]):
+            v = ratio_results[name]
+            sig = " ***" if v[4] < 0.01 else " *" if v[4] < 0.05 else ""
+            print(f"    {name:8s}: excess={v[3]:+.4f}  p={v[4]:.4f}{sig}")
+    else:
+        ratio_results = {}
+        print("    Too few healthy peaks")
+
+    # ── Seizure vs healthy comparison ────────────────────────────────
+    print(f"\n  Seizure vs healthy phi comparison:")
+    for method_name, pk_dict in [('medfilt', class_peaks),
+                                  ('FOOOF', class_peaks_fooof)]:
+        if not pk_dict:
+            continue
+        for cid, cname in [(1, 'Seizure'), (4, 'Eyes Closed'), (5, 'Eyes Open')]:
+            pks = pk_dict.get(cid, np.array([]))
+            if len(pks) < 20:
+                continue
+            u = lattice_phase(pks, F0_CLAIMED, PHI)
+            obs = enrichment_at(u, inv_phi, 0.05)
+            nl = np.empty(N_PERM_SWEEP)
+            for i in range(N_PERM_SWEEP):
+                nl[i] = enrichment_at((u + rng.uniform()) % 1.0, inv_phi, 0.05)
+            excess = obs - nl.mean()
+            p = np.mean(nl >= obs)
+            print(f"    {method_name:8s} {cname:15s}: excess={excess:+.4f}  p={p:.4f}")
+
+    # ── Kuiper omnibus on healthy pooled ─────────────────────────────
+    if len(healthy_peaks) >= 50:
+        u_h = lattice_phase(healthy_peaks, F0_CLAIMED, PHI)
+        V_h, p_h_raw = kuiper_v(u_h)
+        V_null_h = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            V_null_h[i] = kuiper_v((u_h + rng.uniform()) % 1.0)[0]
+        p_h_rot = np.mean(V_null_h >= V_h)
+        print(f"\n  Kuiper omnibus (healthy pooled):")
+        print(f"    V={V_h:.4f}, p(asymp)={p_h_raw:.2e}, p(phase-rot)={p_h_rot:.4f}")
+
+    return {
+        'class_peaks': class_peaks,
+        'class_peaks_fooof': class_peaks_fooof,
+        'medfilt_results': d11_results,
+        'fooof_results': d11_fooof,
+        'ratio_results': ratio_results,
+    }
+
+
+# =========================================================================
 # FIGURE
 # =========================================================================
 def make_figure(all_peaks, u_d1, obs_d1, null_d1,
@@ -1523,6 +1747,18 @@ def main():
         kf = d10['kuiper_fooof']
         km = d10['kuiper_medfilt']
         print(f"    Kuiper phase-rot: FOOOF p={kf[2]:.4f}, medfilt p={km[2]:.4f}")
+
+    # ── D11 ──
+    d11 = direction_11()
+    if d11:
+        print(f"\n  D11 Bonn dataset (non-motor-imagery):")
+        for cid, cname in [(4, 'Eyes Closed'), (5, 'Eyes Open'), (1, 'Seizure')]:
+            mr = d11['medfilt_results'].get(cid, {})
+            fr = d11['fooof_results'].get(cid, {})
+            key = 'u=0.618 w=0.05'
+            mp = mr.get(key, (0, 0, 0, 1.0))[3]
+            fp = fr.get(key, (0, 0, 0, 1.0))[3]
+            print(f"    {cname:20s}: medfilt p={mp:.4f}, FOOOF p={fp:.4f}")
 
 
 if __name__ == '__main__':
