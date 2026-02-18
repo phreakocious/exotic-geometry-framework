@@ -135,6 +135,34 @@ def extract_peaks(signal_data, sfreq=SFREQ, return_prominence=False):
     return freqs[peak_idx]
 
 
+def extract_peaks_fooof(signal_data, sfreq=SFREQ):
+    """Extract spectral peaks via specparam (FOOOF) parametric decomposition.
+    Fits explicit Gaussians against a parametric aperiodic component."""
+    from specparam import SpectralModel
+    freqs, psd = welch(signal_data, fs=sfreq, nperseg=NPERSEG,
+                       noverlap=NPERSEG // 2)
+    mask = (freqs >= FREQ_LO) & (freqs <= FREQ_HI)
+    freqs, psd = freqs[mask], psd[mask]
+    if len(freqs) < 10 or np.all(psd < 1e-30):
+        return np.array([])
+    try:
+        sm = SpectralModel(
+            peak_width_limits=[1.0, 8.0],
+            max_n_peaks=8,
+            min_peak_height=0.05,
+            verbose=False,
+        )
+        sm.fit(freqs, psd)
+        peaks = sm.get_params('peak')
+        if peaks is None or (hasattr(peaks, 'size') and peaks.size == 0):
+            return np.array([])
+        if peaks.ndim == 1:
+            return np.array([peaks[0]])
+        return peaks[:, 0]  # center frequencies
+    except Exception:
+        return np.array([])
+
+
 # =========================================================================
 # LATTICE PHASE + ENRICHMENT
 # =========================================================================
@@ -666,6 +694,355 @@ def direction_9(all_peaks):
 
 
 # =========================================================================
+# D10: FOOOF EXTRACTION COMPARISON
+# =========================================================================
+def direction_10(all_data):
+    """D10: Re-run D9 key tests with FOOOF (specparam) peak extraction.
+    Tests whether the noble-position result depends on extraction method."""
+    print("\n" + "=" * 78)
+    print("D10: FOOOF EXTRACTION COMPARISON")
+    print("=" * 78)
+
+    # ── Extract peaks with FOOOF ────────────────────────────────────────
+    print("  Extracting peaks via specparam (FOOOF)...")
+    fooof_peaks = []
+    fooof_per_subject = {}
+    medfilt_peaks = []
+    medfilt_per_subject = {}
+
+    for idx, (subj, ch, sig) in enumerate(all_data):
+        fp = extract_peaks_fooof(sig)
+        fooof_peaks.extend(fp)
+        fooof_per_subject.setdefault(subj, []).extend(fp)
+
+        mp = extract_peaks(sig)
+        medfilt_peaks.extend(mp)
+        medfilt_per_subject.setdefault(subj, []).extend(mp)
+
+        if (idx + 1) % 1000 == 0:
+            print(f"    {idx + 1}/{len(all_data)}")
+
+    fooof_peaks = np.array(fooof_peaks)
+    medfilt_peaks = np.array(medfilt_peaks)
+
+    print(f"\n  Peak counts:")
+    print(f"    Median-filter: {len(medfilt_peaks)}")
+    print(f"    FOOOF:         {len(fooof_peaks)}")
+    print(f"    Ratio:         {len(fooof_peaks) / max(len(medfilt_peaks), 1):.2f}x")
+
+    if len(fooof_peaks) < 100:
+        print("  FOOOF: too few peaks, aborting D10")
+        return None
+
+    # ── Band-wise comparison ────────────────────────────────────────────
+    print(f"\n  Band-wise peak counts (FOOOF vs medfilt):")
+    for band_name, (n_lo, n_hi) in PHI_BANDS.items():
+        f_lo = F0_CLAIMED * PHI ** n_lo
+        f_hi = F0_CLAIMED * PHI ** n_hi
+        n_f = np.sum((fooof_peaks >= f_lo) & (fooof_peaks < f_hi))
+        n_m = np.sum((medfilt_peaks >= f_lo) & (medfilt_peaks < f_hi))
+        ratio = n_f / max(n_m, 1)
+        print(f"    {band_name:12s} [{f_lo:5.1f}–{f_hi:5.1f}]:  FOOOF={n_f:6d}  medfilt={n_m:6d}  ratio={ratio:.2f}x")
+
+    inv_phi = 1.0 / PHI
+    rng = np.random.default_rng(1000)
+
+    # ── D9 key tests on FOOOF peaks ─────────────────────────────────────
+    print(f"\n  D9 tests on FOOOF peaks:")
+    u_f = lattice_phase(fooof_peaks, F0_CLAIMED, PHI)
+    u_m = lattice_phase(medfilt_peaks, F0_CLAIMED, PHI)
+
+    tests = [
+        ('u=0.500 w=0.15', 0.500, 0.15),
+        ('u=0.618 w=0.15', inv_phi, 0.15),
+        ('u=0.618 w=0.05', inv_phi, 0.05),
+        ('u=0.500 w=0.05', 0.500, 0.05),
+    ]
+
+    fooof_results = {}
+    medfilt_results = {}
+    for label, target, width in tests:
+        # FOOOF
+        obs_f = enrichment_at(u_f, target, width)
+        null_f = np.empty(N_PERM)
+        for i in range(N_PERM):
+            delta = rng.uniform()
+            null_f[i] = enrichment_at((u_f + delta) % 1.0, target, width)
+        p_f = np.mean(null_f >= obs_f)
+        fooof_results[label] = (target, width, obs_f, null_f.mean(), null_f.std(), p_f)
+
+        # Medfilt (re-run for fair comparison with same RNG state pattern)
+        obs_m = enrichment_at(u_m, target, width)
+        null_m = np.empty(N_PERM)
+        for i in range(N_PERM):
+            delta = rng.uniform()
+            null_m[i] = enrichment_at((u_m + delta) % 1.0, target, width)
+        p_m = np.mean(null_m >= obs_m)
+        medfilt_results[label] = (target, width, obs_m, null_m.mean(), null_m.std(), p_m)
+
+        sig_f = " ***" if p_f < 0.01 else " *" if p_f < 0.05 else ""
+        sig_m = " ***" if p_m < 0.01 else " *" if p_m < 0.05 else ""
+        print(f"    {label}:")
+        print(f"      FOOOF:   obs={obs_f:+.4f}  null={null_f.mean():+.4f}±{null_f.std():.4f}  p={p_f:.4f}{sig_f}")
+        print(f"      medfilt: obs={obs_m:+.4f}  null={null_m.mean():+.4f}±{null_m.std():.4f}  p={p_m:.4f}{sig_m}")
+
+    # ── Kuiper omnibus ──────────────────────────────────────────────────
+    V_f, p_f_raw = kuiper_v(u_f)
+    V_null_f = np.empty(N_PERM_SWEEP)
+    for i in range(N_PERM_SWEEP):
+        delta = rng.uniform()
+        V_null_f[i] = kuiper_v((u_f + delta) % 1.0)[0]
+    p_f_rot = np.mean(V_null_f >= V_f)
+
+    V_m, p_m_raw = kuiper_v(u_m)
+    V_null_m = np.empty(N_PERM_SWEEP)
+    for i in range(N_PERM_SWEEP):
+        delta = rng.uniform()
+        V_null_m[i] = kuiper_v((u_m + delta) % 1.0)[0]
+    p_m_rot = np.mean(V_null_m >= V_m)
+
+    print(f"\n  Kuiper's V omnibus:")
+    print(f"    FOOOF:   V={V_f:.4f}, p(asymp)={p_f_raw:.2e}, p(phase-rot)={p_f_rot:.4f}")
+    print(f"    medfilt: V={V_m:.4f}, p(asymp)={p_m_raw:.2e}, p(phase-rot)={p_m_rot:.4f}")
+
+    # ── D2 ratio ranking with FOOOF ─────────────────────────────────────
+    print(f"\n  D2 re-ranking (u=0.618, w=0.05) with FOOOF peaks:")
+    ratio_618_f = {}
+    for name, r in NAMED_RATIOS.items():
+        u_r = lattice_phase(fooof_peaks, F0_CLAIMED, r)
+        obs_r = enrichment_at(u_r, inv_phi, 0.05)
+        nl = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            delta = rng.uniform()
+            nl[i] = enrichment_at((u_r + delta) % 1.0, inv_phi, 0.05)
+        p_r = np.mean(nl >= obs_r)
+        excess_r = obs_r - nl.mean()
+        ratio_618_f[name] = (r, obs_r, nl.mean(), excess_r, p_r)
+
+    phi_excess = ratio_618_f['φ'][3]
+    n_better = sum(1 for v in ratio_618_f.values() if v[3] > phi_excess)
+    print(f"    φ excess: {phi_excess:+.4f}, rank: #{n_better + 1}/{len(ratio_618_f)}")
+    for name in sorted(ratio_618_f, key=lambda n: -ratio_618_f[n][3]):
+        v = ratio_618_f[name]
+        sig = " ***" if v[4] < 0.01 else " *" if v[4] < 0.05 else ""
+        print(f"    {name:8s}: excess={v[3]:+.4f}  p={v[4]:.4f}{sig}")
+
+    # ── Per-subject comparison ──────────────────────────────────────────
+    print(f"\n  Per-subject enrichment at u=0.618 (w=0.05):")
+    subj_excess_f = []
+    subj_excess_m = []
+    for subj in sorted(fooof_per_subject.keys()):
+        fp = np.array(fooof_per_subject.get(subj, []))
+        mp = np.array(medfilt_per_subject.get(subj, []))
+        if len(fp) >= 20:
+            u_s = lattice_phase(fp, F0_CLAIMED, PHI)
+            obs_s = enrichment_at(u_s, inv_phi, 0.05)
+            null_s = np.empty(500)
+            for i in range(500):
+                null_s[i] = enrichment_at((u_s + rng.uniform()) % 1.0, inv_phi, 0.05)
+            subj_excess_f.append(obs_s - null_s.mean())
+        if len(mp) >= 20:
+            u_s = lattice_phase(mp, F0_CLAIMED, PHI)
+            obs_s = enrichment_at(u_s, inv_phi, 0.05)
+            null_s = np.empty(500)
+            for i in range(500):
+                null_s[i] = enrichment_at((u_s + rng.uniform()) % 1.0, inv_phi, 0.05)
+            subj_excess_m.append(obs_s - null_s.mean())
+
+    subj_excess_f = np.array(subj_excess_f)
+    subj_excess_m = np.array(subj_excess_m)
+
+    if len(subj_excess_f) >= 3:
+        t_f, p_f_subj = stats.ttest_1samp(subj_excess_f, 0)
+        print(f"    FOOOF:   {subj_excess_f.mean():+.4f} ± {subj_excess_f.std():.4f}, "
+              f"t={t_f:.2f}, p={p_f_subj:.4f}, {np.sum(subj_excess_f > 0)}/{len(subj_excess_f)} positive")
+    if len(subj_excess_m) >= 3:
+        t_m, p_m_subj = stats.ttest_1samp(subj_excess_m, 0)
+        print(f"    medfilt: {subj_excess_m.mean():+.4f} ± {subj_excess_m.std():.4f}, "
+              f"t={t_m:.2f}, p={p_m_subj:.4f}, {np.sum(subj_excess_m > 0)}/{len(subj_excess_m)} positive")
+
+    # ── Phase target sweep with FOOOF ───────────────────────────────────
+    print(f"\n  Phase target sweep (FOOOF, w=0.05):")
+    targets = np.linspace(0, 1, 200, endpoint=False)
+    sweep_f = np.array([enrichment_at(u_f, t, 0.05) for t in targets])
+    null_idx = np.linspace(0, len(targets) - 1, 40, dtype=int)
+    sweep_null_f = np.full(len(targets), np.nan)
+    for idx in null_idx:
+        t = targets[idx]
+        nl = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            nl[i] = enrichment_at((u_f + rng.uniform()) % 1.0, t, 0.05)
+        sweep_null_f[idx] = nl.mean()
+    valid = ~np.isnan(sweep_null_f)
+    sweep_null_f = np.interp(np.arange(len(targets)),
+                             np.where(valid)[0], sweep_null_f[valid])
+    sweep_excess_f = sweep_f - sweep_null_f
+    best_t_f = targets[np.argmax(sweep_excess_f)]
+    idx_05 = np.argmin(np.abs(targets - 0.5))
+    idx_618 = np.argmin(np.abs(targets - inv_phi))
+    print(f"    Best target: u={best_t_f:.3f} (excess={sweep_excess_f.max():+.4f})")
+    print(f"    At u=0.500:  excess={sweep_excess_f[idx_05]:+.4f}")
+    print(f"    At u=0.618:  excess={sweep_excess_f[idx_618]:+.4f}")
+
+    # ── Rebuttal A: Subject-averaged PSD → FOOOF ──────────────────────
+    from specparam import SpectralModel
+    print(f"\n  REBUTTAL A: Subject-averaged PSD → FOOOF")
+    by_subject = {}
+    for subj, ch, sig in all_data:
+        by_subject.setdefault(subj, []).append(sig)
+
+    avg_fooof_peaks = []
+    for subj in sorted(by_subject.keys()):
+        sigs = by_subject[subj]
+        psds = []
+        for sig in sigs:
+            freqs_w, psd_w = welch(sig, fs=SFREQ, nperseg=NPERSEG,
+                                   noverlap=NPERSEG // 2)
+            psds.append(psd_w)
+        avg_psd = np.mean(psds, axis=0)
+        mask = (freqs_w >= FREQ_LO) & (freqs_w <= FREQ_HI)
+        try:
+            sm = SpectralModel(peak_width_limits=[1.0, 8.0], max_n_peaks=8,
+                               min_peak_height=0.05, verbose=False)
+            sm.fit(freqs_w[mask], avg_psd[mask])
+            p = sm.get_params('peak')
+            if p is not None and hasattr(p, 'size') and p.size > 0:
+                cfs = p[:, 0] if p.ndim == 2 else [p[0]]
+                avg_fooof_peaks.extend(cfs)
+        except Exception:
+            pass
+    avg_fooof_peaks = np.array(avg_fooof_peaks)
+    print(f"    Peaks: {len(avg_fooof_peaks)} ({len(avg_fooof_peaks)/len(by_subject):.1f}/subject)")
+
+    avg_results = {}
+    if len(avg_fooof_peaks) >= 50:
+        u_avg = lattice_phase(avg_fooof_peaks, F0_CLAIMED, PHI)
+        for label, target, width in tests:
+            obs_a = enrichment_at(u_avg, target, width)
+            null_a = np.empty(N_PERM)
+            for i in range(N_PERM):
+                null_a[i] = enrichment_at((u_avg + rng.uniform()) % 1.0, target, width)
+            p_a = np.mean(null_a >= obs_a)
+            avg_results[label] = p_a
+            sig = " ***" if p_a < 0.01 else " *" if p_a < 0.05 else ""
+            print(f"    {label}: obs={obs_a:+.4f}  p={p_a:.4f}{sig}")
+
+        V_avg, _ = kuiper_v(u_avg)
+        V_null_a = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            V_null_a[i] = kuiper_v((u_avg + rng.uniform()) % 1.0)[0]
+        p_avg_rot = np.mean(V_null_a >= V_avg)
+        avg_results['kuiper_rot'] = p_avg_rot
+        print(f"    Kuiper phase-rot: p={p_avg_rot:.4f}")
+
+    # ── Rebuttal B: Alpha-band only ─────────────────────────────────────
+    print(f"\n  REBUTTAL B: Alpha-band only [{F0_CLAIMED:.1f}–{F0_CLAIMED * PHI:.1f} Hz]")
+    alpha_lo = F0_CLAIMED * PHI ** 0
+    alpha_hi = F0_CLAIMED * PHI ** 1
+    fooof_alpha = fooof_peaks[(fooof_peaks >= alpha_lo) & (fooof_peaks < alpha_hi)]
+    medfilt_alpha = medfilt_peaks[(medfilt_peaks >= alpha_lo) & (medfilt_peaks < alpha_hi)]
+    print(f"    FOOOF alpha: {len(fooof_alpha)}, medfilt alpha: {len(medfilt_alpha)}")
+
+    alpha_results = {}
+    for method_name, alpha_set in [('FOOOF', fooof_alpha), ('medfilt', medfilt_alpha)]:
+        if len(alpha_set) < 50:
+            continue
+        u_a = lattice_phase(alpha_set, F0_CLAIMED, PHI)
+        for label, target, width in tests:
+            obs_a = enrichment_at(u_a, target, width)
+            null_a = np.empty(N_PERM)
+            for i in range(N_PERM):
+                null_a[i] = enrichment_at((u_a + rng.uniform()) % 1.0, target, width)
+            p_a = np.mean(null_a >= obs_a)
+            key = f"{method_name}:{label}"
+            alpha_results[key] = p_a
+            sig = " ***" if p_a < 0.01 else " *" if p_a < 0.05 else ""
+            print(f"    {method_name} {label}: obs={obs_a:+.4f}  p={p_a:.4f}{sig}")
+
+        V_a, _ = kuiper_v(u_a)
+        V_null_a = np.empty(N_PERM_SWEEP)
+        for i in range(N_PERM_SWEEP):
+            V_null_a[i] = kuiper_v((u_a + rng.uniform()) % 1.0)[0]
+        p_a_rot = np.mean(V_null_a >= V_a)
+        alpha_results[f"{method_name}:kuiper_rot"] = p_a_rot
+        print(f"    {method_name} Kuiper phase-rot: p={p_a_rot:.4f}")
+
+    # ── Rebuttal C: FOOOF parameter sensitivity (averaged PSDs) ─────────
+    print(f"\n  REBUTTAL C: FOOOF parameter sensitivity (averaged PSDs)")
+    param_results = {}
+    for mph in [0.01, 0.05, 0.10]:
+        peaks_p = []
+        for subj in sorted(by_subject.keys()):
+            sigs = by_subject[subj]
+            psds = []
+            for sig in sigs:
+                freqs_w, psd_w = welch(sig, fs=SFREQ, nperseg=NPERSEG,
+                                       noverlap=NPERSEG // 2)
+                psds.append(psd_w)
+            avg_psd = np.mean(psds, axis=0)
+            mask = (freqs_w >= FREQ_LO) & (freqs_w <= FREQ_HI)
+            try:
+                sm = SpectralModel(peak_width_limits=[0.5, 12.0], max_n_peaks=12,
+                                   min_peak_height=mph, verbose=False)
+                sm.fit(freqs_w[mask], avg_psd[mask])
+                p = sm.get_params('peak')
+                if p is not None and hasattr(p, 'size') and p.size > 0:
+                    cfs = p[:, 0] if p.ndim == 2 else [p[0]]
+                    peaks_p.extend(cfs)
+            except Exception:
+                pass
+        peaks_p = np.array(peaks_p)
+        if len(peaks_p) < 50:
+            print(f"    mph={mph}: {len(peaks_p)} peaks (too few)")
+            continue
+        u_p = lattice_phase(peaks_p, F0_CLAIMED, PHI)
+        obs_p = enrichment_at(u_p, inv_phi, 0.05)
+        null_p = np.empty(N_PERM)
+        for i in range(N_PERM):
+            null_p[i] = enrichment_at((u_p + rng.uniform()) % 1.0, inv_phi, 0.05)
+        p_val = np.mean(null_p >= obs_p)
+        param_results[mph] = (len(peaks_p), p_val)
+        sig = " ***" if p_val < 0.01 else " *" if p_val < 0.05 else ""
+        print(f"    mph={mph}: {len(peaks_p)} peaks, u=0.618 w=0.05 p={p_val:.4f}{sig}")
+
+    # ── Rebuttal D: Matched peak count ──────────────────────────────────
+    print(f"\n  REBUTTAL D: Matched peak count (subsample medfilt → {len(fooof_peaks)})")
+    rng_d = np.random.default_rng(5000)
+    matched_p = []
+    for trial in range(50):
+        idx = rng_d.choice(len(medfilt_peaks), size=len(fooof_peaks), replace=False)
+        sub = medfilt_peaks[idx]
+        u_s = lattice_phase(sub, F0_CLAIMED, PHI)
+        obs_s = enrichment_at(u_s, inv_phi, 0.05)
+        null_s = np.empty(500)
+        for i in range(500):
+            null_s[i] = enrichment_at((u_s + rng_d.uniform()) % 1.0, inv_phi, 0.05)
+        matched_p.append(np.mean(null_s >= obs_s))
+    matched_p = np.array(matched_p)
+    print(f"    50 subsamples: p={matched_p.mean():.4f} ± {matched_p.std():.4f}, "
+          f"{np.mean(matched_p < 0.05):.0%} reach p<0.05")
+
+    return {
+        'fooof_peaks': fooof_peaks,
+        'medfilt_peaks': medfilt_peaks,
+        'fooof_results': fooof_results,
+        'medfilt_results': medfilt_results,
+        'kuiper_fooof': (V_f, p_f_raw, p_f_rot),
+        'kuiper_medfilt': (V_m, p_m_raw, p_m_rot),
+        'ratio_618_fooof': ratio_618_f,
+        'subj_excess_fooof': subj_excess_f,
+        'subj_excess_medfilt': subj_excess_m,
+        'targets': targets,
+        'sweep_fooof': sweep_f,
+        'sweep_null_fooof': sweep_null_f,
+        'avg_results': avg_results,
+        'alpha_results': alpha_results,
+        'param_results': param_results,
+        'matched_p': matched_p,
+    }
+
+
+# =========================================================================
 # FIGURE
 # =========================================================================
 def make_figure(all_peaks, u_d1, obs_d1, null_d1,
@@ -1133,6 +1510,19 @@ def main():
                    d9_sweep_null_mean, d9_sweep_null_95, d9_width_results,
                    d9_V, d9_p_raw, d9_p_rot, d9_ratio_618,
                    d9_f0_g, d9_r_g, d9_heatmap, d9_best_f0, d9_best_r)
+
+    # ── D10 ──
+    d10 = direction_10(all_data)
+    if d10:
+        print(f"\n  D10 FOOOF comparison:")
+        for label in ['u=0.618 w=0.05', 'u=0.500 w=0.15']:
+            f = d10['fooof_results'].get(label)
+            m = d10['medfilt_results'].get(label)
+            if f and m:
+                print(f"    {label}: FOOOF p={f[5]:.4f}, medfilt p={m[5]:.4f}")
+        kf = d10['kuiper_fooof']
+        km = d10['kuiper_medfilt']
+        print(f"    Kuiper phase-rot: FOOOF p={kf[2]:.4f}, medfilt p={km[2]:.4f}")
 
 
 if __name__ == '__main__':

@@ -131,9 +131,30 @@ A critique argued that the phi-lattice theory predicts enrichment at u=1/φ=0.61
 
 **What the critique gets wrong:** The effect is marginal (p=0.06), not significant. The Kuiper omnibus test is decisive: the phase distribution is non-uniform (p≈0 asymptotically), but this non-uniformity is entirely explained by the shape of the peak frequency distribution --- alpha dominance, not f₀-specific lattice alignment. The phase-rotation null produces equally non-uniform distributions (p=0.614). The (f₀, r) parameter space still does not favor the claimed values under either metric.
 
-**On the claim of p<0.05 in 4/6 datasets:** Likely due to different peak extraction methods (FOOOF, GED spatial coherence vs our median-filter 1/f subtraction) and possibly no phase-rotation null control. A genuine geometric law should not depend on the peak extraction algorithm.
-
 ![D9 Noble-Position Response](figures/eeg_phi_d9.png)
+
+### D10: Extraction Method Sensitivity
+
+To test whether the marginal D9 result depends on peak extraction methodology, we compared median-filter 1/f subtraction against FOOOF (specparam) parametric decomposition, which fits explicit Gaussians against a parametric aperiodic component.
+
+**Per-channel comparison:** FOOOF extracts fewer total peaks (51K vs 86K) but more alpha peaks (+23%), consistent with the prediction that parametric fitting better resolves oscillatory components in the alpha range while being more conservative at high frequencies.
+
+| Measure | FOOOF (51K peaks) | Medfilt (86K peaks) |
+|---------|-------------------|---------------------|
+| u=0.618, w=0.05 | p=0.352 | p=0.066 |
+| φ rank (u=0.618) | #3/12 | #1/12 |
+| Per-subject t | 1.99 (p=0.049, 56% pos.) | 8.05 (p<0.0001, 77% pos.) |
+| Phase sweep best target | u=0.880 | u=0.575 |
+
+**Subject-averaged PSD (standard FOOOF practice):** Averaging PSDs across 64 channels per subject yields 732 peaks (6.7/subject). u=0.618 w=0.05: p=0.581.
+
+**Alpha-band only:** Restricting to [7.5–12.1 Hz], FOOOF per-channel (12,337 peaks) with u=0.618 and w=0.15 reaches p=0.025. At w=0.05: p=0.066. Kuiper phase-rotation: p=0.513. φ rank: #4/12. This is the only (method, band, window, target) combination that crosses p<0.05 among all configurations tested.
+
+**Parameter sensitivity:** All FOOOF parameter settings (min_peak_height=0.01–0.10, peak_width=[0.5,12], max_n_peaks=12) on averaged PSDs give p=0.28–0.44. The result is stable across parameter choices.
+
+**Matched peak count:** Subsampling medfilt to match FOOOF's N=51K (50 trials): mean p=0.059±0.013, 24% reach p<0.05. The marginal effect is not a statistical power artifact.
+
+**Summary:** The enrichment pattern is extraction-method-dependent. The phase target sweep yields u=0.880 for FOOOF vs u=0.575 for medfilt — qualitatively different phase structures from the same underlying data. One (method × band × window × target) combination reaches p=0.025, but this does not survive the Kuiper omnibus test (p=0.513) and represents a single point in a large space of analytical choices.
 
 → `investigations/1d/eeg_phi.py`
 

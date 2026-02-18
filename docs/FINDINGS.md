@@ -291,6 +291,11 @@ All validated discoveries and negative results from 68 investigations.
 | 79i | Kuiper omnibus: phase non-uniformity is NOT f₀-specific (phase-rotation p=0.614) | alpha dominance explains all non-uniformity | `1d/eeg_phi.py` |
 | 79j | Phase target sweep: actual enrichment peak at u=0.575, between both theoretical predictions | neither PKL (u=0.5) nor noble (u=0.618) is correct target | `1d/eeg_phi.py` |
 | 79k | D4 rescan with noble metric: optimum at (4.33, 4.00), still far from claimed (7.5, φ) | new metric does not rescue claimed parameters | `1d/eeg_phi.py` |
+| 79l | FOOOF extraction: phi enrichment weakens (p=0.066→0.352), φ rank #1→#3, per-subject t=8.05→1.99 | effect is extraction-method-dependent | `1d/eeg_phi.py` |
+| 79m | Subject-averaged PSD FOOOF: p=0.581 (732 peaks, 6.7/subject) | standard FOOOF practice yields non-significant result | `1d/eeg_phi.py` |
+| 79n | Alpha-only FOOOF per-ch, u=0.618, w=0.15: p=0.025 — sole significant combination tested | Kuiper p=0.513; φ rank #4/12; one point in a large analytical space | `1d/eeg_phi.py` |
+| 79o | FOOOF parameter sensitivity: p=0.28–0.44 across all settings on averaged PSDs | stable across parameter choices | `1d/eeg_phi.py` |
+| 79p | Phase target sweep differs between methods: FOOOF u=0.880, medfilt u=0.575 | enrichment pattern is extraction-dependent | `1d/eeg_phi.py` |
 
 ## Negative Results (25)
 
@@ -322,7 +327,7 @@ These are equally important — they define the boundaries of what geometric ana
 | 19 | **π digits indistinguishable from random in base-256 AND base-10** (0 sig vs random, 0 vs shuffled, 0 across positions 0K-48K, 0 under delay embedding τ=1-5) | Strong geometric evidence for normality of π |
 | 19a | **e and √2 digits also indistinguishable from random** (same battery: all 0 sig) | Evidence extends to e and √2 |
 | 20 | **Protein sequential ordering is negligible** — globular vs shuffled = 1 sig, IAAFT = 0 for both classes | Glob-vs-IDP is compositional (AA frequencies), not sequential |
-| 21 | **EEG φⁿ lattice claim not supported** — φ ranks 5th of 12 at u=0.5, improves to #1 at u=1/φ but p=0.06; Kuiper omnibus confirms non-uniformity is NOT f₀-specific (phase-rot p=0.61); D4 optimum far from (7.5, φ) under both metrics | Real spectral organization exists but is not φ-specific; noble-position retest confirms |
+| 21 | **EEG φⁿ lattice not supported** — φ ranks #5/12 at u=0.5, #1/12 at u=1/φ (p=0.06); Kuiper omnibus p=0.614; FOOOF extraction weakens signal (p=0.35); one (method×band×window×target) combination reaches p=0.025 but fails Kuiper | Real spectral organization exists but is not robustly φ-specific across extraction methods or omnibus tests |
 | 21 | **CF(Sqrt2) vs shuffled = 0 sig** — constant sequence shuffled is identical (`1d/math_constants.py`) | Validates methodology (not a failure) |
 | 22 | **Base-10 digits of Pi/e/Phi/Sqrt2 all indistinguishable from each other (0 sig)** (`1d/math_constants.py`) | Normal number digits = i.i.d. uniform |
 
