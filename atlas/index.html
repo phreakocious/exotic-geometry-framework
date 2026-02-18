@@ -217,13 +217,138 @@
         .preset-pill.active { border-color: #e67e22; color: #ddd; background: rgba(230, 126, 34, 0.15); }
         #explorer-back { margin-top: 6px; }
         
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #0a0a0a; z-index: 1000; transition: opacity 0.5s; }
-        .loader { width: 48px; height: 48px; border: 3px solid #333; border-bottom-color: #3498db; border-radius: 50%; display: inline-block; box-sizing: border-box; animation: rotation 1s linear infinite; }
-        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #overlay { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            background: #050505; 
+            z-index: 5000; 
+            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1); 
+        }
+        .loader-container {
+            text-align: center;
+            width: 320px;
+            animation: fade-in 1s ease-out;
+        }
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .geometric-loader {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 40px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .loader-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 1px solid transparent;
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: loader-spin 3s linear infinite;
+        }
+        .loader-ring:nth-child(2) {
+            width: 75%;
+            height: 75%;
+            border-top-color: #e74c3c;
+            animation-duration: 2s;
+            animation-direction: reverse;
+        }
+        .loader-ring:nth-child(3) {
+            width: 50%;
+            height: 50%;
+            border-top-color: #2ecc71;
+            animation-duration: 1.5s;
+        }
+        .loader-diamond {
+            width: 14px;
+            height: 14px;
+            background: #fff;
+            transform: rotate(45deg);
+            box-shadow: 0 0 20px rgba(255,255,255,0.8);
+            animation: loader-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes loader-spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes loader-pulse {
+            0%, 100% { transform: rotate(45deg) scale(0.8); opacity: 0.5; }
+            50% { transform: rotate(45deg) scale(1.2); opacity: 1; }
+        }
+        .loader-title {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.4em;
+            font-weight: 800;
+            color: #fff;
+            margin-bottom: 12px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.3);
+        }
+        .loader-status {
+            font-size: 11px;
+            color: #3498db;
+            margin-bottom: 20px;
+            height: 14px;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .progress-container {
+            width: 100%;
+            height: 1px;
+            background: #111;
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #e74c3c, #2ecc71);
+            background-size: 200% 100%;
+            transition: width 0.4s cubic-bezier(0.1, 0.7, 1.0, 0.1);
+            animation: gradient-shift 3s linear infinite;
+        }
+        @keyframes gradient-shift {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
+        }
+        .loader-subtext {
+            font-size: 9px;
+            color: #444;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
-    <div id="overlay"><span class="loader"></span></div>
+    <div id="overlay">
+        <div class="loader-container">
+            <div class="geometric-loader">
+                <div class="loader-ring"></div>
+                <div class="loader-ring"></div>
+                <div class="loader-ring"></div>
+                <div class="loader-diamond"></div>
+            </div>
+            <div class="loader-title">Structure Atlas</div>
+            <div id="loader-status" class="loader-status">Initializing System...</div>
+            <div class="progress-container">
+                <div id="progress-bar" class="progress-bar"></div>
+            </div>
+            <div class="loader-subtext">nullphase | exotic geometry framework</div>
+        </div>
+    </div>
     <button id="ui-toggle">Toggle UI</button>
     <div id="ui">
         <div class="glass-card">
@@ -1323,6 +1448,7 @@
         distSlider.addEventListener('input', (e) => {
             labelThreshold = parseFloat(e.target.value);
             distVal.textContent = labelThreshold;
+            updateLabels();
         });
         
         densitySlider.addEventListener('input', (e) => {
@@ -1801,12 +1927,66 @@
             mouse = new THREE.Vector2();
 
             // Load Data
-            status.textContent = "Loading data...";
-            try {
-                const dataResp = await fetch('structure_atlas_data.json');
+            const loaderStatus = document.getElementById('loader-status');
+            const progressBar = document.getElementById('progress-bar');
+            
+            const loadingMessages = [
+                "Mapping E8 Lattice...",
+                "Traversing Hyperbolic Poincaré Disk...",
+                "Reconstructing Lorenz Attractor...",
+                "Analyzing Symplectic Phase Space...",
+                "Projecting SL(2,R) Transformations...",
+                "Decomposing Persistent Homology...",
+                "Sampling Wasserstein Optimal Transport...",
+                "Extracting Tropical Linear Manifolds...",
+                "Measuring Lorentzian Spacetime Curvature...",
+                "Scanning Dodecagonal Quasicrystal...",
+                "Detecting Einstein Monotile Chirality...",
+                "Computing Fisher Information Metrics..."
+            ];
+            
+            let messageIdx = 0;
+            const messageInterval = setInterval(() => {
+                loaderStatus.textContent = loadingMessages[messageIdx];
+                messageIdx = (messageIdx + 1) % loadingMessages.length;
+            }, 1200);
 
-                if (!dataResp.ok) throw new Error("Atlas data not found");
-                data = await dataResp.json();
+            async function fetchWithProgress(url) {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const contentLength = response.headers.get('content-length');
+                if (!contentLength) return await response.json();
+                
+                const total = parseInt(contentLength, 10);
+                let loaded = 0;
+                const reader = response.body.getReader();
+                const chunks = [];
+                
+                while(true) {
+                    const {done, value} = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    loaded += value.length;
+                    progressBar.style.width = `${(loaded / total * 100).toFixed(0)}%`;
+                }
+                
+                const allChunks = new Uint8Array(loaded);
+                let position = 0;
+                for (const chunk of chunks) {
+                    allChunks.set(chunk, position);
+                    position += chunk.length;
+                }
+                return JSON.parse(new TextDecoder("utf-8").decode(allChunks));
+            }
+
+            status.textContent = "Initializing connection...";
+            try {
+                data = await fetchWithProgress('structure_atlas_data.json');
+                
+                clearInterval(messageInterval);
+                loaderStatus.textContent = "Synthesizing Phase Space...";
+                progressBar.style.width = '100%';
 
                 // Scale coordinates by 1.25 to make the projection larger
                 data.sources.forEach(s => {
@@ -1962,6 +2142,11 @@
                 createLegend(data);
                 buildViewButtons();
 
+                // Initialize relevance from per-source global relevance
+                const hasRelevance = data.sources.some(s => s.relevance !== undefined);
+                sourceRelevance = data.sources.map(s => hasRelevance ? (s.relevance || 0) : 1);
+                updatePointVisibility();
+
                 // Explorer mode setup
                 if (data.profiles && data.metric_names) {
                     explorerZScores = precomputeZScores();
@@ -2073,14 +2258,19 @@
                 });
 
                 status.textContent = "Ready.";
+                loaderStatus.textContent = "Projection Complete";
                 document.getElementById('overlay').style.opacity = '0';
-                setTimeout(() => document.getElementById('overlay').remove(), 500);
+                setTimeout(() => document.getElementById('overlay').remove(), 800);
             } catch (e) {
                 console.error("Failed to load atlas data:", e);
                 status.style.color = "#e74c3c";
-                status.textContent = "Error: Data file not found.";
-                document.querySelector('.loader').style.borderBottomColor = '#e74c3c';
-                document.querySelector('.loader').style.animation = 'none';
+                status.textContent = "Error: System failure.";
+                if (loaderStatus) {
+                    loaderStatus.textContent = "Data retrieval error";
+                    loaderStatus.style.color = "#e74c3c";
+                }
+                if (progressBar) progressBar.style.background = "#e74c3c";
+                if (typeof messageInterval !== 'undefined') clearInterval(messageInterval);
             }
 
             window.addEventListener('resize', onWindowResize);
