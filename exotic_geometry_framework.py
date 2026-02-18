@@ -371,8 +371,52 @@ class E8Geometry(ExoticGeometry):
         best_alignments = np.max(abs_dots, axis=1)
         return best_indices, best_alignments
 
+    def _nearest_e8_lattice_points(self, embedded: np.ndarray):
+        """Vectorized nearest-E8-lattice-point via parity-snap.
+
+        E8 = D8 ∪ (D8 + [½,...,½]) where D8 = {x ∈ Z⁸ : Σxᵢ even}.
+        For each coset, round to nearest integer/half-integer coords,
+        then fix parity by flipping the coordinate with largest rounding
+        error. Return whichever coset is closer.
+
+        Returns: (distances, coset_ids) where coset 0=integer, 1=half-integer.
+        """
+        # Coset 0: integer coordinates with even sum
+        f0 = np.round(embedded).copy()
+        res0 = np.abs(embedded - f0)
+        sums0 = np.sum(f0, axis=1).astype(np.int64)
+        odd0 = (sums0 % 2 != 0)
+        if np.any(odd0):
+            odd_rows = np.where(odd0)[0]
+            flip_cols = np.argmax(res0[odd0], axis=1)
+            signs = np.sign(embedded[odd_rows, flip_cols] - f0[odd_rows, flip_cols])
+            signs[signs == 0] = 1
+            f0[odd_rows, flip_cols] += signs
+        d0 = np.sum((embedded - f0) ** 2, axis=1)
+
+        # Coset 1: half-integer coordinates with even sum
+        f1 = np.floor(embedded) + 0.5
+        f1 = f1.copy()
+        res1 = np.abs(embedded - f1)
+        # sum(f1) = sum(floor(v)) + 4, so parity = parity(sum(floor(v)))
+        floor_sums = np.sum(np.floor(embedded), axis=1).astype(np.int64)
+        odd1 = (floor_sums % 2 != 0)
+        if np.any(odd1):
+            odd_rows = np.where(odd1)[0]
+            flip_cols = np.argmax(res1[odd1], axis=1)
+            signs = np.sign(embedded[odd_rows, flip_cols] - f1[odd_rows, flip_cols])
+            signs[signs == 0] = 1
+            f1[odd_rows, flip_cols] += signs
+        d1 = np.sum((embedded - f1) ** 2, axis=1)
+
+        # Pick closer coset
+        use_half = d1 < d0
+        distances = np.sqrt(np.where(use_half, d1, d0))
+        coset = use_half.astype(int)
+        return distances, coset
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute E8 metrics: diversity, alignment stats, entropy."""
+        """Compute E8 metrics: diversity, alignment stats, entropy, coset balance, lattice distance."""
         embedded = self.embed(data)
         root_indices, alignments = self.find_closest_roots(embedded)
 
@@ -391,6 +435,17 @@ class E8Geometry(ExoticGeometry):
         max_entropy = np.log2(min(len(root_indices), 240))
         normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0
 
+        # E8-specific: coset balance from root alignment
+        # Roots 0-111 are Type 1 (±eᵢ ± eⱼ, integer coords)
+        # Roots 112-239 are Type 2 (±½...±½, half-integer coords)
+        half_int_fraction = np.mean(root_indices >= 112)
+
+        # E8-specific: lattice snap coset via parity-snap
+        # Which coset (integer vs half-integer) the actual nearest lattice
+        # point belongs to — distinct from root-direction coset above
+        _snap_distances, snap_cosets = self._nearest_e8_lattice_points(embedded)
+        snap_coset_fraction = float(np.mean(snap_cosets))
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -400,6 +455,8 @@ class E8Geometry(ExoticGeometry):
                 "alignment_std": align_std,
                 "entropy": entropy,
                 "normalized_entropy": normalized_entropy,
+                "coset_balance": float(half_int_fraction),
+                "snap_coset_fraction": snap_coset_fraction,
             },
             raw_data={
                 "root_indices": root_indices,
