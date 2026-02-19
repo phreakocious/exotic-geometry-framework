@@ -195,8 +195,16 @@
         .view-btn:hover { border-color: #555; color: #aaa; }
         .view-btn.active { border-color: #3498db; color: #ddd; background: rgba(52, 152, 219, 0.15); }
 
-        #metric-explorer-toggle { transition: all 0.2s; }
-        #metric-explorer-toggle.active { border-color: #e67e22; color: #fff; background: rgba(230, 126, 34, 0.25); }
+        .proj-btn {
+            background: #222; border: 1px solid #333; color: #666; font-size: 9px;
+            text-transform: uppercase; padding: 5px 0; cursor: pointer; flex: 1;
+            transition: all 0.2s; text-align: center; position: relative;
+        }
+        .proj-btn:first-child { border-radius: 3px 0 0 3px; }
+        .proj-btn:last-child { border-radius: 0 3px 3px 0; }
+        .proj-btn:not(:first-child) { margin-left: -1px; }
+        .proj-btn:hover { color: #aaa; border-color: #555; z-index: 1; }
+        .proj-btn.active { border-color: #e67e22; color: #ddd; background: rgba(230, 126, 34, 0.15); z-index: 2; }
         #explorer-panel { display: none; margin-top: 8px; }
         #explorer-panel.visible { display: block; }
         #explorer-panel .axis-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
@@ -215,8 +223,6 @@
         }
         .preset-pill:hover { border-color: #555; color: #aaa; }
         .preset-pill.active { border-color: #e67e22; color: #ddd; background: rgba(230, 126, 34, 0.15); }
-        #explorer-back { margin-top: 6px; }
-        
         #overlay { 
             position: fixed; 
             top: 0; 
@@ -403,8 +409,11 @@
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer;" title="Draw lines connecting sources in the same geometric cluster.">
                     <input type="checkbox" id="showClusterWebs" style="accent-color: #e67e22;"> Cluster Webs
                 </label>
-                <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer; grid-column: span 2;" title="Draw vertical lines connecting each data point to the ground plane.">
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer;" title="Draw vertical lines connecting each data point to the ground plane.">
                     <input type="checkbox" id="showStemLines" checked style="accent-color: #3498db;"> Stem Lines
+                </label>
+                <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer;" title="Circles: lightweight flat points. Spheres: 3D volumes.">
+                    <input type="checkbox" id="renderSpheres" checked style="accent-color: #3498db;"> Spheres
                 </label>
             </div>
 
@@ -419,14 +428,17 @@
                 <button id="open-catalog" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Browse all exotic geometries">Catalog</button>
                 <button id="rotate-view" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Cycle through axis-aligned camera views: XY front, XZ top, YZ side, and isometric corners">Rotate</button>
                 <button id="pivot-axes" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Cycle which principal components map to X/Y/Z axes">Pivot</button>
-                <button id="metric-explorer-toggle" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Plot sources by any 3 raw metrics (z-scored) instead of PCA">Explore</button>
+            </div>
+            <div id="projection-group" style="display: flex; margin-top: 5px;">
+                <button class="proj-btn active" data-proj="pca" title="Principal Component Analysis — interpretable linear axes">PCA</button>
+                <button class="proj-btn" data-proj="tsne" style="display:none;" title="t-SNE — preserves local neighborhoods">t-SNE</button>
+                <button class="proj-btn" data-proj="explore" title="Plot sources by any 3 raw metrics (z-scored)">Explore</button>
             </div>
             <div id="explorer-panel">
                 <div id="preset-pills"></div>
                 <div class="axis-row"><label>X</label><select id="explorer-x" class="metric-select"></select></div>
                 <div class="axis-row"><label>Y</label><select id="explorer-y" class="metric-select"></select></div>
                 <div class="axis-row"><label>Z</label><select id="explorer-z" class="metric-select"></select></div>
-                <button id="explorer-back" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 4px 8px; border-radius: 3px; cursor: pointer; width: 100%; transition: all 0.2s;">Back to PCA</button>
             </div>
         </div>
 
@@ -539,6 +551,7 @@
                 let clusterWebs = {};
                 let allClusters = [];
                 let currentView = null;
+                let currentProjection = 'pca';
                 let savedFullAtlas = null;
                 let viewAnimationId = null;
                 let unpermutedAxes = null; // axes before pivot permutation
@@ -556,7 +569,28 @@
                 // Perf: shared geometries, camera-change detection, mousemove throttle
                 const sharedSphereGeo = new THREE.SphereGeometry(0.5, 24, 24);
                 const sharedHitGeo = new THREE.SphereGeometry(1.2, 8, 8);
+                // Instanced rendering objects (batched draw calls)
+                let sphereInstMesh = null;
+                let hitInstMesh = null;
+                let stemLinesMesh = null;
+                let stemPositionArr = null;
+                let stemColorArr = null;
+                let currentFloorY = 0;
+                let circlesPoints = null;
+                let circlePositionArr = null;
+                let circleColorArr = null;
+                let circleSizeArr = null;
+                let dotsPoints = null;
+                let dotPositionArr = null;
+                let dotColorArr = null;
+                let dotLocalVerts = null;
+                let dotsPerPoint = 0;
+                let renderMode = 'spheres';
+                let instancesDirty = true;
+                const _instMatrix = new THREE.Matrix4();
                 let lastCamX = NaN, lastCamY = NaN, lastCamZ = NaN;
+                let needsRender = true;
+                function requestRender() { needsRender = true; }
                 let mouseMoveRafPending = false;
                 let pendingMouseEvent = null;
                 let cachedTooltipEl = null;
@@ -696,16 +730,21 @@
             const startTarget = controls.target.clone();
             const duration = 600;
             const startTime = performance.now();
-            let animId = null;
+            if (viewAnimationId) cancelAnimationFrame(viewAnimationId);
+
             function animateRotate(time) {
                 const t = Math.min((time - startTime) / duration, 1);
                 const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
                 camera.position.lerpVectors(startPos, endPos, ease);
                 controls.target.lerpVectors(startTarget, endTarget, ease);
                 controls.update();
-                if (t < 1) animId = requestAnimationFrame(animateRotate);
+                if (t < 1) {
+                    viewAnimationId = requestAnimationFrame(animateRotate);
+                } else {
+                    viewAnimationId = null;
+                }
             }
-            animId = requestAnimationFrame(animateRotate);
+            viewAnimationId = requestAnimationFrame(animateRotate);
             rotateViewBtn.title = `View: ${view.name}. Click to cycle.`;
         });
 
@@ -718,9 +757,13 @@
             // Get the raw (unpermuted) PCs, scaled to current atlasScale
             let rawPCs;
             if (currentView === null) {
-                rawPCs = savedFullAtlas.rawPc.map(p => p.slice(0, 3).map(v => v * atlasScale));
+                const rawSrc = (currentProjection === 'tsne' && savedFullAtlas.rawTsne)
+                    ? savedFullAtlas.rawTsne : savedFullAtlas.rawPc;
+                rawPCs = rawSrc.map(p => p.slice(0, 3).map(v => v * atlasScale));
             } else {
-                rawPCs = data.views[currentView].pc.map(p => p.slice(0, 3).map(v => v * atlasScale));
+                const view = data.views[currentView];
+                const viewSrc = (currentProjection === 'tsne' && view.tsne) ? view.tsne : view.pc;
+                rawPCs = viewSrc.map(p => p.slice(0, 3).map(v => v * atlasScale));
             }
 
             // Permute
@@ -739,14 +782,8 @@
                     const sx = startPositions[i].x, sy = startPositions[i].y, sz = startPositions[i].z;
                     const tx = targetPCs[i][0], ty = targetPCs[i][1], tz = targetPCs[i][2];
                     p.position.set(sx + (tx - sx) * ease, sy + (ty - sy) * ease, sz + (tz - sz) * ease);
-                    if (p.stemLine) {
-                        const arr = p.stemLine.geometry.attributes.position.array;
-                        arr[0] = p.position.x; arr[1] = p.position.y; arr[2] = p.position.z;
-                        arr[4] = p.position.y; // will fix in finishPivot
-                        arr[3] = p.position.x; arr[5] = p.position.z;
-                        p.stemLine.geometry.attributes.position.needsUpdate = true;
-                    }
                 });
+                markInstancesDirty();
                 if (t < 1) {
                     viewAnimationId = requestAnimationFrame(animatePivot);
                 } else {
@@ -805,14 +842,9 @@
             addWalls(data, atlasBounds);
             addAxisLabels(atlasBounds);
 
-            // Fix stem line floor Y
-            points.forEach(p => {
-                if (p.stemLine) {
-                    const arr = p.stemLine.geometry.attributes.position.array;
-                    arr[4] = minY;
-                    p.stemLine.geometry.attributes.position.needsUpdate = true;
-                }
-            });
+            // Update stem floor Y
+            currentFloorY = minY;
+            markInstancesDirty();
 
             rebuildWebs();
             updateViewUI(currentView);
@@ -883,13 +915,22 @@
         function reloadAtlas(newData) {
             // 1. Cleanup Scene
             points.forEach(p => {
-                if (p.label && p.label.element && p.label.element.parentNode) {
-                    p.label.element.parentNode.removeChild(p.label.element);
+                if (p.label) {
+                    if (p.label.element && p.label.element.parentNode) {
+                        p.label.element.parentNode.removeChild(p.label.element);
+                    }
+                    scene.remove(p.label);
                 }
-                if (p.stemLine) scene.remove(p.stemLine);
-                scene.remove(p);
             });
             points = [];
+            if (sphereInstMesh) { scene.remove(sphereInstMesh); sphereInstMesh.dispose(); sphereInstMesh = null; }
+            if (hitInstMesh) { scene.remove(hitInstMesh); hitInstMesh.dispose(); hitInstMesh = null; }
+            if (stemLinesMesh) { scene.remove(stemLinesMesh); stemLinesMesh.geometry.dispose(); stemLinesMesh.material.dispose(); stemLinesMesh = null; }
+            if (circlesPoints) { scene.remove(circlesPoints); circlesPoints.geometry.dispose(); circlesPoints.material.dispose(); circlesPoints = null; }
+            if (dotsPoints) { scene.remove(dotsPoints); dotsPoints.geometry.dispose(); dotsPoints.material.dispose(); dotsPoints = null; }
+            stemPositionArr = null; stemColorArr = null;
+            circlePositionArr = null; circleColorArr = null; circleSizeArr = null;
+            dotPositionArr = null; dotColorArr = null;
             
             // Remove lines/webs
             Object.values(domainWebs).forEach(w => scene.remove(w));
@@ -958,14 +999,27 @@
             pivotIdx = 0;
             const rawPc = data.sources.map(s => s.pc.map(v => v / atlasScale));
             baseSpread = meanStd(rawPc);
+            const rawTsneUnnorm = data.sources[0] && data.sources[0].tsne ? data.sources.map(s => [...s.tsne]) : null;
             savedFullAtlas = {
                 pc: data.sources.map(s => [...s.pc]),
                 rawPc: rawPc,
+                rawTsne: normalizeTsne(rawTsneUnnorm, rawPc),
                 clusters: data.sources.map(s => s.cluster),
                 allClusters: [...allClusters],
                 axes: data.axes ? JSON.parse(JSON.stringify(data.axes)) : null
             };
+            // Normalize per-view t-SNE coords to match per-view PCA spread
+            if (data.views) {
+                for (const [vn, vd] of Object.entries(data.views)) {
+                    if (vd.tsne && vd.pc) {
+                        vd.tsne = normalizeTsne(vd.tsne, vd.pc);
+                    }
+                }
+            }
+            currentProjection = 'pca';
             unpermutedAxes = savedFullAtlas.axes;
+
+            updateProjectionUI('pca');
 
             // Recalculate Bounds
             const pc1s = data.sources.map(s => s.pc[0]);
@@ -1101,6 +1155,17 @@
             return total / 3;
         }
 
+        function normalizeTsne(tsneCoords, pcaCoords) {
+            // Rescale t-SNE to match PCA spread so the same atlasScale works for both.
+            // Without this, t-SNE coords are ~30x larger → scale factor drops below slider min.
+            if (!tsneCoords || !pcaCoords || tsneCoords.length < 2) return tsneCoords;
+            const pcaSpread = meanStd(pcaCoords);
+            const tsneSpread = meanStd(tsneCoords);
+            if (tsneSpread < 1e-10 || pcaSpread < 1e-10) return tsneCoords;
+            const ratio = pcaSpread / tsneSpread;
+            return tsneCoords.map(p => p.map(v => v * ratio));
+        }
+
         function switchView(viewName) {
             if (explorerActive) return; // block view switching while explorer is active
             if (viewName === currentView) return;
@@ -1119,12 +1184,20 @@
             // Auto-scale: normalize spread so all views fill the same visual volume
             let rawPCs;
             if (viewName === null) {
-                rawPCs = savedFullAtlas.rawPc.map(p => p.slice(0, 3));
+                if (currentProjection === 'tsne' && savedFullAtlas.rawTsne) {
+                    rawPCs = savedFullAtlas.rawTsne.map(p => p.slice(0, 3));
+                } else {
+                    rawPCs = savedFullAtlas.rawPc.map(p => p.slice(0, 3));
+                }
                 targetClusters = savedFullAtlas.clusters;
                 targetAllClusters = savedFullAtlas.allClusters;
             } else {
                 const view = data.views[viewName];
-                rawPCs = view.pc.map(p => p.slice(0, 3));
+                if (currentProjection === 'tsne' && view.tsne) {
+                    rawPCs = view.tsne.map(p => p.slice(0, 3));
+                } else {
+                    rawPCs = view.pc.map(p => p.slice(0, 3));
+                }
                 targetClusters = view.labels;
                 targetAllClusters = [...new Set(view.labels)].sort((a, b) => a - b)
                     .filter(cId => !view.clusters || view.clusters[String(cId)]);
@@ -1181,20 +1254,9 @@
                 points.forEach((p, i) => {
                     const sx = startPositions[i].x, sy = startPositions[i].y, sz = startPositions[i].z;
                     const tx = targetPCs[i][0], ty = targetPCs[i][1], tz = targetPCs[i][2];
-
-                    const x = sx + (tx - sx) * ease;
-                    const y = sy + (ty - sy) * ease;
-                    const z = sz + (tz - sz) * ease;
-
-                    p.position.set(x, y, z);
-
-                    if (p.stemLine) {
-                        const arr = p.stemLine.geometry.attributes.position.array;
-                        arr[0] = x; arr[1] = y; arr[2] = z;
-                        arr[3] = x; arr[5] = z; // floor X/Z follow point, Y stays
-                        p.stemLine.geometry.attributes.position.needsUpdate = true;
-                    }
+                    p.position.set(sx + (tx - sx) * ease, sy + (ty - sy) * ease, sz + (tz - sz) * ease);
                 });
+                markInstancesDirty();
 
                 if (t < 1) {
                     viewAnimationId = requestAnimationFrame(animateView);
@@ -1244,8 +1306,17 @@
             if (floor) scene.remove(floor);
             if (axisGroup) axisGroup.clear();
 
-            // Set axes metadata: full atlas uses saved axes, views get synthetic axes
-            if (viewName === null) {
+            updateProjectionUI(explorerActive ? 'explore' : currentProjection);
+
+            // Set axes metadata
+            if (currentProjection === 'tsne') {
+                data.axes = {
+                    pc1: { label: 't-SNE 1', variance: 0, low: '', high: '' },
+                    pc2: { label: 't-SNE 2', variance: 0, low: '', high: '' },
+                    pc3: { label: 't-SNE 3', variance: 0, low: '', high: '' },
+                };
+                window.atlasAxes = {};
+            } else if (viewName === null) {
                 data.axes = savedFullAtlas.axes;
                 window.atlasAxes = savedFullAtlas.axes || {};
             } else {
@@ -1272,14 +1343,9 @@
             addWalls(data, atlasBounds);
             addAxisLabels(atlasBounds);
 
-            // Fix stem line floor Y
-            points.forEach(p => {
-                if (p.stemLine) {
-                    const arr = p.stemLine.geometry.attributes.position.array;
-                    arr[4] = minY;
-                    p.stemLine.geometry.attributes.position.needsUpdate = true;
-                }
-            });
+            // Update stem floor Y
+            currentFloorY = minY;
+            markInstancesDirty();
 
             // Preserve current camera --- don't reset position or target
             lastCameraPos.copy(camera.position);
@@ -1348,13 +1414,16 @@
                 scene.add(web);
                 clusterWebs[cluster] = web;
             });
+            requestRender();
         }
 
         function updateViewUI(viewName) {
             const subtitle = document.getElementById('atlas-subtitle');
 
             if (viewName === null) {
-                subtitle.textContent = '3D phase space projection - PCA';
+                subtitle.textContent = currentProjection === 'tsne'
+                    ? '3D phase space projection - t-SNE'
+                    : '3D phase space projection - PCA';
                 document.getElementById('sourceCount').textContent = data.sources.length;
                 document.getElementById('domainCount').textContent = new Set(data.sources.map(s => s.domain)).size;
                 document.getElementById('metricCount').textContent = data.n_metrics || '...';
@@ -1365,20 +1434,26 @@
                     const ax = axes[key];
                     const el = document.getElementById(`${key}-label`);
                     if (el && ax) {
-                        const pct = (ax.variance * 100).toFixed(1);
-                        const shortLabel = ax.label.replace(/^PC\d+:\s*/, '');
-                        const match = ax.label.match(/^PC(\d+)/);
-                        const pcNum = match ? match[1] : (idx + 1);
                         const axisName = ['X', 'Y', 'Z'][idx];
-                        el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ PC${pcNum}</span>: ${shortLabel} <span style="color:#555">(${pct}%)</span>`;
-                        el.title = `PC${pcNum} (${pct}% of variance). ${ax.description || shortLabel}`;
+                        if (currentProjection === 'tsne') {
+                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ ${ax.label}</span>`;
+                            el.title = `${ax.label} (non-linear embedding, no variance decomposition)`;
+                        } else {
+                            const pct = (ax.variance * 100).toFixed(1);
+                            const shortLabel = ax.label.replace(/^PC\d+:\s*/, '');
+                            const match = ax.label.match(/^PC(\d+)/);
+                            const pcNum = match ? match[1] : (idx + 1);
+                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ PC${pcNum}</span>: ${shortLabel} <span style="color:#555">(${pct}%)</span>`;
+                            el.title = `PC${pcNum} (${pct}% of variance). ${ax.description || shortLabel}`;
+                        }
                     }
                     document.getElementById(`${key}-min`).textContent = (axes[key] && axes[key].low) || 'Low';
                     document.getElementById(`${key}-max`).textContent = (axes[key] && axes[key].high) || 'High';
                 });
             } else {
                 const view = data.views[viewName];
-                subtitle.innerHTML = `<span style="color:#ddd">${viewName}</span> lens: ${view.question}`;
+                const projLabel = currentProjection === 'tsne' ? ' (t-SNE)' : '';
+                subtitle.innerHTML = `<span style="color:#ddd">${viewName}</span> lens${projLabel}: ${view.question}`;
                 // Count visible sources (those with a cluster entry in this view)
                 const viewClusterIds = view.clusters ? new Set(Object.keys(view.clusters)) : null;
                 const visibleSources = viewClusterIds
@@ -1449,6 +1524,7 @@
             labelThreshold = parseFloat(e.target.value);
             distVal.textContent = labelThreshold;
             updateLabels();
+            requestRender();
         });
         
         densitySlider.addEventListener('input', (e) => {
@@ -1470,17 +1546,13 @@
             atlasScale = newScale;
 
             // Rescale all point positions from center
+            currentFloorY *= ratio;
             points.forEach((p, i) => {
                 p.position.multiplyScalar(ratio);
-                if (p.stemLine) {
-                    const arr = p.stemLine.geometry.attributes.position.array;
-                    arr[0] = p.position.x; arr[1] = p.position.y; arr[2] = p.position.z;
-                    arr[3] = p.position.x; arr[4] *= ratio; arr[5] = p.position.z;
-                    p.stemLine.geometry.attributes.position.needsUpdate = true;
-                }
                 // Keep source.pc in sync
                 data.sources[i].pc = [p.position.x, p.position.y, p.position.z];
             });
+            markInstancesDirty();
 
             // Rescale bounds, walls, axes
             atlasBounds.minX *= ratio; atlasBounds.maxX *= ratio;
@@ -1511,7 +1583,15 @@
 
         stemLineToggle.addEventListener('change', (e) => {
             showStemLines = e.target.checked;
-            updatePointVisibility();
+            markInstancesDirty();
+        });
+
+        document.getElementById('renderSpheres').addEventListener('change', (e) => {
+            renderMode = e.target.checked ? 'spheres' : 'circles';
+            if (sphereInstMesh) sphereInstMesh.visible = (renderMode === 'spheres');
+            if (dotsPoints) dotsPoints.visible = (renderMode === 'spheres');
+            if (circlesPoints) circlesPoints.visible = (renderMode === 'circles');
+            markInstancesDirty();
         });
 
         document.getElementsByName('colorMode').forEach(r => {
@@ -1531,18 +1611,14 @@
 
         function updateColors() {
             points.forEach(p => {
-                let color;
                 if (colorMode === 'domain') {
-                    color = new THREE.Color(data.domain_colors[p.userData.domain] || '#888888');
+                    p.color.set(data.domain_colors[p.userData.domain] || '#888888');
                 } else {
-                    color = new THREE.Color(getClusterColor(p.userData.cluster));
+                    p.color.set(getClusterColor(p.userData.cluster));
                 }
-                
-                p.material.color.copy(color);
-                if (p.vertexPoints) p.vertexPoints.material.color.copy(color);
-                if (p.stemLine) p.stemLine.material.color.copy(color);
-                if (p.label) p.label.element.style.color = `#${color.getHexString()}`;
+                if (p.label) p.label.element.style.color = `#${p.color.getHexString()}`;
             });
+            markInstancesDirty();
         }
 
         openCatalog.addEventListener('click', () => {
@@ -1630,11 +1706,23 @@
 
         function computeExplorerPositions(xi, yi, zi) {
             const nMet = data.metric_names.length;
-            const spread = atlasScale * 3;
-            return data.sources.map((_, i) => [
-                explorerZScores[i * nMet + xi] * spread,
-                explorerZScores[i * nMet + yi] * spread,
-                explorerZScores[i * nMet + zi] * spread
+            // Build raw z-score positions
+            const rawPCs = data.sources.map((_, i) => [
+                explorerZScores[i * nMet + xi],
+                explorerZScores[i * nMet + yi],
+                explorerZScores[i * nMet + zi]
+            ]);
+            // Dynamic scale: match visual spread to PCA views
+            const spread = meanStd(rawPCs);
+            if (spread > 1e-6) {
+                atlasScale = TARGET_VISUAL_SPREAD / spread;
+                scaleSlider.value = Math.round(atlasScale * 100);
+                scaleValEl.textContent = atlasScale.toFixed(2);
+            }
+            return rawPCs.map(p => [
+                p[0] * atlasScale,
+                p[1] * atlasScale,
+                p[2] * atlasScale
             ]);
         }
 
@@ -1723,6 +1811,33 @@
             applyExplorerMetrics();
         }
 
+        function updateProjectionUI(activeProj) {
+            // activeProj: 'pca' | 'tsne' | 'explore'
+            const inLens = currentView !== null && currentView !== '__explorer__';
+            document.querySelectorAll('.proj-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.proj === activeProj);
+                // Dim Explore in lens views (it uses raw metrics, not view-specific)
+                if (inLens && btn.dataset.proj === 'explore') {
+                    btn.style.opacity = '0.3';
+                    btn.style.pointerEvents = 'none';
+                } else {
+                    btn.style.opacity = '';
+                    btn.style.pointerEvents = '';
+                }
+            });
+            // Show t-SNE option when current view (or full atlas) has tsne data
+            const tsneBtn = document.querySelector('.proj-btn[data-proj="tsne"]');
+            if (tsneBtn) {
+                let hasTsne = savedFullAtlas && savedFullAtlas.rawTsne;
+                if (inLens && data.views[currentView]) {
+                    hasTsne = !!data.views[currentView].tsne;
+                }
+                tsneBtn.style.display = hasTsne ? '' : 'none';
+            }
+            // Show explorer panel only in explore mode
+            document.getElementById('explorer-panel').classList.toggle('visible', activeProj === 'explore');
+        }
+
         function enterExplorer() {
             explorerActive = true;
             explorerViewBeforeEnter = currentView;
@@ -1730,8 +1845,7 @@
             sourceRelevance = data.sources.map(() => 1);
             updatePointVisibility();
 
-            document.getElementById('metric-explorer-toggle').classList.add('active');
-            document.getElementById('explorer-panel').classList.add('visible');
+            updateProjectionUI('explore');
 
             // Dim view buttons
             document.querySelectorAll('.view-btn').forEach(btn => {
@@ -1752,8 +1866,7 @@
             if (!explorerActive) return;
             explorerActive = false;
 
-            document.getElementById('metric-explorer-toggle').classList.remove('active');
-            document.getElementById('explorer-panel').classList.remove('visible');
+            updateProjectionUI(currentProjection);
             document.querySelectorAll('.preset-pill').forEach(p => p.classList.remove('active'));
 
             // Restore view buttons
@@ -1777,6 +1890,129 @@
             switchView(restoreView);
         }
 
+        // ---- t-SNE / PCA projection toggle ----
+
+        function switchProjection(projection) {
+            if (viewAnimationId) cancelAnimationFrame(viewAnimationId);
+            pivotIdx = 0;
+
+            // Get raw coords for target projection (full atlas or current view)
+            let rawPCs;
+            if (currentView === null) {
+                rawPCs = projection === 'tsne'
+                    ? savedFullAtlas.rawTsne.map(p => p.slice(0, 3))
+                    : savedFullAtlas.rawPc.map(p => p.slice(0, 3));
+            } else {
+                const view = data.views[currentView];
+                rawPCs = (projection === 'tsne' && view.tsne)
+                    ? view.tsne.map(p => p.slice(0, 3))
+                    : view.pc.map(p => p.slice(0, 3));
+            }
+
+            // Scale to fill the same visual volume (filter to active sources for subset views)
+            let spreadPCs = rawPCs;
+            if (currentView !== null) {
+                const vc = data.views[currentView].clusters;
+                if (vc) {
+                    const labels = data.views[currentView].labels;
+                    spreadPCs = rawPCs.filter((_, i) => vc[String(labels[i])]);
+                }
+            }
+            const viewSpread = meanStd(spreadPCs);
+            if (viewSpread > 1e-6) {
+                atlasScale = TARGET_VISUAL_SPREAD / viewSpread;
+                scaleSlider.value = Math.round(atlasScale * 100);
+                scaleValEl.textContent = atlasScale.toFixed(2);
+            }
+            const targetPCs = rawPCs.map(p => p.map(v => v * atlasScale));
+
+            // Animate
+            const startPositions = points.map(p => p.position.clone());
+            const duration = 800;
+            const startTime = performance.now();
+
+            function animateProjection(time) {
+                const elapsed = time - startTime;
+                const t = Math.min(elapsed / duration, 1);
+                const ease = t * (2 - t); // easeOutQuad
+
+                points.forEach((p, i) => {
+                    const sx = startPositions[i].x, sy = startPositions[i].y, sz = startPositions[i].z;
+                    const tx = targetPCs[i][0], ty = targetPCs[i][1], tz = targetPCs[i][2];
+                    p.position.set(sx + (tx - sx) * ease, sy + (ty - sy) * ease, sz + (tz - sz) * ease);
+                });
+                markInstancesDirty();
+
+                if (t < 1) {
+                    viewAnimationId = requestAnimationFrame(animateProjection);
+                } else {
+                    viewAnimationId = null;
+                    finishProjectionSwitch(projection, targetPCs);
+                }
+            }
+            viewAnimationId = requestAnimationFrame(animateProjection);
+        }
+
+        function finishProjectionSwitch(projection, targetPCs) {
+            currentProjection = projection;
+
+            // Update source positions
+            data.sources.forEach((s, i) => { s.pc = [...targetPCs[i]]; });
+
+            // Recompute bounds
+            const pc1s = targetPCs.map(p => p[0]);
+            const pc2s = targetPCs.map(p => p[1]);
+            const pc3s = targetPCs.map(p => p[2]);
+            const step = 5;
+            atlasBounds = {
+                minX: Math.floor((Math.min(...pc1s) - 5) / step) * step,
+                maxX: Math.ceil((Math.max(...pc1s) + 5) / step) * step,
+                minY: Math.floor((Math.min(...pc2s) - 5) / step) * step,
+                maxY: Math.ceil((Math.max(...pc2s) + 5) / step) * step,
+                minZ: Math.floor((Math.min(...pc3s) - 5) / step) * step,
+                maxZ: Math.ceil((Math.max(...pc3s) + 5) / step) * step,
+            };
+            atlasCenterX = (atlasBounds.minX + atlasBounds.maxX) / 2;
+            atlasCenterZ = (atlasBounds.minZ + atlasBounds.maxZ) / 2;
+
+            window.pcaRanges = {
+                pc1: [Math.min(...pc1s), Math.max(...pc1s)],
+                pc2: [Math.min(...pc2s), Math.max(...pc2s)],
+                pc3: [Math.min(...pc3s), Math.max(...pc3s)]
+            };
+
+            // Rebuild walls
+            if (wallXY) scene.remove(wallXY);
+            if (wallZY) scene.remove(wallZY);
+            if (floor) scene.remove(floor);
+            if (axisGroup) axisGroup.clear();
+
+            // Set axis metadata (actual labels set by updateViewUI below)
+            if (projection === 'tsne') {
+                data.axes = {
+                    pc1: { label: 't-SNE 1', variance: 0, low: '', high: '' },
+                    pc2: { label: 't-SNE 2', variance: 0, low: '', high: '' },
+                    pc3: { label: 't-SNE 3', variance: 0, low: '', high: '' },
+                };
+            } else if (currentView === null) {
+                data.axes = savedFullAtlas.axes;
+            }
+            // For lens views switching back to PCA, updateViewUI will rebuild axes
+            unpermutedAxes = JSON.parse(JSON.stringify(data.axes));
+
+            addWalls(data, atlasBounds);
+            addAxisLabels(atlasBounds);
+
+            currentFloorY = atlasBounds.minY;
+            markInstancesDirty();
+
+            updateProjectionUI(projection);
+
+            rebuildWebs();
+            updateViewUI(currentView);
+            lastCamX = NaN;
+        }
+
         function applyExplorerMetrics() {
             if (viewAnimationId) cancelAnimationFrame(viewAnimationId);
 
@@ -1798,13 +2034,8 @@
                     const sx = startPositions[i].x, sy = startPositions[i].y, sz = startPositions[i].z;
                     const tx = targetPCs[i][0], ty = targetPCs[i][1], tz = targetPCs[i][2];
                     p.position.set(sx + (tx - sx) * ease, sy + (ty - sy) * ease, sz + (tz - sz) * ease);
-                    if (p.stemLine) {
-                        const arr = p.stemLine.geometry.attributes.position.array;
-                        arr[0] = p.position.x; arr[1] = p.position.y; arr[2] = p.position.z;
-                        arr[3] = p.position.x; arr[5] = p.position.z;
-                        p.stemLine.geometry.attributes.position.needsUpdate = true;
-                    }
                 });
+                markInstancesDirty();
 
                 if (t < 1) {
                     viewAnimationId = requestAnimationFrame(animateExplorer);
@@ -1866,14 +2097,9 @@
             addWalls(data, atlasBounds);
             addAxisLabels(atlasBounds);
 
-            // Fix stem line floor Y
-            points.forEach(p => {
-                if (p.stemLine) {
-                    const arr = p.stemLine.geometry.attributes.position.array;
-                    arr[4] = minY;
-                    p.stemLine.geometry.attributes.position.needsUpdate = true;
-                }
-            });
+            // Update stem floor Y
+            currentFloorY = minY;
+            markInstancesDirty();
 
             rebuildWebs();
             lastCamX = NaN;
@@ -2016,14 +2242,27 @@
                 pivotIdx = 0;
                 const rawPcReload = data.sources.map(s => s.pc.map(v => v / atlasScale));
                 baseSpread = meanStd(rawPcReload);
+                const rawTsneReload = data.sources[0] && data.sources[0].tsne ? data.sources.map(s => [...s.tsne]) : null;
                 savedFullAtlas = {
                     pc: data.sources.map(s => [...s.pc]),
                     rawPc: rawPcReload,
+                    rawTsne: normalizeTsne(rawTsneReload, rawPcReload),
                     clusters: data.sources.map(s => s.cluster),
                     allClusters: [...allClusters],
                     axes: data.axes ? JSON.parse(JSON.stringify(data.axes)) : null
                 };
+                // Normalize per-view t-SNE coords
+                if (data.views) {
+                    for (const [vn, vd] of Object.entries(data.views)) {
+                        if (vd.tsne && vd.pc) {
+                            vd.tsne = normalizeTsne(vd.tsne, vd.pc);
+                        }
+                    }
+                }
+                currentProjection = 'pca';
                 unpermutedAxes = savedFullAtlas.axes;
+
+                updateProjectionUI('pca');
 
                 // Calculate bounds
                 const pc1s = data.sources.map(s => s.pc[0]);
@@ -2163,16 +2402,37 @@
                         document.getElementById('explorer-z').value = nameToIdx[firstPreset.z];
                     }
 
-                    document.getElementById('metric-explorer-toggle').addEventListener('click', () => {
-                        if (explorerActive) exitExplorer();
-                        else { enterExplorer(); highlightMatchingPreset(); applyExplorerMetrics(); }
-                    });
-
-                    document.getElementById('explorer-back').addEventListener('click', exitExplorer);
                 } else {
-                    // No profiles data --- hide the explorer button
-                    document.getElementById('metric-explorer-toggle').style.display = 'none';
+                    // No profiles data --- hide the explore button
+                    const exploreBtn = document.querySelector('.proj-btn[data-proj="explore"]');
+                    if (exploreBtn) exploreBtn.style.display = 'none';
                 }
+
+                // Projection mode segmented control
+                document.querySelectorAll('.proj-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const proj = btn.dataset.proj;
+                        if (proj === 'explore') {
+                            if (explorerActive) { exitExplorer(); return; }
+                            enterExplorer(); highlightMatchingPreset(); applyExplorerMetrics();
+                        } else {
+                            // PCA or t-SNE clicked
+                            if (proj === 'tsne') {
+                                // Check tsne data exists for current context
+                                if (currentView === null && !savedFullAtlas.rawTsne) return;
+                                if (currentView !== null && !(data.views[currentView] && data.views[currentView].tsne)) return;
+                            }
+                            if (explorerActive) {
+                                // Exit explorer, then switch projection if needed
+                                currentProjection = proj;
+                                exitExplorer(); // animates back using currentProjection
+                                return;
+                            }
+                            if (proj === currentProjection) return;
+                            switchProjection(proj);
+                        }
+                    });
+                });
 
                 // Setup Search Logic
                 const clearSearch = document.getElementById('clearSearch');
@@ -2285,10 +2545,18 @@
             animate();
         }
 
+        let mouseDownPos = null;
+        window.addEventListener('mousedown', (e) => { mouseDownPos = { x: e.clientX, y: e.clientY }; });
+
         function onMouseClick(event) {
             // Ignore clicks on UI elements
             if (event.target.closest('.glass-card') || event.target.closest('#ui-toggle') || event.target.closest('#tooltip')) return;
-            
+            // Ignore drags (orbit/pan)
+            if (mouseDownPos) {
+                const dx = event.clientX - mouseDownPos.x, dy = event.clientY - mouseDownPos.y;
+                if (dx * dx + dy * dy > 25) return;
+            }
+
             if (currentHoveredPoint) {
                 // Toggle focus if clicking the same point
                 if (currentSearchMatch && currentSearchMatch.name === currentHoveredPoint.name) {
@@ -2296,6 +2564,9 @@
                 } else {
                     focusOnPoint(currentHoveredPoint);
                 }
+            } else if (currentSearchMatch) {
+                // Click on empty space clears focus
+                resetView();
             }
         }
 
@@ -2383,6 +2654,7 @@
                 labelObj.position.copy(tip.clone().addScaledVector(dir, coneLen * 1.5));
                 axisGroup.add(labelObj);
             });
+            requestRender();
         }
 
         function createCustomGrid(w, h, step, color1, color2) {
@@ -2431,6 +2703,7 @@
             floor.rotation.x = -Math.PI / 2;
             floor.position.set(b.minX, b.minY, b.maxZ);
             scene.add(floor);
+            requestRender();
         }
 
         function updateWalls() {
@@ -2457,7 +2730,9 @@
             for (let i = 0, n = points.length; i < n; i++) {
                 const p = points[i];
                 if (!p.label) continue;
-                const isVisible = visibleDomains.has(p.userData.domain) && visibleClusters.has(p.userData.cluster);
+                // Position label in world space (no longer a child of a mesh)
+                p.label.position.set(p.position.x, p.position.y + 0.7 * p.currentScale, p.position.z);
+                const isVisible = p.visible && visibleDomains.has(p.userData.domain) && visibleClusters.has(p.userData.cluster);
                 if (!isVisible) {
                     if (p.label.visible) p.label.visible = false;
                     continue;
@@ -2491,72 +2766,264 @@
                 }
 
                 p.visible = isVisible;
-                if (p.stemLine) p.stemLine.visible = isVisible && showStemLines;
             });
+            markInstancesDirty();
             updateWebVisibility();
+        }
+
+        function markInstancesDirty() { instancesDirty = true; }
+
+        function syncInstances() {
+            if (!sphereInstMesh) return;
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                if (p.visible) {
+                    _instMatrix.makeScale(p.currentScale, p.currentScale, p.currentScale);
+                    _instMatrix.setPosition(p.position);
+                } else {
+                    _instMatrix.makeScale(0, 0, 0);
+                }
+                sphereInstMesh.setMatrixAt(i, _instMatrix);
+                hitInstMesh.setMatrixAt(i, _instMatrix);
+                sphereInstMesh.setColorAt(i, p.color);
+                // Stem line vertex pair
+                const si = i * 6;
+                if (p.visible && showStemLines) {
+                    stemPositionArr[si]     = p.position.x;
+                    stemPositionArr[si + 1] = p.position.y;
+                    stemPositionArr[si + 2] = p.position.z;
+                    stemPositionArr[si + 3] = p.position.x;
+                    stemPositionArr[si + 4] = currentFloorY;
+                    stemPositionArr[si + 5] = p.position.z;
+                } else {
+                    stemPositionArr[si] = stemPositionArr[si+1] = stemPositionArr[si+2] = 0;
+                    stemPositionArr[si+3] = stemPositionArr[si+4] = stemPositionArr[si+5] = 0;
+                }
+                stemColorArr[si]     = stemColorArr[si + 3] = p.color.r;
+                stemColorArr[si + 1] = stemColorArr[si + 4] = p.color.g;
+                stemColorArr[si + 2] = stemColorArr[si + 5] = p.color.b;
+            }
+            sphereInstMesh.instanceMatrix.needsUpdate = true;
+            if (sphereInstMesh.instanceColor) sphereInstMesh.instanceColor.needsUpdate = true;
+            hitInstMesh.instanceMatrix.needsUpdate = true;
+            stemLinesMesh.geometry.attributes.position.needsUpdate = true;
+            stemLinesMesh.geometry.attributes.color.needsUpdate = true;
+            // Sync vertex dots (transform local sphere verts to world space)
+            if (dotsPoints && dotLocalVerts) {
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    const s = p.visible ? p.currentScale : 0;
+                    const base = i * dotsPerPoint * 3;
+                    if (s > 0) {
+                        const px = p.position.x, py = p.position.y, pz = p.position.z;
+                        for (let j = 0; j < dotsPerPoint; j++) {
+                            const k = base + j * 3;
+                            dotPositionArr[k]     = dotLocalVerts[j * 3]     * s + px;
+                            dotPositionArr[k + 1] = dotLocalVerts[j * 3 + 1] * s + py;
+                            dotPositionArr[k + 2] = dotLocalVerts[j * 3 + 2] * s + pz;
+                        }
+                    } else {
+                        for (let j = 0; j < dotsPerPoint; j++) {
+                            const k = base + j * 3;
+                            dotPositionArr[k] = 0;
+                            dotPositionArr[k + 1] = -99999;
+                            dotPositionArr[k + 2] = 0;
+                        }
+                    }
+                    // Color all dots for this point
+                    const cr = p.color.r, cg = p.color.g, cb = p.color.b;
+                    for (let j = 0; j < dotsPerPoint; j++) {
+                        const k = base + j * 3;
+                        dotColorArr[k] = cr; dotColorArr[k + 1] = cg; dotColorArr[k + 2] = cb;
+                    }
+                }
+                dotsPoints.geometry.attributes.position.needsUpdate = true;
+                dotsPoints.geometry.attributes.color.needsUpdate = true;
+            }
+            // Sync circle points buffers
+            if (circlesPoints) {
+                for (let i = 0; i < points.length; i++) {
+                    const p = points[i];
+                    const i3 = i * 3;
+                    if (p.visible) {
+                        circlePositionArr[i3]     = p.position.x;
+                        circlePositionArr[i3 + 1] = p.position.y;
+                        circlePositionArr[i3 + 2] = p.position.z;
+                        circleSizeArr[i] = p.currentScale;
+                    } else {
+                        circlePositionArr[i3] = 0;
+                        circlePositionArr[i3 + 1] = -99999;
+                        circlePositionArr[i3 + 2] = 0;
+                        circleSizeArr[i] = 0;
+                    }
+                    circleColorArr[i3]     = p.color.r;
+                    circleColorArr[i3 + 1] = p.color.g;
+                    circleColorArr[i3 + 2] = p.color.b;
+                }
+                circlesPoints.geometry.attributes.position.needsUpdate = true;
+                circlesPoints.geometry.attributes.customColor.needsUpdate = true;
+                circlesPoints.geometry.attributes.size.needsUpdate = true;
+            }
+            instancesDirty = false;
         }
 
         function createAtlas(data, floorY) {
             const domainColors = data.domain_colors;
             const pointsByDomain = {};
             const pointsByCluster = {};
-            
+            const count = data.sources.length;
+            currentFloorY = floorY;
+
+            // --- Instanced sphere bodies (1 draw call for all points) ---
+            const sphereMat = new THREE.MeshBasicMaterial({
+                color: 0xffffff, transparent: true, opacity: 0.15,
+                depthWrite: false, blending: THREE.AdditiveBlending
+            });
+            sphereInstMesh = new THREE.InstancedMesh(sharedSphereGeo, sphereMat, count);
+            sphereInstMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            sphereInstMesh.renderOrder = 10;
+            sphereInstMesh.frustumCulled = false;
+            scene.add(sphereInstMesh);
+
+            // --- Hit-test instances (layer 1 only, invisible to camera) ---
+            const hitMat = new THREE.MeshBasicMaterial();
+            hitInstMesh = new THREE.InstancedMesh(sharedHitGeo, hitMat, count);
+            hitInstMesh.layers.set(1);
+            hitInstMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            hitInstMesh.frustumCulled = false;
+            scene.add(hitInstMesh);
+
+            // --- Merged stem lines (1 draw call for all stems) ---
+            stemPositionArr = new Float32Array(count * 6);
+            stemColorArr = new Float32Array(count * 6);
+            const stemGeo = new THREE.BufferGeometry();
+            const stemPosAttr = new THREE.BufferAttribute(stemPositionArr, 3);
+            stemPosAttr.setUsage(THREE.DynamicDrawUsage);
+            stemGeo.setAttribute('position', stemPosAttr);
+            const stemColAttr = new THREE.BufferAttribute(stemColorArr, 3);
+            stemColAttr.setUsage(THREE.DynamicDrawUsage);
+            stemGeo.setAttribute('color', stemColAttr);
+            const stemMat = new THREE.LineBasicMaterial({
+                vertexColors: true, transparent: true, opacity: 0.2, depthWrite: false
+            });
+            stemLinesMesh = new THREE.LineSegments(stemGeo, stemMat);
+            stemLinesMesh.renderOrder = 1;
+            stemLinesMesh.frustumCulled = false;
+            scene.add(stemLinesMesh);
+
+            // --- Circle points (lightweight alternative, 1 draw call) ---
+            circlePositionArr = new Float32Array(count * 3);
+            circleColorArr = new Float32Array(count * 3);
+            circleSizeArr = new Float32Array(count);
+            const circleGeo = new THREE.BufferGeometry();
+            circleGeo.setAttribute('position', new THREE.BufferAttribute(circlePositionArr, 3).setUsage(THREE.DynamicDrawUsage));
+            circleGeo.setAttribute('customColor', new THREE.BufferAttribute(circleColorArr, 3).setUsage(THREE.DynamicDrawUsage));
+            circleGeo.setAttribute('size', new THREE.BufferAttribute(circleSizeArr, 1).setUsage(THREE.DynamicDrawUsage));
+            const circlesMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    uViewportHeight: { value: window.innerHeight * window.devicePixelRatio }
+                },
+                vertexShader: `
+                    uniform float uViewportHeight;
+                    attribute float size;
+                    attribute vec3 customColor;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = customColor;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        // Match sphere diameter: size * worldDiameter(1.0) * proj / (2 * viewDist)
+                        gl_PointSize = clamp(
+                            size * projectionMatrix[1][1] * uViewportHeight / (2.0 * -mvPosition.z),
+                            0.0, 256.0
+                        );
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying vec3 vColor;
+                    void main() {
+                        float dist = length(gl_PointCoord - 0.5) * 2.0;
+                        if (dist > 1.0) discard;
+                        float alpha = smoothstep(1.0, 0.85, dist) * 0.3;
+                        gl_FragColor = vec4(vColor, alpha);
+                    }
+                `,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending,
+            });
+            circlesPoints = new THREE.Points(circleGeo, circlesMat);
+            circlesPoints.visible = (renderMode === 'circles');
+            circlesPoints.renderOrder = 10;
+            circlesPoints.frustumCulled = false;
+            scene.add(circlesPoints);
+
+            // --- Vertex dots on sphere surfaces (1 draw call for all dots) ---
+            // Deduplicate sphere vertices (poles have 25 coincident verts each)
+            const rawVerts = sharedSphereGeo.attributes.position.array;
+            const seen = new Set();
+            const uniqueVerts = [];
+            for (let j = 0; j < rawVerts.length; j += 3) {
+                const key = (rawVerts[j] * 1e4 | 0) + ',' + (rawVerts[j+1] * 1e4 | 0) + ',' + (rawVerts[j+2] * 1e4 | 0);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    uniqueVerts.push(rawVerts[j], rawVerts[j+1], rawVerts[j+2]);
+                }
+            }
+            dotLocalVerts = new Float32Array(uniqueVerts);
+            dotsPerPoint = uniqueVerts.length / 3;
+            const totalDots = count * dotsPerPoint;
+            dotPositionArr = new Float32Array(totalDots * 3);
+            dotColorArr = new Float32Array(totalDots * 3);
+            const dotGeo = new THREE.BufferGeometry();
+            dotGeo.setAttribute('position', new THREE.BufferAttribute(dotPositionArr, 3).setUsage(THREE.DynamicDrawUsage));
+            dotGeo.setAttribute('color', new THREE.BufferAttribute(dotColorArr, 3).setUsage(THREE.DynamicDrawUsage));
+            const dotMat = new THREE.PointsMaterial({
+                size: 0.05, vertexColors: true, transparent: true, opacity: 0.8,
+                depthWrite: false, sizeAttenuation: true,
+                blending: THREE.NormalBlending
+            });
+            dotsPoints = new THREE.Points(dotGeo, dotMat);
+            dotsPoints.visible = (renderMode === 'spheres');
+            dotsPoints.renderOrder = 11;
+            dotsPoints.frustumCulled = false;
+            scene.add(dotsPoints);
+
+            // --- Build lightweight data-only point array ---
             data.sources.forEach((source, i) => {
                 const [x, y, z] = source.pc;
                 const color = new THREE.Color(domainColors[source.domain] || '#888888');
-                
+
                 if (!pointsByDomain[source.domain]) pointsByDomain[source.domain] = [];
                 if (!pointsByCluster[source.cluster]) pointsByCluster[source.cluster] = [];
-                
-                // 1. The visible volume (Faint Body) --- shared geometry
-                const material = new THREE.MeshBasicMaterial({
-                    color: color, transparent: true, opacity: 0.15,
-                    depthWrite: false, blending: THREE.AdditiveBlending
-                });
-                const sphere = new THREE.Mesh(sharedSphereGeo, material);
-                sphere.position.set(x, y, z);
-                sphere.userData = source;
-                scene.add(sphere);
-                points.push(sphere);
 
-                // 2. Vertex Points (Technical detail) --- shared geometry
-                const pMaterial = new THREE.PointsMaterial({
-                    color: color, size: 0.05, transparent: true, opacity: 0.8,
-                    depthWrite: false
-                });
-                const pMesh = new THREE.Points(sharedSphereGeo, pMaterial);
-                sphere.add(pMesh);
-                sphere.vertexPoints = pMesh;
+                const p = {
+                    position: new THREE.Vector3(x, y, z),
+                    color: color.clone(),
+                    visible: true,
+                    currentScale: 1.0,
+                    userData: source,
+                    label: null
+                };
 
-                // 3. Invisible Hit-Test Mesh --- shared geometry, layer 1 for raycaster
-                const hitMat = new THREE.MeshBasicMaterial({ visible: false });
-                const hitMesh = new THREE.Mesh(sharedHitGeo, hitMat);
-                hitMesh.layers.set(1);
-                sphere.add(hitMesh);
-                hitMesh.userData = source; // Duplicate data for the raycaster
-                pointsByDomain[source.domain].push(sphere.position);
-                pointsByCluster[source.cluster].push(sphere.position);
-
-                // Stem Line
-                const lineGeo = new THREE.BufferGeometry().setFromPoints([
-                    new THREE.Vector3(x, y, z),
-                    new THREE.Vector3(x, floorY, z)
-                ]);
-                const lineMat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.2, depthWrite: false });
-                const line = new THREE.Line(lineGeo, lineMat);
-                scene.add(line);
-                sphere.stemLine = line;
-
-                // Label
+                // Label (CSS2DObject, positioned in world space)
                 const div = document.createElement('div');
                 div.className = 'label';
                 div.textContent = source.name;
                 div.style.color = domainColors[source.domain];
                 const label = new CSS2DObject(div);
-                label.position.set(0, 0.7, 0);
-                sphere.add(label);
-                sphere.label = label;
+                label.position.set(x, y + 0.7, z);
+                scene.add(label);
+                p.label = label;
+
+                points.push(p);
+                pointsByDomain[source.domain].push(p.position);
+                pointsByCluster[source.cluster].push(p.position);
             });
+
+            // Initial GPU sync
+            instancesDirty = true;
+            syncInstances();
 
             // Create Domain Webs
             Object.keys(pointsByDomain).forEach(domain => {
@@ -2598,6 +3065,7 @@
                 scene.add(web);
                 clusterWebs[cluster] = web;
             });
+            requestRender();
         }
 
         function updateWebVisibility() {
@@ -2607,6 +3075,7 @@
             Object.keys(clusterWebs).forEach(c => {
                 clusterWebs[c].visible = showClusterWebs && visibleClusters.has(parseInt(c));
             });
+            requestRender();
         }
 
         function createLegend(data) {
@@ -2717,6 +3186,10 @@
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
             labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            if (circlesPoints && circlesPoints.material.uniforms) {
+                circlesPoints.material.uniforms.uViewportHeight.value = window.innerHeight * window.devicePixelRatio;
+            }
+            requestRender();
         }
 
         function onMouseMove(event) {
@@ -2730,24 +3203,38 @@
             });
         }
 
+        const _projVec = new THREE.Vector3();
         function _doMouseMove(event) {
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
-            raycaster.setFromCamera(mouse, camera);
-            raycaster.layers.set(1); // Only test hit-test meshes on layer 1
-            const allIntersects = raycaster.intersectObjects(points, true);
-            raycaster.layers.set(0); // Reset to default
-            const intersects = allIntersects.filter(hit => {
-                return hit.object.parent ? hit.object.parent.visible : hit.object.visible;
-            });
+            // Screen-space hit testing: project each point to 2D, pick nearest
+            const hw = window.innerWidth * 0.5, hh = window.innerHeight * 0.5;
+            const baseThreshold = 20; // pixels
+            let bestIdx = -1, bestDistSq = Infinity;
+            for (let i = 0; i < points.length; i++) {
+                const p = points[i];
+                if (!p.visible) continue;
+                _projVec.copy(p.position).project(camera);
+                if (_projVec.z > 1) continue; // behind camera
+                const sx = (_projVec.x + 1) * hw;
+                const sy = (1 - _projVec.y) * hh;
+                const dx = sx - event.clientX, dy = sy - event.clientY;
+                const d2 = dx * dx + dy * dy;
+                // Scale threshold by visual size so enlarged points are easy to hit
+                const t = baseThreshold * Math.max(p.currentScale, 1);
+                if (d2 < t * t && d2 < bestDistSq) {
+                    bestDistSq = d2;
+                    bestIdx = i;
+                }
+            }
+            const intersects = bestIdx >= 0 ? [{ instanceId: bestIdx }] : [];
 
             if (!cachedTooltipEl) cachedTooltipEl = document.getElementById('tooltip');
             const tooltip = cachedTooltipEl;
             if (intersects.length > 0) {
-                // Get data from the hit object or its parent
-                const obj = intersects[0].object;
-                const s = obj.userData.name ? obj.userData : obj.parent.userData;
+                const hitIdx = intersects[0].instanceId;
+                const s = points[hitIdx].userData;
                 
                 if (s && s.name) {
                     document.body.style.cursor = 'pointer';
@@ -2760,7 +3247,7 @@
                         const tr = tooltip.getBoundingClientRect();
                         if (tr.right > window.innerWidth) tooltip.style.left = (event.clientX - tr.width - 15) + 'px';
                         if (tr.bottom > window.innerHeight) tooltip.style.top = (event.clientY - tr.height - 15) + 'px';
-                        currentHoveredPoint = obj.userData.name ? obj.userData : obj.parent.userData;
+                        currentHoveredPoint = s;
                         return;
                     }
                     lastHoveredName = s.name;
@@ -2813,7 +3300,7 @@
                     const coordRow = (label, val) =>
                         `<tr><td style="color:#666; padding-right:8px; white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis;">${label}</td><td style="color:#ddd; text-align:right; font-variant-numeric:tabular-nums;">${val}</td></tr>`;
                     if (explorerActive && explorerZScores) {
-                        const si = points.findIndex(p => p.userData === s);
+                        const si = hitIdx;
                         const nMet = data.metric_names.length;
                         const xi = parseInt(document.getElementById('explorer-x').value);
                         const yi = parseInt(document.getElementById('explorer-y').value);
@@ -2866,7 +3353,7 @@
                     if (tr.bottom > window.innerHeight) tooltip.style.top = (event.clientY - tr.height - 15) + 'px';
 
                     // Scale the parent group
-                    currentHoveredPoint = obj.userData.name ? obj.userData : obj.parent.userData;
+                    currentHoveredPoint = s;
                 }
             } else {
                 document.body.style.cursor = 'default';
@@ -2882,25 +3369,33 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            controls.update();
+            const controlsChanged = controls.update();
 
             // Update walls/labels when camera moves OR points are animating
             const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
             const cameraMoved = cx !== lastCamX || cy !== lastCamY || cz !== lastCamZ;
-            if (cameraMoved || viewAnimationId !== null) {
+            const isAnimating = viewAnimationId !== null || searchAnimationId !== null;
+            
+            if (cameraMoved || isAnimating) {
                 lastCamX = cx; lastCamY = cy; lastCamZ = cz;
                 updateWalls();
                 updateLabels();
             }
 
-            updateScales();
-            renderer.render(scene, camera);
-            labelRenderer.render(scene, camera);
+            const scalesChanged = updateScales();
+            
+            if (controlsChanged || cameraMoved || isAnimating || scalesChanged || instancesDirty || needsRender) {
+                if (instancesDirty) syncInstances();
+                renderer.render(scene, camera);
+                labelRenderer.render(scene, camera);
+                needsRender = false;
+            }
         }
 
         function updateScales() {
             const searchName = currentSearchMatch ? currentSearchMatch.name : null;
             const hoverName = currentHoveredPoint ? currentHoveredPoint.name : null;
+            let anyChanged = false;
             for (let i = 0, n = points.length; i < n; i++) {
                 const p = points[i];
                 let targetScale = 1.0;
@@ -2908,15 +3403,18 @@
                 if (searchName === name) targetScale = 4.0;
                 if (hoverName === name) targetScale = Math.max(targetScale, 1.5);
 
-                const s = p.scale.x;
+                const s = p.currentScale;
                 const diff = targetScale - s;
                 if (diff > 0.01 || diff < -0.01) {
-                    const nextS = s + diff * 0.15;
-                    p.scale.set(nextS, nextS, nextS);
+                    p.currentScale = s + diff * 0.15;
+                    anyChanged = true;
                 } else if (s !== targetScale) {
-                    p.scale.set(targetScale, targetScale, targetScale);
+                    p.currentScale = targetScale;
+                    anyChanged = true;
                 }
             }
+            if (anyChanged) markInstancesDirty();
+            return anyChanged;
         }
 
         init();
