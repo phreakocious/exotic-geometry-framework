@@ -204,6 +204,37 @@
         .proj-btn:not(:first-child) { margin-left: -1px; }
         .proj-btn:hover { color: #aaa; border-color: #555; z-index: 1; }
         .proj-btn.active { border-color: #e67e22; color: #ddd; background: rgba(230, 126, 34, 0.15); z-index: 2; }
+        .collapsible-header {
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .collapsed > .collapsible-header {
+            margin-bottom: 0;
+        }
+        .glass-card.collapsed {
+            padding: 10px 15px;
+        }
+        .collapsible-header::before {
+            content: '\25BE';
+            font-size: 10px;
+            transition: transform 0.15s;
+            display: inline-block;
+        }
+        .collapsed > .collapsible-header::before {
+            transform: rotate(-90deg);
+        }
+        .collapsed > .collapsible-body {
+            display: none !important;
+        }
         #explorer-panel { display: none; margin-top: 8px; }
         #explorer-panel.visible { display: block; }
         #explorer-panel .axis-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
@@ -367,6 +398,8 @@
         </div>
 
         <div id="controls" class="glass-card">
+            <div class="collapsible-header">Controls</div>
+            <div class="collapsible-body">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
                 <label style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">Labels</label>
                 <span id="distVal" style="font-size: 10px; color: #ddd;">40</span>
@@ -439,9 +472,12 @@
                 <div class="axis-row"><label>Y</label><select id="explorer-y" class="metric-select"></select></div>
                 <div class="axis-row"><label>Z</label><select id="explorer-z" class="metric-select"></select></div>
             </div>
+            </div><!-- .collapsible-body -->
         </div>
 
-        <div id="character-map" class="glass-card" style="display: flex; flex-direction: column; gap: 15px;">
+        <div id="character-map" class="glass-card collapsed">
+            <div class="collapsible-header">Character Map</div>
+            <div class="collapsible-body" style="display: flex; flex-direction: column; gap: 15px;">
             <div>
                 <label id="pc1-label" style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;" title="First principal component.">PC1: Distributional Order</label>
                 <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #00ffff, #3498db, #e74c3c); border-radius: 2px; position: relative;">
@@ -476,6 +512,7 @@
             </div>
 
             <div id="char-label" style="font-size: 11px; color: #888; font-style: italic; text-align: center; border-top: 1px solid #222; padding-top: 10px;">Hover a data source to analyze</div>
+            </div><!-- .collapsible-body -->
         </div>
 
         <div class="glass-card" style="padding: 10px;">
@@ -2549,6 +2586,17 @@
             document.getElementById('ui-toggle').addEventListener('click', () => {
                 document.body.classList.toggle('ui-hidden');
             });
+
+            // Collapsible sections
+            document.querySelectorAll('.collapsible-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    header.parentElement.classList.toggle('collapsed');
+                });
+            });
+            // Mobile: collapse controls by default
+            if (window.innerWidth <= 600) {
+                document.getElementById('controls').classList.add('collapsed');
+            }
             
             animate();
         }
