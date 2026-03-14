@@ -2,18 +2,20 @@
 """
 Meta-Geometry Investigation: The Framework Analyzing Its Own Signature Space
 
-The framework's 179 source profiles each encode a 233-element vector of
-metric means (44 geometries × varying metrics). This investigation turns the
-framework on itself — treating the signature space as data to be analyzed.
+The framework's source profiles each encode a vector of metric means
+(one per geometry × metric). This investigation turns the framework on
+itself — treating the signature space as data to be analyzed.
 
-Five directions:
+Seven directions:
   D1: Signature distance matrix as 2D field (spatial geometries)
   D2: Metric correlation matrix as 2D field (spatial geometries)
   D3: Domain distinguishability (Welch t-test + Cohen's d per metric pair)
   D4: Discriminating power by geometry (ANOVA F-statistic across domains)
   D5: Spectral dimension of signature space (SVD vs Marchenko-Pastur)
+  D6: Source redundancy / near-duplicate detection
+  D7: Domain classification (leave-one-out k-NN)
 
-Data source: figures/structure_atlas_data.json (179 sources, 16 domains, 233 metrics)
+Data source: figures/structure_atlas_data.json
 """
 
 import sys, os, json, time
@@ -54,7 +56,7 @@ def load_atlas():
     domains = [s['domain'] for s in atlas['sources']]
     metric_names = atlas['metric_names']
     domain_colors = atlas['domain_colors']
-    profiles = np.array(atlas['profiles'], dtype=np.float64)  # (179, 233)
+    profiles = np.array(atlas['profiles'], dtype=np.float64)
 
     # Replace non-finite values with NaN for consistent handling
     profiles[~np.isfinite(profiles)] = np.nan
@@ -226,7 +228,7 @@ def direction_2(names, domains, metric_names, profiles):
     n_sigs, n_met = profiles.shape
     analyzer = GeometryAnalyzer().add_spatial_geometries()
 
-    # Use all 233 metrics (atlas metrics are already single-scale)
+    # Use all atlas metrics (already single-scale)
     print(f"  Using all {n_met} metrics")
 
     rng = np.random.default_rng(123)
@@ -241,7 +243,7 @@ def direction_2(names, domains, metric_names, profiles):
         sub = profiles[boot_idx, :]
 
         # Real correlation matrix
-        corr = np.corrcoef(sub.T)  # (233, 233)
+        corr = np.corrcoef(sub.T)
         np.fill_diagonal(corr, 0)
         corr = np.nan_to_num(corr, nan=0.0)
         real_fields.append(corr.astype(np.float64))
@@ -486,11 +488,178 @@ def direction_5(profiles):
 
 
 # =============================================================================
+# D6: SOURCE REDUNDANCY / NEAR-DUPLICATE DETECTION
+# =============================================================================
+
+def direction_6(names, domains, profiles):
+    """Find near-duplicate sources and identify atlas gaps."""
+    print("\n" + "=" * 78)
+    print("D6: Source Redundancy & Near-Duplicate Detection")
+    print("=" * 78)
+
+    n_sigs, n_met = profiles.shape
+
+    # Z-score for cosine distance
+    col_means = np.nanmean(profiles, axis=0)
+    col_stds = np.nanstd(profiles, axis=0)
+    col_stds[col_stds < 1e-15] = 1.0
+    z = (profiles - col_means) / col_stds
+    z = np.nan_to_num(z, nan=0.0)
+
+    # Pairwise cosine distances
+    condensed = spatial.distance.pdist(z, metric='cosine')
+    dist_matrix = spatial.distance.squareform(condensed)
+
+    # Closest pairs overall
+    n = len(names)
+    pairs = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            pairs.append((dist_matrix[i, j], i, j))
+    pairs.sort()
+
+    print(f"  Distance range: {pairs[0][0]:.4f} – {pairs[-1][0]:.4f}")
+    print(f"  Median distance: {np.median(condensed):.4f}")
+
+    # Top 15 closest pairs
+    print(f"\n  Top 15 closest pairs:")
+    for d, i, j in pairs[:15]:
+        same = "SAME" if domains[i] == domains[j] else "diff"
+        print(f"    {d:.4f}  {names[i]:30s} ↔ {names[j]:30s}  "
+              f"[{domains[i]}/{domains[j]}] {same}")
+
+    # Same-domain near-duplicates (distance < 10th percentile of all)
+    thresh = np.percentile(condensed, 10)
+    same_domain_close = []
+    for d, i, j in pairs:
+        if d > thresh:
+            break
+        if domains[i] == domains[j]:
+            same_domain_close.append((d, names[i], names[j], domains[i]))
+
+    if same_domain_close:
+        print(f"\n  Same-domain near-duplicates (d < {thresh:.4f}):")
+        for d, na, nb, dom in same_domain_close[:10]:
+            print(f"    {d:.4f}  {na:30s} ↔ {nb:30s}  [{dom}]")
+    else:
+        print(f"\n  No same-domain pairs below 10th percentile ({thresh:.4f})")
+
+    # Most isolated sources (largest min-distance to any other source)
+    min_dists = np.min(dist_matrix + np.eye(n) * 999, axis=1)
+    isolated_idx = np.argsort(-min_dists)
+    print(f"\n  Most isolated sources (largest nearest-neighbor distance):")
+    for k in range(10):
+        i = isolated_idx[k]
+        nn_idx = np.argmin(dist_matrix[i] + np.eye(n)[i] * 999)
+        print(f"    {min_dists[i]:.4f}  {names[i]:30s}  [{domains[i]}]  "
+              f"nn={names[nn_idx]}")
+
+    return {
+        'closest_pairs': pairs[:20],
+        'same_domain_close': same_domain_close,
+        'min_dists': min_dists,
+        'names': names,
+        'domains': domains,
+        'dist_matrix': dist_matrix,
+    }
+
+
+# =============================================================================
+# D7: DOMAIN CLASSIFICATION (LEAVE-ONE-OUT k-NN)
+# =============================================================================
+
+def direction_7(names, domains, domain_colors, profiles):
+    """Leave-one-out k-NN classification — can the framework predict domain?"""
+    print("\n" + "=" * 78)
+    print("D7: Domain Classification (Leave-One-Out 5-NN)")
+    print("=" * 78)
+
+    n_sigs, n_met = profiles.shape
+
+    # Z-score
+    col_means = np.nanmean(profiles, axis=0)
+    col_stds = np.nanstd(profiles, axis=0)
+    col_stds[col_stds < 1e-15] = 1.0
+    z = (profiles - col_means) / col_stds
+    z = np.nan_to_num(z, nan=0.0)
+
+    # Cosine distance matrix
+    dist_matrix = spatial.distance.squareform(
+        spatial.distance.pdist(z, metric='cosine'))
+
+    K = 5
+    domain_list = sorted(set(domains))
+    dom_to_idx = {d: i for i, d in enumerate(domain_list)}
+    n_doms = len(domain_list)
+
+    # LOO classification
+    true_labels = np.array([dom_to_idx[d] for d in domains])
+    pred_labels = np.zeros(n_sigs, dtype=int)
+
+    for i in range(n_sigs):
+        dists = dist_matrix[i].copy()
+        dists[i] = np.inf  # exclude self
+        nn_idx = np.argsort(dists)[:K]
+        nn_domains = [true_labels[j] for j in nn_idx]
+        # majority vote
+        counts = np.bincount(nn_domains, minlength=n_doms)
+        pred_labels[i] = np.argmax(counts)
+
+    # Confusion matrix
+    confusion = np.zeros((n_doms, n_doms), dtype=int)
+    for t, p in zip(true_labels, pred_labels):
+        confusion[t, p] += 1
+
+    overall_acc = np.sum(true_labels == pred_labels) / n_sigs
+    print(f"  Overall accuracy: {overall_acc:.1%} ({np.sum(true_labels == pred_labels)}/{n_sigs})")
+
+    # Per-domain accuracy
+    print(f"\n  Per-domain accuracy:")
+    per_domain_acc = {}
+    for i, dom in enumerate(domain_list):
+        mask = true_labels == i
+        n_dom = np.sum(mask)
+        if n_dom == 0:
+            continue
+        correct = np.sum(pred_labels[mask] == i)
+        acc = correct / n_dom
+        per_domain_acc[dom] = acc
+        confused_with = ""
+        if correct < n_dom:
+            misclass = pred_labels[mask & (pred_labels != i)]
+            if len(misclass) > 0:
+                top_miss = np.argmax(np.bincount(misclass, minlength=n_doms))
+                confused_with = f"  → {domain_list[top_miss]}"
+        print(f"    {dom:15s}: {acc:5.1%} ({correct}/{n_dom}){confused_with}")
+
+    # Misclassified sources
+    misclassified = []
+    for i in range(n_sigs):
+        if true_labels[i] != pred_labels[i]:
+            misclassified.append((names[i], domains[i],
+                                  domain_list[pred_labels[i]]))
+
+    if misclassified:
+        print(f"\n  Misclassified sources ({len(misclassified)}):")
+        for name, true_dom, pred_dom in misclassified:
+            print(f"    {name:35s}  {true_dom:15s} → {pred_dom}")
+
+    return {
+        'confusion': confusion,
+        'domain_list': domain_list,
+        'overall_acc': overall_acc,
+        'per_domain_acc': per_domain_acc,
+        'misclassified': misclassified,
+        'n_sigs': n_sigs,
+    }
+
+
+# =============================================================================
 # FIGURE
 # =============================================================================
 
-def make_figure(d1, d2, d3, d4, d5, domain_colors):
-    """Create the 6-panel figure."""
+def make_figure(d1, d2, d3, d4, d5, d6, d7, domain_colors):
+    """Create the 8-panel figure."""
     plt.rcParams.update({
         'figure.facecolor': '#181818',
         'axes.facecolor': '#181818',
@@ -501,11 +670,14 @@ def make_figure(d1, d2, d3, d4, d5, domain_colors):
         'ytick.color': '#cccccc',
     })
 
-    fig = plt.figure(figsize=(18, 22), facecolor='#181818')
-    gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.30,
-                          left=0.07, right=0.96, top=0.95, bottom=0.05)
+    fig = plt.figure(figsize=(18, 29), facecolor='#181818')
+    gs = gridspec.GridSpec(4, 2, figure=fig, hspace=0.35, wspace=0.30,
+                          left=0.07, right=0.96, top=0.96, bottom=0.04)
+    n_sources = len(d1['names'])
+    n_metrics = d2['n_met']
+    n_domains = len(d3['domain_names'])
     fig.suptitle("Meta-Geometry: The Framework Analyzing Its Own Signatures\n"
-                 "179 sources · 233 metrics · 16 domains",
+                 f"{n_sources} sources · {n_metrics} metrics · {n_domains} domains",
                  fontsize=15, fontweight='bold', color='white')
 
     # ---- D1: Distance matrix heatmap (clustered, domain color sidebar) ------
@@ -525,7 +697,7 @@ def make_figure(d1, d2, d3, d4, d5, domain_colors):
     ax1.set_title(f"D1: Signature Distance Matrix ({d1['n_sig']} sig / {N_SPATIAL})",
                   fontsize=12, fontweight='bold')
 
-    # Domain color sidebar (no per-source labels at 179 sources)
+    # Domain color sidebar
     ordered_doms = [d1['domains'][i] for i in order]
     for i, dom in enumerate(ordered_doms):
         ax1.add_patch(Rectangle((-3.5, i - 0.5), 2.5, 1,
@@ -546,7 +718,7 @@ def make_figure(d1, d2, d3, d4, d5, domain_colors):
     cb1.ax.tick_params(labelsize=8, colors='#cccccc')
     cb1.set_label('Cosine distance', fontsize=9, color='#cccccc')
 
-    # ---- D2: Correlation matrix heatmap (233×233) ---------------------------
+    # ---- D2: Correlation matrix heatmap --------------------------------------
     ax2 = fig.add_subplot(gs[0, 1])
     dark_ax(ax2)
 
@@ -701,6 +873,81 @@ def make_figure(d1, d2, d3, d4, d5, domain_colors):
     ax5b_twin.tick_params(labelsize=7, colors='#888888')
     ax5b_twin.set_ylim(0, d5['variance_explained'][0] * 100 * 2.5)
 
+    # ---- D6: Source nearest-neighbor distance distribution --------------------
+    ax6 = fig.add_subplot(gs[3, 0])
+    dark_ax(ax6)
+
+    min_dists = d6['min_dists']
+    sorted_md = np.sort(min_dists)[::-1]
+    n6 = len(sorted_md)
+    dom_colors_arr = [domain_colors.get(d6['domains'][i], '#888888')
+                      for i in np.argsort(-min_dists)]
+    ax6.barh(range(n6), sorted_md, color=dom_colors_arr, alpha=0.8, height=1.0,
+             edgecolor='none')
+    # Label top 10 most isolated
+    sorted_idx = np.argsort(-min_dists)
+    for rank in range(min(10, n6)):
+        i = sorted_idx[rank]
+        short = d6['names'][i][:25]
+        ax6.text(min_dists[i] + 0.005, rank, short,
+                 va='center', fontsize=5, color='#cccccc')
+
+    ax6.set_xlabel('Nearest-neighbor cosine distance', fontsize=9)
+    ax6.set_ylabel('Source rank (most isolated first)', fontsize=9)
+    ax6.set_title("D6: Source Isolation (NN Distance)",
+                  fontsize=12, fontweight='bold')
+    ax6.set_yticks([0, n6 // 4, n6 // 2, 3 * n6 // 4, n6 - 1])
+    ax6.set_yticklabels(['1', str(n6 // 4 + 1), str(n6 // 2 + 1),
+                         str(3 * n6 // 4 + 1), str(n6)])
+    ax6.invert_yaxis()
+
+    # Annotation: median + count of close pairs
+    median_d = np.median(min_dists)
+    ax6.axvline(median_d, color='#e74c3c', linestyle='--', linewidth=1,
+                alpha=0.7)
+    ax6.text(median_d + 0.005, n6 * 0.85, f'median={median_d:.3f}',
+             fontsize=8, color='#e74c3c')
+
+    # ---- D7: Classification confusion matrix ----------------------------------
+    ax7 = fig.add_subplot(gs[3, 1])
+    dark_ax(ax7)
+
+    confusion = d7['confusion']
+    domain_list = d7['domain_list']
+    n_doms7 = len(domain_list)
+
+    # Normalize by row (true label) for display
+    row_sums = confusion.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1
+    conf_norm = confusion / row_sums
+
+    im7 = ax7.imshow(conf_norm, cmap='YlGnBu', vmin=0, vmax=1, aspect='equal')
+    ax7.set_xticks(range(n_doms7))
+    ax7.set_yticks(range(n_doms7))
+    short_doms7 = [d[:8] for d in domain_list]
+    ax7.set_xticklabels(short_doms7, rotation=45, ha='right', fontsize=7)
+    ax7.set_yticklabels(short_doms7, fontsize=7)
+    ax7.set_xlabel('Predicted', fontsize=9)
+    ax7.set_ylabel('True', fontsize=9)
+
+    # Cell annotations (count / percentage)
+    for i in range(n_doms7):
+        for j in range(n_doms7):
+            val = confusion[i, j]
+            if val == 0:
+                continue
+            pct = conf_norm[i, j]
+            color = 'white' if pct > 0.5 else '#cccccc'
+            ax7.text(j, i, str(val), ha='center', va='center',
+                     fontsize=6, color=color, fontweight='bold')
+
+    ax7.set_title(f"D7: Domain Classification ({d7['overall_acc']:.0%} LOO 5-NN)",
+                  fontsize=12, fontweight='bold')
+
+    cb7 = fig.colorbar(im7, ax=ax7, shrink=0.6, pad=0.02)
+    cb7.ax.tick_params(labelsize=8, colors='#cccccc')
+    cb7.set_label('Row-normalized accuracy', fontsize=9, color='#cccccc')
+
     # Domain color legend
     handles = []
     for dom in sorted(domain_colors.keys()):
@@ -709,7 +956,7 @@ def make_figure(d1, d2, d3, d4, d5, domain_colors):
                                   markersize=7, label=dom))
     fig.legend(handles=handles, loc='lower center', ncol=8, fontsize=8,
                frameon=True, facecolor='#222222', edgecolor='#444444',
-               labelcolor='#cccccc', bbox_to_anchor=(0.5, 0.005))
+               labelcolor='#cccccc', bbox_to_anchor=(0.5, 0.003))
 
     fig.savefig(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              '..', '..', 'figures', 'meta_geometry.png'),
@@ -734,8 +981,10 @@ def run_investigation():
     d3 = direction_3(names, domains, metric_names, domain_colors, profiles)
     d4 = direction_4(names, domains, metric_names, profiles)
     d5 = direction_5(profiles)
+    d6 = direction_6(names, domains, profiles)
+    d7 = direction_7(names, domains, domain_colors, profiles)
 
-    make_figure(d1, d2, d3, d4, d5, domain_colors)
+    make_figure(d1, d2, d3, d4, d5, d6, d7, domain_colors)
 
     # Summary
     print("\n" + "=" * 78)
@@ -754,6 +1003,10 @@ def run_investigation():
     print(f"D4: Top discriminator — {top_geom[0]} (F={top_geom[1]:.2f})")
     print(f"D5: Effective dimension — {d5['participation_ratio']:.1f} "
           f"({d5['n_above_mp']} above MP, 90% at dim {d5['dim_90']})")
+    n_close = len(d6['same_domain_close'])
+    print(f"D6: Source redundancy — {n_close} same-domain near-duplicates")
+    print(f"D7: Domain classification — {d7['overall_acc']:.1%} LOO 5-NN "
+          f"({len(d7['misclassified'])} misclassified)")
 
 
 if __name__ == "__main__":

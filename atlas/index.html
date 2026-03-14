@@ -39,7 +39,7 @@
         canvas { display: block; }
         .glass-card {
             background: rgba(10,10,10,0.4);
-            padding: 15px; 
+            padding: 12px;
             border-radius: 8px; 
             border: 1px solid #333;
             backdrop-filter: blur(10px);
@@ -55,9 +55,9 @@
             color: #5dade2;
             text-decoration: underline;
         }
-        #ui { position: absolute; top: 20px; left: 20px; z-index: 1000; pointer-events: none; width: 310px; display: flex; flex-direction: column; gap: 10px; transition: transform 0.3s ease; }
-        #ui h1 { margin: 0; font-size: 1.3rem; letter-spacing: -0.02em; font-weight: 700; color: #eee; }
-        #ui p { margin: 5px 0 0; font-size: 0.8rem; color: #888; line-height: 1.4; }
+        #ui { position: absolute; top: 15px; left: 15px; z-index: 1000; pointer-events: none; width: 280px; display: flex; flex-direction: column; gap: 6px; transition: transform 0.3s ease; }
+        #ui h1 { margin: 0; font-size: 1.1rem; letter-spacing: -0.02em; font-weight: 700; color: #eee; }
+        #ui p { margin: 3px 0 0; font-size: 0.75rem; color: #888; line-height: 1.3; }
         
         #legend { 
             position: absolute; 
@@ -388,6 +388,15 @@
     <button id="ui-toggle">Toggle UI</button>
     <div id="ui">
         <div class="glass-card">
+            <div style="margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                <a href="/" style="color: #888; text-decoration: none; font-size: 10px; display: flex; align-items: center; gap: 5px;">
+                    <span>←</span> Back
+                </a>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <img src="../assets/nullphase_circular.svg" style="width: 16px; height: 16px; opacity: 0.8;">
+                    <span style="font-size: 9px; color: #888; letter-spacing: 1px;">NULLPHASE.NET</span>
+                </div>
+            </div>
             <h1>Structure Atlas</h1>
             <p id="atlas-subtitle">3D phase space projection - PCA</p>
             <p style="font-size: 0.75rem; color: #666; line-height: 1.5; margin-top: 8px;">
@@ -464,6 +473,7 @@
             <div id="projection-group" style="display: flex; margin-top: 5px;">
                 <button class="proj-btn active" data-proj="pca" title="Principal Component Analysis --- interpretable linear axes">PCA</button>
                 <button class="proj-btn" data-proj="tsne" style="display:none;" title="t-SNE --- preserves local neighborhoods">t-SNE</button>
+                <button class="proj-btn" data-proj="sharp" title="MDS on top-10 rank distances. PCA gives every metric equal voice; Sharp amplifies the metrics where each pair of sources differs most. Finds structure that equal-weight averaging hides.">Sharp</button>
                 <button class="proj-btn" data-proj="explore" title="Plot sources by any 3 raw metrics (z-scored)">Explore</button>
             </div>
             <div id="explorer-panel">
@@ -600,6 +610,9 @@
                 let explorerActive = false;
                 let explorerZScores = null; // Float64Array[nSources * nMetrics]
                 let explorerViewBeforeEnter = null; // view name to restore on exit
+
+                // Sharp projection cache
+                let sharpCoords = null; // [[x,y,z], ...] for each source
 
                 // Perf: shared geometries, camera-change detection, mousemove throttle
                 const sharedSphereGeo = new THREE.SphereGeometry(0.5, 24, 24);
@@ -1214,11 +1227,56 @@
             return tsneCoords.map(p => p.map(v => v * ratio));
         }
 
+        function setAxisMetadata(viewName, projection) {
+            if (projection === 'sharp') {
+                data.axes = {
+                    pc1: { label: 'Sharp 1', variance: 0, low: 'Common', high: 'Distinctive' },
+                    pc2: { label: 'Sharp 2', variance: 0, low: '', high: '' },
+                    pc3: { label: 'Sharp 3', variance: 0, low: '', high: '' },
+                };
+                window.atlasAxes = data.axes;
+            } else if (projection === 'tsne') {
+                data.axes = {
+                    pc1: { label: 't-SNE 1', variance: 0, low: '', high: '' },
+                    pc2: { label: 't-SNE 2', variance: 0, low: '', high: '' },
+                    pc3: { label: 't-SNE 3', variance: 0, low: '', high: '' },
+                };
+                window.atlasAxes = {};
+            } else if (viewName === null) {
+                data.axes = savedFullAtlas.axes;
+                window.atlasAxes = savedFullAtlas.axes || {};
+            } else {
+                const view = data.views[viewName];
+                if (!view) return;
+                const vAxes = view.axes || {};
+                const axisLabel = (pcKey, idx) => {
+                    const ax = vAxes[pcKey];
+                    if (ax && ax.top_metric) {
+                        return `PC${idx}: ${prettifyMetric(ax.top_metric)}`;
+                    }
+                    return `PC${idx} (${(view.variance_explained[idx-1]*100).toFixed(0)}%)`;
+                };
+                data.axes = {
+                    pc1: { label: axisLabel('pc1', 1), variance: view.variance_explained[0], low: 'Low', high: 'High' },
+                    pc2: { label: axisLabel('pc2', 2), variance: view.variance_explained[1], low: 'Low', high: 'High' },
+                    pc3: { label: axisLabel('pc3', 3), variance: view.variance_explained[2], low: 'Low', high: 'High' },
+                };
+                window.atlasAxes = {}; // no semantic endpoints for character type
+            }
+            // Save unpermuted axes for pivot reference
+            unpermutedAxes = data.axes ? JSON.parse(JSON.stringify(data.axes)) : null;
+        }
+
         function switchView(viewName) {
             if (explorerActive) return; // block view switching while explorer is active
             if (viewName === currentView) return;
             if (viewAnimationId) cancelAnimationFrame(viewAnimationId);
             pivotIdx = 0; // Reset pivot on view change
+
+            // Sharp only works on full atlas; fall back to PCA in lens views
+            if (viewName !== null && currentProjection === 'sharp') {
+                currentProjection = 'pca';
+            }
 
             // Cancel any active search focus
             if (searchAnimationId) {
@@ -1232,7 +1290,9 @@
             // Auto-scale: normalize spread so all views fill the same visual volume
             let rawPCs;
             if (viewName === null) {
-                if (currentProjection === 'tsne' && savedFullAtlas.rawTsne) {
+                if (currentProjection === 'sharp' && data.profiles) {
+                    rawPCs = computeSharpProjection().map(p => p.slice(0, 3));
+                } else if (currentProjection === 'tsne' && savedFullAtlas.rawTsne) {
                     rawPCs = savedFullAtlas.rawTsne.map(p => p.slice(0, 3));
                 } else {
                     rawPCs = savedFullAtlas.rawPc.map(p => p.slice(0, 3));
@@ -1240,6 +1300,7 @@
                 targetClusters = savedFullAtlas.clusters;
                 targetAllClusters = savedFullAtlas.allClusters;
             } else {
+                // Sharp only works on full atlas; fall back to PCA in lens views
                 const view = data.views[viewName];
                 if (currentProjection === 'tsne' && view.tsne) {
                     rawPCs = view.tsne.map(p => p.slice(0, 3));
@@ -1357,37 +1418,7 @@
 
             updateProjectionUI(explorerActive ? 'explore' : currentProjection);
 
-            // Set axes metadata
-            if (currentProjection === 'tsne') {
-                data.axes = {
-                    pc1: { label: 't-SNE 1', variance: 0, low: '', high: '' },
-                    pc2: { label: 't-SNE 2', variance: 0, low: '', high: '' },
-                    pc3: { label: 't-SNE 3', variance: 0, low: '', high: '' },
-                };
-                window.atlasAxes = {};
-            } else if (viewName === null) {
-                data.axes = savedFullAtlas.axes;
-                window.atlasAxes = savedFullAtlas.axes || {};
-            } else {
-                const view = data.views[viewName];
-                const vAxes = view.axes || {};
-                const axisLabel = (pcKey, idx) => {
-                    const ax = vAxes[pcKey];
-                    if (ax && ax.top_metric) {
-                        return `PC${idx}: ${prettifyMetric(ax.top_metric)}`;
-                    }
-                    return `PC${idx} (${(view.variance_explained[idx-1]*100).toFixed(0)}%)`;
-                };
-                data.axes = {
-                    pc1: { label: axisLabel('pc1', 1), variance: view.variance_explained[0], low: 'Low', high: 'High' },
-                    pc2: { label: axisLabel('pc2', 2), variance: view.variance_explained[1], low: 'Low', high: 'High' },
-                    pc3: { label: axisLabel('pc3', 3), variance: view.variance_explained[2], low: 'Low', high: 'High' },
-                };
-                window.atlasAxes = {}; // no semantic endpoints for character type
-            }
-
-            // Save unpermuted axes for pivot reference
-            unpermutedAxes = JSON.parse(JSON.stringify(data.axes));
+            setAxisMetadata(viewName, currentProjection);
 
             addWalls(data, atlasBounds);
             addAxisLabels(atlasBounds);
@@ -1470,9 +1501,8 @@
             const subtitle = document.getElementById('atlas-subtitle');
 
             if (viewName === null) {
-                subtitle.textContent = currentProjection === 'tsne'
-                    ? '3D phase space projection - t-SNE'
-                    : '3D phase space projection - PCA';
+                const projNames = { pca: 'PCA', tsne: 't-SNE', sharp: 'Sharp (discriminative)' };
+                subtitle.textContent = '3D phase space projection - ' + (projNames[currentProjection] || 'PCA');
                 document.getElementById('sourceCount').textContent = data.sources.length;
                 document.getElementById('domainCount').textContent = new Set(data.sources.map(s => s.domain)).size;
                 document.getElementById('metricCount').textContent = data.n_metrics || '...';
@@ -1501,7 +1531,8 @@
                 });
             } else {
                 const view = data.views[viewName];
-                const projLabel = currentProjection === 'tsne' ? ' (t-SNE)' : '';
+                const projLabels = { tsne: ' (t-SNE)', sharp: ' (Sharp)' };
+                const projLabel = projLabels[currentProjection] || '';
                 subtitle.innerHTML = `<span style="color:#ddd">${viewName}</span> lens${projLabel}: ${view.question}`;
                 // Count visible sources (those with a cluster entry in this view)
                 const viewClusterIds = view.clusters ? new Set(Object.keys(view.clusters)) : null;
@@ -1653,9 +1684,10 @@
         const clusterPalette = ['#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c', '#e74c3c', '#fd79a8'];
 
         function getClusterColor(cId) {
+            if (cId === undefined || cId === null) return '#888888';
             const idx = allClusters.indexOf(parseInt(cId));
-            const color = clusterPalette[idx % clusterPalette.length] || '#888888';
-            return color;
+            if (idx === -1) return '#888888';
+            return clusterPalette[idx % clusterPalette.length];
         }
 
         function updateColors() {
@@ -1665,7 +1697,12 @@
                 } else {
                     p.color.set(getClusterColor(p.userData.cluster));
                 }
-                if (p.label) p.label.element.style.color = `#${p.color.getHexString()}`;
+                // Sprites don't have .element.style. To change label color, we'd need to regenerate textures
+                // or tint the material. For now, we just ensure we don't crash.
+                if (p.label && p.label.material) {
+                    // We can tint the sprite material to follow the color mode if desired:
+                    // p.label.material.color.copy(p.color);
+                }
             });
             markInstancesDirty();
         }
@@ -1751,6 +1788,142 @@
                 }
             }
             return z;
+        }
+
+        function computeSharpProjection() {
+            // Discriminative projection: rank-normalize, compute top-k weighted
+            // distance matrix, then classical MDS for 3D embedding.
+            //
+            // Unlike PCA (which maximizes variance, giving every metric equal
+            // voice after rank normalization), this weights by how much each
+            // metric actually separates sources. A metric like linear_complexity
+            // that has extreme values for one source gets amplified.
+            if (sharpCoords) return sharpCoords;
+
+            const profiles = data.profiles;
+            const nSrc = profiles.length;
+            const nMet = profiles[0].length;
+            const K = 10; // top-K metric differences to average
+
+            // Step 1: Rank-normalize each metric column
+            const R = new Float64Array(nSrc * nMet);
+            for (let j = 0; j < nMet; j++) {
+                // Collect (value, index) pairs, sort, assign ranks
+                const col = [];
+                for (let i = 0; i < nSrc; i++) col.push({ v: profiles[i][j], i });
+                col.sort((a, b) => a.v - b.v);
+                for (let r = 0; r < nSrc; r++) {
+                    R[col[r].i * nMet + j] = (r + 1) / nSrc;
+                }
+                // Center
+                const mean = (nSrc + 1) / (2 * nSrc);
+                for (let i = 0; i < nSrc; i++) R[i * nMet + j] -= mean;
+            }
+
+            // Step 2: Top-K mean distance matrix
+            // For each pair, take the mean of the K largest |rank_diff| values.
+            // This amplifies metrics that uniquely separate specific pairs.
+            const D = new Float64Array(nSrc * nSrc);
+            const diffs = new Float64Array(nMet);
+            for (let i = 0; i < nSrc; i++) {
+                for (let j = i + 1; j < nSrc; j++) {
+                    // Compute per-metric absolute rank differences
+                    for (let m = 0; m < nMet; m++) {
+                        diffs[m] = Math.abs(R[i * nMet + m] - R[j * nMet + m]);
+                    }
+                    // Partial sort: find top K values
+                    // Use a simple selection approach for K=10
+                    let topSum = 0;
+                    const topK = Math.min(K, nMet);
+                    const sorted = Array.from(diffs).sort((a, b) => b - a);
+                    for (let k = 0; k < topK; k++) topSum += sorted[k];
+                    const d = topSum / topK;
+                    D[i * nSrc + j] = d;
+                    D[j * nSrc + i] = d;
+                }
+            }
+
+            // Step 3: Classical MDS (Torgerson)
+            // B = -0.5 * J * D^2 * J where J = I - 11'/n (double centering)
+            const D2 = new Float64Array(nSrc * nSrc);
+            for (let i = 0; i < nSrc * nSrc; i++) D2[i] = D[i] * D[i];
+
+            // Row means, column means, grand mean
+            const rowMean = new Float64Array(nSrc);
+            const colMean = new Float64Array(nSrc);
+            let grandMean = 0;
+            for (let i = 0; i < nSrc; i++) {
+                for (let j = 0; j < nSrc; j++) {
+                    rowMean[i] += D2[i * nSrc + j];
+                    colMean[j] += D2[i * nSrc + j];
+                }
+                rowMean[i] /= nSrc;
+            }
+            for (let j = 0; j < nSrc; j++) {
+                colMean[j] /= nSrc;
+                grandMean += colMean[j];
+            }
+            grandMean /= nSrc;
+
+            // B = -0.5 * (D2 - rowMean - colMean + grandMean)
+            const B = new Float64Array(nSrc * nSrc);
+            for (let i = 0; i < nSrc; i++) {
+                for (let j = 0; j < nSrc; j++) {
+                    B[i * nSrc + j] = -0.5 * (D2[i * nSrc + j] - rowMean[i] - colMean[j] + grandMean);
+                }
+            }
+
+            // Power iteration for top 3 eigenvectors
+            const coords = [];
+            const deflatedB = Float64Array.from(B);
+            for (let dim = 0; dim < 3; dim++) {
+                let v = new Float64Array(nSrc);
+                // Random init (deterministic seed)
+                for (let i = 0; i < nSrc; i++) v[i] = Math.sin(i * 7.31 + dim * 13.17);
+
+                // Normalize
+                let norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+                for (let i = 0; i < nSrc; i++) v[i] /= norm;
+
+                // 100 iterations of power method
+                const Bv = new Float64Array(nSrc);
+                for (let iter = 0; iter < 100; iter++) {
+                    // Bv = deflatedB * v
+                    for (let i = 0; i < nSrc; i++) {
+                        Bv[i] = 0;
+                        for (let j = 0; j < nSrc; j++) {
+                            Bv[i] += deflatedB[i * nSrc + j] * v[j];
+                        }
+                    }
+                    norm = Math.sqrt(Bv.reduce((s, x) => s + x * x, 0));
+                    if (norm < 1e-15) break;
+                    for (let i = 0; i < nSrc; i++) v[i] = Bv[i] / norm;
+                }
+
+                // Eigenvalue = v' * B * v
+                let eigenvalue = 0;
+                for (let i = 0; i < nSrc; i++) {
+                    let Bvi = 0;
+                    for (let j = 0; j < nSrc; j++) Bvi += deflatedB[i * nSrc + j] * v[j];
+                    eigenvalue += v[i] * Bvi;
+                }
+
+                // Store sqrt(eigenvalue) * v as coordinates for this dimension
+                const scale = eigenvalue > 0 ? Math.sqrt(eigenvalue) : 0;
+                const dimCoords = new Float64Array(nSrc);
+                for (let i = 0; i < nSrc; i++) dimCoords[i] = v[i] * scale;
+                coords.push(dimCoords);
+
+                // Deflate: B = B - eigenvalue * v * v'
+                for (let i = 0; i < nSrc; i++) {
+                    for (let j = 0; j < nSrc; j++) {
+                        deflatedB[i * nSrc + j] -= eigenvalue * v[i] * v[j];
+                    }
+                }
+            }
+
+            sharpCoords = data.sources.map((_, i) => [coords[0][i], coords[1][i], coords[2][i]]);
+            return sharpCoords;
         }
 
         function computeExplorerPositions(xi, yi, zi) {
@@ -1861,12 +2034,12 @@
         }
 
         function updateProjectionUI(activeProj) {
-            // activeProj: 'pca' | 'tsne' | 'explore'
+            // activeProj: 'pca' | 'tsne' | 'sharp' | 'explore'
             const inLens = currentView !== null && currentView !== '__explorer__';
             document.querySelectorAll('.proj-btn').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.proj === activeProj);
-                // Dim Explore in lens views (it uses raw metrics, not view-specific)
-                if (inLens && btn.dataset.proj === 'explore') {
+                // Dim Explore and Sharp in lens views (they use raw metrics, not view-specific)
+                if (inLens && (btn.dataset.proj === 'explore' || btn.dataset.proj === 'sharp')) {
                     btn.style.opacity = '0.3';
                     btn.style.pointerEvents = 'none';
                 } else {
@@ -1947,7 +2120,10 @@
 
             // Get raw coords for target projection (full atlas or current view)
             let rawPCs;
-            if (currentView === null) {
+            if (projection === 'sharp') {
+                // Sharp projection: computed client-side from raw profiles
+                rawPCs = computeSharpProjection().map(p => p.slice(0, 3));
+            } else if (currentView === null) {
                 rawPCs = projection === 'tsne'
                     ? savedFullAtlas.rawTsne.map(p => p.slice(0, 3))
                     : savedFullAtlas.rawPc.map(p => p.slice(0, 3));
@@ -2037,18 +2213,7 @@
             if (floor) scene.remove(floor);
             if (axisGroup) axisGroup.clear();
 
-            // Set axis metadata (actual labels set by updateViewUI below)
-            if (projection === 'tsne') {
-                data.axes = {
-                    pc1: { label: 't-SNE 1', variance: 0, low: '', high: '' },
-                    pc2: { label: 't-SNE 2', variance: 0, low: '', high: '' },
-                    pc3: { label: 't-SNE 3', variance: 0, low: '', high: '' },
-                };
-            } else if (currentView === null) {
-                data.axes = savedFullAtlas.axes;
-            }
-            // For lens views switching back to PCA, updateViewUI will rebuild axes
-            unpermutedAxes = JSON.parse(JSON.stringify(data.axes));
+            setAxisMetadata(currentView, projection);
 
             addWalls(data, atlasBounds);
             addAxisLabels(atlasBounds);
@@ -2447,9 +2612,11 @@
                     }
 
                 } else {
-                    // No profiles data --- hide the explore button
+                    // No profiles data --- hide the explore and sharp buttons
                     const exploreBtn = document.querySelector('.proj-btn[data-proj="explore"]');
                     if (exploreBtn) exploreBtn.style.display = 'none';
+                    const sharpBtn = document.querySelector('.proj-btn[data-proj="sharp"]');
+                    if (sharpBtn) sharpBtn.style.display = 'none';
                 }
 
                 // Projection mode segmented control
@@ -2852,8 +3019,10 @@
             updateWebVisibility();
         }
 
-        function markInstancesDirty() { instancesDirty = true; }
-
+        function markInstancesDirty() { 
+            instancesDirty = true; 
+            requestRender();
+        }
         function syncInstances() {
             if (!sphereInstMesh) return;
             for (let i = 0; i < points.length; i++) {
@@ -3265,12 +3434,11 @@
             clSection.className = 'legend-section';
             container.appendChild(clSection);
 
-            const clusterPalette = ['#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c', '#e74c3c', '#fd79a8'];
             const viewClustersMap = currentView && data.views[currentView] && data.views[currentView].clusters;
-            const allClusters = [...new Set(data.sources.map(s => s.cluster))].sort((a,b)=>a-b)
-                .filter(cId => !viewClustersMap || viewClustersMap[String(cId)]);
+            // Use the global allClusters, but filter for the legend if viewClustersMap exists
+            const activeClusters = allClusters.filter(cId => !viewClustersMap || viewClustersMap[String(cId)]);
 
-            allClusters.forEach((cId, idx) => {
+            activeClusters.forEach((cId, idx) => {
                 const item = document.createElement('div');
                 item.className = 'legend-item';
                 item.style.cssText = 'cursor: pointer; transition: opacity 0.2s;';
@@ -3491,21 +3659,22 @@
 
         function animate() {
             const controlsChanged = controls.update();
+            const scalesChanged = updateScales();
 
-            // Update walls/labels when camera moves OR points are animating
             const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
             const cameraMoved = cx !== lastCamX || cy !== lastCamY || cz !== lastCamZ;
             const isAnimating = viewAnimationId !== null || searchAnimationId !== null;
             
-            if (cameraMoved || isAnimating) {
+            // If anything changed that affects the visual state, update dependent elements
+            const stateChanged = cameraMoved || isAnimating || scalesChanged || instancesDirty || needsRender;
+
+            if (stateChanged) {
                 lastCamX = cx; lastCamY = cy; lastCamZ = cz;
                 updateWalls();
                 updateLabels();
             }
-
-            const scalesChanged = updateScales();
             
-            if (controlsChanged || cameraMoved || isAnimating || scalesChanged || instancesDirty || needsRender) {
+            if (controlsChanged || stateChanged) {
                 if (instancesDirty) syncInstances();
                 renderer.render(scene, camera);
                 needsRender = false;

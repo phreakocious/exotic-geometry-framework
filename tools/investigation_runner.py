@@ -23,6 +23,7 @@ Usage:
 """
 
 import multiprocessing
+import multiprocessing.context
 import sys
 import time
 import warnings
@@ -76,7 +77,8 @@ def _parallel_analyze(chunks, mode, cache_dir, n_workers, tier='complete',
     """Analyze chunks in parallel using a process pool."""
     if pool is not None:
         return pool.map(_worker_analyze, chunks)
-    with multiprocessing.Pool(
+    ctx = multiprocessing.get_context('forkserver')
+    with ctx.Pool(
         processes=n_workers,
         initializer=_worker_init,
         initargs=(mode, cache_dir, tier),
@@ -128,9 +130,11 @@ class Runner:
         self.bonf_alpha = alpha / self.n_metrics
 
         # Persistent process pool (avoids fork/init overhead per collect call)
+        # Use forkserver on macOS to avoid fork-safety deadlocks
         self._pool = None
         if n_workers > 1:
-            self._pool = multiprocessing.Pool(
+            ctx = multiprocessing.get_context('forkserver')
+            self._pool = ctx.Pool(
                 processes=n_workers,
                 initializer=_worker_init,
                 initargs=(mode, self.cache_dir, tier),

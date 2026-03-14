@@ -346,6 +346,27 @@ def gen_pi_digits(rng, size):
         return rng.integers(0, 256, size, dtype=np.uint8)
 
 
+# --- Debug / degenerate ---
+
+
+@source(
+    "Constant 0x00",
+    domain="noise",
+    description="All zero bytes --- degenerate constant signal, minimum entropy, zero variance",
+)
+def gen_constant_00(rng, size):
+    return np.zeros(size, dtype=np.uint8)
+
+
+@source(
+    "Constant 0xFF",
+    domain="noise",
+    description="All 0xFF bytes --- degenerate constant signal, minimum entropy, zero variance",
+)
+def gen_constant_ff(rng, size):
+    return np.full(size, 255, dtype=np.uint8)
+
+
 # --- Noise ---
 
 
@@ -405,7 +426,11 @@ def gen_brownian(rng, size):
 
 
 def _gen_fbm(H):
-    """Factory for fractional Brownian motion generators."""
+    """Factory for fractional Brownian motion generators.
+
+    Spectral synthesis: PSD ∝ f^{-(2H+1)} already produces fBm increments
+    integrated once (i.e. fBm itself). No cumsum needed.
+    """
 
     def gen(rng, size):
         freqs = np.fft.rfftfreq(size, d=1.0)
@@ -415,7 +440,6 @@ def _gen_fbm(H):
         fft_vals = np.sqrt(psd) * np.exp(1j * phases)
         fft_vals[0] = 0
         signal = np.fft.irfft(fft_vals, n=size)
-        signal = np.cumsum(signal)
         return _to_uint8(signal)
 
     return gen
@@ -642,13 +666,36 @@ register(
 @source(
     "AES Encrypted",
     domain="binary",
-    description="Simulated AES-CTR ciphertext --- keyed PRNG output indistinguishable from random "
-    "without the key, the gold standard for pseudorandom streams",
+    description="AES-256-CTR ciphertext of structured data --- the gold standard for pseudorandom "
+    "streams, indistinguishable from random without the key",
 )
 def gen_aes_encrypted(rng, size):
-    key = rng.integers(0, 2**32)
-    cipher_rng = np.random.default_rng(key)
-    return cipher_rng.integers(0, 256, size, dtype=np.uint8)
+    """AES-256-CTR encryption of a structured plaintext (sine wave).
+
+    Uses hashlib-based AES-CTR simulation: SHA-256 blocks keyed by
+    (key || counter) produce a keystream XORed with the plaintext.
+    This is cryptographically sound — each block is a PRF evaluation,
+    and the output is indistinguishable from random under CPA.
+    """
+    import hashlib
+    import struct
+
+    key = rng.bytes(32)
+    # Structured plaintext — a quantized sine wave
+    t = np.linspace(0, 8 * np.pi, size)
+    plaintext = ((np.sin(t) + 1) * 127.5).astype(np.uint8)
+
+    # AES-CTR via SHA-256 PRF: keystream = SHA256(key || counter) for each block
+    ciphertext = np.empty(size, dtype=np.uint8)
+    for block_idx in range(0, size, 32):
+        counter = struct.pack(">Q", block_idx // 32)
+        ks = hashlib.sha256(key + counter).digest()
+        end = min(block_idx + 32, size)
+        block_len = end - block_idx
+        pt_block = plaintext[block_idx:end]
+        ct_block = bytes(a ^ b for a, b in zip(pt_block, ks[:block_len]))
+        ciphertext[block_idx:end] = np.frombuffer(ct_block, dtype=np.uint8)
+    return ciphertext
 
 
 def _gen_file_binary_center(path, label):
@@ -1195,6 +1242,58 @@ def gen_middle_square(rng, size):
 
 
 @source(
+    "MINSTD (Park-Miller)",
+    domain="binary",
+    description="The 'minimum standard' LCG from Park & Miller (1988 CACM) --- a=16807, m=2³¹-1. "
+    "Widely adopted as a baseline, but exhibits lattice structure in dimensions ≥6",
+)
+def gen_minstd(rng, size):
+    state = int(rng.integers(1, 2**31 - 1))
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        state = (16807 * state) % (2**31 - 1)
+        vals[i] = (state >> 16) & 0xFF
+    return vals
+
+
+@source(
+    "XorShift32",
+    domain="binary",
+    description="Marsaglia's XorShift (2003) --- three shift-xor operations per step. "
+    "Fast and passes most tests, but fails binary rank and linear complexity",
+)
+def gen_xorshift32(rng, size):
+    state = int(rng.integers(1, 2**32))
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        state ^= (state << 13) & 0xFFFFFFFF
+        state ^= (state >> 17)
+        state ^= (state << 5) & 0xFFFFFFFF
+        vals[i] = (state >> 16) & 0xFF
+    return vals
+
+
+@source(
+    "Wichmann-Hill",
+    domain="binary",
+    description="Wichmann & Hill (1982) --- three combined short-period LCGs. "
+    "Python 2's random() engine before Mersenne Twister. Periods ~6.95×10¹²",
+)
+def gen_wichmann_hill(rng, size):
+    s1 = int(rng.integers(1, 30269))
+    s2 = int(rng.integers(1, 30307))
+    s3 = int(rng.integers(1, 30323))
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        s1 = (171 * s1) % 30269
+        s2 = (172 * s2) % 30307
+        s3 = (170 * s3) % 30323
+        r = (s1 / 30269.0 + s2 / 30307.0 + s3 / 30323.0) % 1.0
+        vals[i] = int(r * 256) & 0xFF
+    return vals
+
+
+@source(
     "Neural Net (Dense)",
     domain="binary",
     description="Synthetic neural network weights --- Gaussian-initialized dense layer, "
@@ -1359,29 +1458,36 @@ def gen_clipped_sine(rng, size):
 
 
 @source(
-    "L-System (Algae)",
+    "L-System (Dragon Curve)",
     domain="exotic",
-    description="Lindenmayer system (A→AB, B→A) --- the simplest L-system, producing Fibonacci-length words. "
-    "Deterministic, self-similar, with growth rate equal to the golden ratio",
+    description="Dragon curve L-system (F→F+G, G→F-G) --- the turn sequence is the regular paper-folding "
+    "sequence, a non-periodic deterministic binary sequence with fractal spectral measure",
 )
-def gen_lsystem_algae(rng, size):
+def gen_lsystem_dragon(rng, size):
     """
-    Classic Algae L-system.
-    Rules: A -> AB, B -> A
-    Mapped to: A=255, B=0
+    Dragon curve L-system turn sequence.
+    Rules: F -> F+G, G -> F-G
+    Record turns only: + = 255, - = 0.
+    The turn sequence is the regular paper-folding sequence,
+    distinct from Fibonacci (not Sturmian, has complexity ~n*log(n)).
     """
-    s = "A"
-    # Grow string until it's at least 'size' long
-    # Growth is exponential (Fibonacci lengths), so this is fast
-    while len(s) < size:
-        s = "".join(["AB" if c == "A" else "A" for c in s])
+    s = "F"
+    while len(s) < size * 6:
+        out = []
+        for c in s:
+            if c == "F":
+                out.append("F+G")
+            elif c == "G":
+                out.append("F-G")
+            else:
+                out.append(c)
+        s = "".join(out)
 
-    # Take a random starting window to allow trial diversity
-    start = rng.integers(0, max(1, len(s) - size))
-    chunk = s[start : start + size]
+    turns = [c for c in s if c in ("+", "-")]
+    start = rng.integers(0, max(1, len(turns) - size))
+    chunk = turns[start : start + size]
 
-    # Map symbols to uint8
-    vals = np.array([255 if c == "A" else 0 for c in chunk], dtype=np.uint8)
+    vals = np.array([255 if c == "+" else 0 for c in chunk], dtype=np.uint8)
     return vals
 
 
@@ -1933,6 +2039,228 @@ def gen_seismograph(rng, size):
     return _real_data_gen(data, rng, size)
 
 
+# --- New seismic/geophysical sources (2026-02-24) ---
+# Targeting the (-5, -5, +4) PCA void: rough, low-vocabulary, topology-rich signals
+
+_KILAUEA_TREMOR = None
+_ANMO_MICROSEISM = None
+_OKHOTSK_DEEP = None
+_TOHOKU_INTERVALS = None
+_SOCAL_BVALUE = None
+
+
+def _parse_iris_tspair(path):
+    """Parse IRIS TSPAIR ASCII format: skip header, take 2nd column."""
+    vals = []
+    with open(path) as f:
+        for line in f:
+            if line.startswith("TIMESERIES"):
+                continue
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                try:
+                    vals.append(float(parts[1]))
+                except ValueError:
+                    continue
+    return np.array(vals, dtype=np.float64)
+
+
+def _get_kilauea_tremor():
+    global _KILAUEA_TREMOR
+    if _KILAUEA_TREMOR is not None:
+        return _KILAUEA_TREMOR
+    _KILAUEA_TREMOR = _load_data_file("data/seismic/kilauea_devl_hhz_2018.txt", _parse_iris_tspair)
+    if _KILAUEA_TREMOR is None:
+        _KILAUEA_TREMOR = np.array([])
+    return _KILAUEA_TREMOR
+
+
+def _get_anmo_microseism():
+    global _ANMO_MICROSEISM
+    if _ANMO_MICROSEISM is not None:
+        return _ANMO_MICROSEISM
+    _ANMO_MICROSEISM = _load_data_file("data/seismic/anmo_lhz_microseism_2023.txt", _parse_iris_tspair)
+    if _ANMO_MICROSEISM is None:
+        _ANMO_MICROSEISM = np.array([])
+    return _ANMO_MICROSEISM
+
+
+def _get_okhotsk_deep():
+    global _OKHOTSK_DEEP
+    if _OKHOTSK_DEEP is not None:
+        return _OKHOTSK_DEEP
+    _OKHOTSK_DEEP = _load_data_file("data/seismic/okhotsk_deep_2013.txt", _parse_iris_tspair)
+    if _OKHOTSK_DEEP is None:
+        _OKHOTSK_DEEP = np.array([])
+    return _OKHOTSK_DEEP
+
+
+def _get_tohoku_intervals():
+    global _TOHOKU_INTERVALS
+    if _TOHOKU_INTERVALS is not None:
+        return _TOHOKU_INTERVALS
+    from datetime import datetime
+    from pathlib import Path
+
+    # Prefer ISC catalog (35k events) over USGS (4k events)
+    p_isc = Path(__file__).resolve().parents[1] / "data" / "seismic" / "tohoku_aftershocks_2011_isc.txt"
+    p_usgs = Path(__file__).resolve().parents[1] / "data" / "seismic" / "tohoku_aftershocks_2011.csv"
+
+    times = []
+    if p_isc.exists():
+        # ISC pipe-delimited format
+        with open(p_isc) as f:
+            for line in f:
+                if line.startswith("#") or line.startswith("EventID"):
+                    continue
+                parts = line.strip().split("|")
+                if len(parts) >= 2:
+                    try:
+                        t = datetime.fromisoformat(parts[1].replace("Z", "+00:00"))
+                        times.append(t.timestamp())
+                    except (ValueError, IndexError):
+                        continue
+    elif p_usgs.exists():
+        import csv
+        with open(p_usgs) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    t = datetime.fromisoformat(row["time"].replace("Z", "+00:00"))
+                    times.append(t.timestamp())
+                except (ValueError, KeyError):
+                    continue
+
+    if len(times) < 2:
+        _TOHOKU_INTERVALS = np.array([])
+        return _TOHOKU_INTERVALS
+    times = np.sort(times)
+    intervals = np.diff(times)  # seconds between successive events
+    intervals = np.log1p(np.maximum(intervals, 0))  # log-transform (Omori clustering)
+    _TOHOKU_INTERVALS = intervals
+    return _TOHOKU_INTERVALS
+
+
+def _get_socal_bvalue():
+    global _SOCAL_BVALUE
+    if _SOCAL_BVALUE is not None:
+        return _SOCAL_BVALUE
+    import csv
+    from pathlib import Path
+
+    p = Path(__file__).resolve().parents[1] / "data" / "seismic" / "socal_catalog_2019_2023.csv"
+    if not p.exists():
+        _SOCAL_BVALUE = np.array([])
+        return _SOCAL_BVALUE
+    mags = []
+    with open(p) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                mags.append(float(row["mag"]))
+            except (ValueError, KeyError):
+                continue
+    mags = np.array(mags, dtype=np.float64)
+    # Sliding-window b-value: b = log10(e) / (mean_mag - M_min)
+    # Window of 100 events, step 1 (maximizes output length)
+    window = 100
+    step = 1
+    log10e = np.log10(np.e)
+    m_min = np.percentile(mags, 5)  # approximate completeness magnitude
+    bvals = []
+    for i in range(0, len(mags) - window, step):
+        w = mags[i : i + window]
+        mean_m = np.mean(w)
+        if mean_m > m_min + 0.01:
+            bvals.append(log10e / (mean_m - m_min))
+    _SOCAL_BVALUE = np.array(bvals, dtype=np.float64)
+    return _SOCAL_BVALUE
+
+
+@source(
+    "Kilauea Tremor",
+    domain="geophysics",
+    description="HV.DEVL volcanic tremor during 2018 Kilauea eruption --- harmonic tremor at 100 sps, "
+    "quasi-periodic with complex amplitude modulation, narrowband (IRIS CC0)",
+)
+def gen_kilauea_tremor(rng, size):
+    data = _get_kilauea_tremor()
+    return _real_data_gen(data, rng, size)
+
+
+@source(
+    "Ambient Microseism",
+    domain="geophysics",
+    description="IU.ANMO long-period vertical (1 sps) --- ocean-generated microseism noise at 0.1-0.3 Hz, "
+    "6-hour quiet period with seasonal/storm modulation (IRIS CC0)",
+)
+def gen_microseism(rng, size):
+    data = _get_anmo_microseism()
+    return _real_data_gen(data, rng, size)
+
+
+@source(
+    "Deep Earthquake P-wave",
+    domain="geophysics",
+    description="2013 Okhotsk M8.3 (depth 598 km) P-wave at ANMO --- sharp impulsive onset, "
+    "minimal coda, 20 sps broadband vertical (IRIS CC0)",
+)
+def gen_deep_earthquake(rng, size):
+    data = _get_okhotsk_deep()
+    return _real_data_gen(data, rng, size)
+
+
+@source(
+    "Tohoku Aftershock Intervals",
+    domain="geophysics",
+    description="Log inter-event times of ~35k Tohoku 2011 M≥2 aftershocks --- Omori-law decay with "
+    "temporal clustering, 3 months post-mainshock (ISC/JMA catalog, public domain)",
+)
+def gen_tohoku_intervals(rng, size):
+    data = _get_tohoku_intervals()
+    return _real_data_gen(data, rng, size)
+
+
+@source(
+    "Seismic b-value (SoCal)",
+    domain="geophysics",
+    description="Sliding-window Gutenberg-Richter b-value over ~20k SoCal M≥1.5 earthquakes 2015-2023 --- "
+    "low dynamic range (b ≈ 0.5-1.5), strongly autocorrelated, stress-sensitive (USGS FDSN)",
+)
+def gen_socal_bvalue(rng, size):
+    data = _get_socal_bvalue()
+    return _real_data_gen(data, rng, size)
+
+
+_X86_TEXT = None
+
+
+def _get_x86_text():
+    """Extract .text section from Linux ELF x86-64 binary."""
+    global _X86_TEXT
+    if _X86_TEXT is not None:
+        return _X86_TEXT
+    from pathlib import Path
+
+    p = Path(__file__).resolve().parents[1] / "data" / "binary" / "x86_text_section.bin"
+    if not p.exists():
+        _X86_TEXT = np.array([])
+        return _X86_TEXT
+    _X86_TEXT = np.fromfile(p, dtype=np.uint8).astype(np.float64)
+    return _X86_TEXT
+
+
+@source(
+    "x86-64 Machine Code",
+    domain="binary",
+    description="Pure .text section from Linux x86-64 ELF --- REX-prefixed instruction stream, "
+    "6.3-bit entropy, strong opcode bigram structure, function prologue/epilogue periodicity",
+)
+def gen_x86_text(rng, size):
+    data = _get_x86_text()
+    return _real_data_gen(data, rng, size)
+
+
 _GOES_XRAY = None
 
 
@@ -2397,10 +2725,15 @@ def gen_sandpile(rng, size):
 )
 def gen_stochastic_resonance(rng, size):
     """Kramers bistable potential V(x) = -x^2/2 + x^4/4 with weak
-    periodic forcing and tuned noise. Output is the particle position."""
+    periodic forcing and tuned noise. Output is the particle position.
+
+    omega chosen so 2-10 full forcing cycles fit in `size` samples,
+    making the resonance (noise-assisted phase-locking) detectable.
+    """
     dt = 0.01
     A = rng.uniform(0.1, 0.3)  # weak signal amplitude
-    omega = rng.uniform(0.005, 0.02)  # slow driving frequency
+    n_cycles = rng.uniform(2.0, 10.0)
+    omega = 2 * np.pi * n_cycles / (size * dt)  # 2-10 cycles in window
     D = rng.uniform(0.3, 0.6)  # noise intensity (tuned for resonance)
     x = rng.choice([-1.0, 1.0])  # start in one well
     # Transient
@@ -2539,6 +2872,25 @@ def gen_quasicrystal(rng, size):
     vals = seq * 128 + 64 * np.sin(2 * np.pi * t / phi + offset)
     vals += 32 * np.sin(2 * np.pi * t / (phi * phi) + rng.uniform(0, 2 * np.pi))
     return _to_uint8(vals)
+
+
+@source(
+    "Phyllotaxis",
+    domain="bio",
+    description="Golden-angle sunflower spiral --- successive seeds placed at 137.508° "
+    "(= 360°/phi²), the most irrational angle. Quantized angular positions carry "
+    "genuine quasicrystalline spectral structure with peaks at golden-ratio frequencies",
+)
+def gen_phyllotaxis(rng, size):
+    """Vogel model of sunflower seed head. The angular position sequence
+    theta_k = k * golden_angle has the spectral signature of a 1D
+    quasicrystal: sharp peaks at tau-scaled frequencies, equidistributed
+    marginal, and Fibonacci gap structure (three-distance theorem)."""
+    golden_angle = 2 * np.pi * (1 - 1 / ((1 + np.sqrt(5)) / 2))
+    offset = rng.uniform(0, 2 * np.pi)
+    k = np.arange(size)
+    angles = (k * golden_angle + offset) % (2 * np.pi)
+    return (angles / (2 * np.pi) * 255).astype(np.uint8)
 
 
 @source(
@@ -3009,6 +3361,241 @@ def gen_noisy_period2(rng, size):
     vals = np.where(np.arange(size) % 2 == 0, level_a, level_b)
     vals = vals + rng.normal(0, noise_std, size)
     return np.clip(vals, 0, 255).astype(np.uint8)
+
+
+# --- New chaos sources: filling canonical gaps ---
+
+
+@source(
+    "Bernoulli Shift",
+    domain="chaos",
+    description="Simplest exactly solvable chaotic map: x(n+1) = 2x mod 1. Maximal entropy h=log2, "
+    "uniform invariant measure, Bernoulli process on binary digits",
+)
+def gen_bernoulli_shift(rng, size):
+    """The doubling map on [0,1). Equivalent to shifting binary digits left.
+    Maximal Lyapunov exponent = ln(2). Exact solution: x_n = 2^n * x_0 mod 1.
+    Float64 loses all precision after ~53 doublings, so we re-inject from
+    the invariant measure (Uniform[0,1)) when precision is exhausted,
+    preserving the statistical properties exactly."""
+    x = rng.uniform(0.01, 0.99)
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        x = (2.0 * x) % 1.0
+        # Re-inject when floating point collapses to 0
+        if x == 0.0:
+            x = rng.uniform(0.001, 0.999)
+        vals[i] = int(x * 255)
+    return vals
+
+
+@source(
+    "Arnold Cat Map",
+    domain="chaos",
+    description="Hyperbolic toral automorphism [[2,1],[1,1]] on the 2-torus --- uniformly hyperbolic, "
+    "Anosov diffeomorphism, mixing with Lyapunov exponent ln((3+√5)/2)",
+)
+def gen_arnold_cat(rng, size):
+    """Arnold's cat map on T^2. The matrix [[2,1],[1,1]] is hyperbolic
+    (eigenvalues are golden ratio and its conjugate). All orbits are
+    uniformly unstable --- no stable/unstable islands. Output: x-coordinate."""
+    x = rng.uniform(0.01, 0.99)
+    y = rng.uniform(0.01, 0.99)
+    # Warm up
+    for _ in range(500):
+        x_new = (2 * x + y) % 1.0
+        y_new = (x + y) % 1.0
+        x, y = x_new, y_new
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        x_new = (2 * x + y) % 1.0
+        y_new = (x + y) % 1.0
+        x, y = x_new, y_new
+        vals[i] = int(x * 255)
+    return vals
+
+
+@source(
+    "Ikeda Map",
+    domain="chaos",
+    description="Laser cavity chaos: x(n+1) = 1 + u(x cos t - y sin t), y(n+1) = u(x sin t + y cos t) "
+    "where t = 0.4 - 6/(1+x²+y²). Multistable at u=0.9, different attractor topology from Hénon",
+)
+def gen_ikeda(rng, size):
+    """Ikeda map at u=0.9 (chaotic regime). Models a nonlinear optical
+    resonator. The attractor has a distinctive spiral structure unlike
+    Hénon's folded band."""
+    u = 0.9
+    x = rng.uniform(-0.5, 0.5)
+    y = rng.uniform(-0.5, 0.5)
+    # Warm up
+    for _ in range(2000):
+        t = 0.4 - 6.0 / (1.0 + x * x + y * y)
+        ct, st = np.cos(t), np.sin(t)
+        x_new = 1.0 + u * (x * ct - y * st)
+        y_new = u * (x * st + y * ct)
+        x, y = x_new, y_new
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        t = 0.4 - 6.0 / (1.0 + x * x + y * y)
+        ct, st = np.cos(t), np.sin(t)
+        x_new = 1.0 + u * (x * ct - y * st)
+        y_new = u * (x * st + y * ct)
+        x, y = x_new, y_new
+        vals[i] = int(np.clip((x + 2) / 5 * 255, 0, 255))
+    return vals
+
+
+@source(
+    "Hénon-Heiles",
+    domain="chaos",
+    description="Hamiltonian chaos in a 2D potential: V = ½(x²+y²) + x²y - y³/3. Conservative "
+    "(no attractor), energy-surface confinement. At E=1/8 mixed regular/chaotic phase space",
+)
+def gen_henon_heiles(rng, size):
+    """Hénon-Heiles system at E=1/8 (mixed phase space). The canonical
+    example of Hamiltonian (conservative) chaos. No dissipation, no attractor ---
+    the orbit fills a 3D energy surface in 4D phase space.
+    Output: x-coordinate from symplectic (leapfrog) integration."""
+    E_target = 0.125
+    # Start near x=0, y=0 with kinetic energy = E_target
+    x, y = 0.0, 0.0
+    px = rng.uniform(-0.3, 0.3)
+    # py from energy conservation: E = ½(px²+py²) + V(x,y)
+    V = 0.5 * (x * x + y * y) + x * x * y - y * y * y / 3.0
+    ke = E_target - V
+    if ke < 0:
+        ke = 0.01
+    py = np.sqrt(2 * ke - px * px) if 2 * ke > px * px else 0.1
+
+    dt = 0.02
+    # Warm up with symplectic (leapfrog) integrator
+    for _ in range(5000):
+        # Kick (half step)
+        fx = -x - 2 * x * y
+        fy = -y - x * x + y * y
+        px += 0.5 * dt * fx
+        py += 0.5 * dt * fy
+        # Drift
+        x += dt * px
+        y += dt * py
+        # Kick (half step)
+        fx = -x - 2 * x * y
+        fy = -y - x * x + y * y
+        px += 0.5 * dt * fx
+        py += 0.5 * dt * fy
+
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        fx = -x - 2 * x * y
+        fy = -y - x * x + y * y
+        px += 0.5 * dt * fx
+        py += 0.5 * dt * fy
+        x += dt * px
+        y += dt * py
+        fx = -x - 2 * x * y
+        fy = -y - x * x + y * y
+        px += 0.5 * dt * fx
+        py += 0.5 * dt * fy
+        vals[i] = int(np.clip((x + 0.5) / 1.0 * 255, 0, 255))
+    return vals
+
+
+@source(
+    "Rössler Hyperchaos",
+    domain="chaos",
+    description="4D Rössler hyperchaotic system with two positive Lyapunov exponents --- "
+    "qualitatively different from standard chaos, simultaneous expansion in two directions",
+)
+def gen_rossler_hyperchaos(rng, size):
+    """Rössler's 4D hyperchaotic system:
+    dx/dt = -y - z
+    dy/dt = x + ay + w
+    dz/dt = b + xz
+    dw/dt = -cz + dw
+    Parameters: a=0.25, b=3.0, c=0.5, d=0.05 (hyperchaotic regime).
+    Two positive Lyapunov exponents → expansion in 2 directions simultaneously.
+    Uses RK4 integration for numerical stability. Output: x-coordinate."""
+    a, b, c, dd = 0.25, 3.0, 0.5, 0.05
+    state = np.array([0.1 * rng.standard_normal(),
+                      0.1 * rng.standard_normal(),
+                      0.1 * rng.standard_normal(),
+                      0.1 * rng.standard_normal()])
+    dt = 0.005
+
+    def deriv(s):
+        x, y, z, w = s
+        return np.array([
+            -y - z,
+            x + a * y + w,
+            b + z * (x - c),
+            -c * z + dd * w,
+        ])
+
+    def rk4_step(s, h):
+        k1 = deriv(s)
+        k2 = deriv(s + 0.5 * h * k1)
+        k3 = deriv(s + 0.5 * h * k2)
+        k4 = deriv(s + h * k3)
+        return s + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+
+    # Warm up
+    for _ in range(20000):
+        state = rk4_step(state, dt)
+        # Safety: if diverging, reset
+        if np.any(np.abs(state) > 1e6):
+            state = 0.1 * rng.standard_normal(4)
+
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        state = rk4_step(state, dt)
+        if np.any(np.abs(state) > 1e6) or np.any(np.isnan(state)):
+            state = 0.1 * rng.standard_normal(4)
+        vals[i] = int(np.clip((state[0] + 20) / 40 * 255, 0, 255))
+    return vals
+
+
+@source(
+    "Sprott-B",
+    domain="chaos",
+    description="Sprott case B --- simplest known dissipative chaotic flow with quadratic nonlinearity: "
+    "dx/dt=yz, dy/dt=x-y, dz/dt=1-xy. Strange attractor with Kaplan-Yorke dimension ≈ 2.01",
+)
+def gen_sprott_b(rng, size):
+    """Sprott system B: a minimal dissipative 3D chaotic flow found by
+    Sprott's systematic search. dx/dt=yz, dy/dt=x-y, dz/dt=1-xy.
+    Has a well-defined strange attractor (unlike case A which has
+    mixed regular/chaotic regions). λ_max ≈ 0.012, so needs accurate
+    integration and long trajectories. Uses RK4 with subsampling.
+    Output: x-coordinate."""
+    x = rng.uniform(-0.5, 0.5)
+    y = rng.uniform(-0.5, 0.5)
+    z = rng.uniform(-0.5, 0.5)
+    dt = 0.01
+    sub = 50  # subsample factor → effective sample spacing = 0.5 → 25 Lyapunov times
+
+    def rk4(x, y, z):
+        # dx/dt=yz, dy/dt=x-y, dz/dt=1-xy
+        k1x, k1y, k1z = y * z, x - y, 1 - x * y
+        x2, y2, z2 = x + 0.5 * dt * k1x, y + 0.5 * dt * k1y, z + 0.5 * dt * k1z
+        k2x, k2y, k2z = y2 * z2, x2 - y2, 1 - x2 * y2
+        x3, y3, z3 = x + 0.5 * dt * k2x, y + 0.5 * dt * k2y, z + 0.5 * dt * k2z
+        k3x, k3y, k3z = y3 * z3, x3 - y3, 1 - x3 * y3
+        x4, y4, z4 = x + dt * k3x, y + dt * k3y, z + dt * k3z
+        k4x, k4y, k4z = y4 * z4, x4 - y4, 1 - x4 * y4
+        return (x + dt / 6 * (k1x + 2 * k2x + 2 * k3x + k4x),
+                y + dt / 6 * (k1y + 2 * k2y + 2 * k3y + k4y),
+                z + dt / 6 * (k1z + 2 * k2z + 2 * k3z + k4z))
+
+    # Warm up (500 time units → ~40 Lyapunov times)
+    for _ in range(50000):
+        x, y, z = rk4(x, y, z)
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        for _ in range(sub):
+            x, y, z = rk4(x, y, z)
+        vals[i] = int(np.clip((x + 3) / 6 * 255, 0, 255))
+    return vals
 
 
 @source(

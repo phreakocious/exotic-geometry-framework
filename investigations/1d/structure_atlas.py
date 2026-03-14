@@ -43,7 +43,11 @@ import matplotlib.gridspec as gridspec
 # CONFIG
 # ==============================================================
 DATA_SIZE = 16384
-N_TRIALS = 25
+MIN_TRIALS = 5       # minimum before checking convergence
+MAX_TRIALS = 25      # hard cap
+CONV_THRESH = 0.05   # stop when L2 relative change of profile vector < 5%
+BATCH_SIZE = 5       # trials per adaptive batch
+N_TRIALS = MAX_TRIALS  # for cache key compatibility
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         '..', '..', 'data', 'cwru', 'raw')
 
@@ -872,19 +876,50 @@ def collect_profiles(runner):
             n_cached += 1
             continue
 
-        rngs = runner.trial_rngs()
-        try:
-            chunks = [gen_fn(rng, runner.data_size) for rng in rngs]
-        except Exception as exc:
-            print(f"  {name:20s} [{domain:13s}]  SKIPPED: {exc}")
-            continue
-        metrics = runner.collect(chunks)
+        # Adaptive trial loop: collect batches until means stabilize
+        all_rngs = runner.trial_rngs()
+        accumulated = {m: [] for m in runner.metric_names}
+        prev_means = None
+        n_done = 0
+        converged = False
 
-        # Compute mean profile
+        for batch_start in range(0, MAX_TRIALS, BATCH_SIZE):
+            batch_end = min(batch_start + BATCH_SIZE, MAX_TRIALS)
+            batch_rngs = all_rngs[batch_start:batch_end]
+            try:
+                batch_chunks = [gen_fn(rng, runner.data_size) for rng in batch_rngs]
+            except Exception as exc:
+                if batch_start == 0:
+                    print(f"  {name:20s} [{domain:13s}]  SKIPPED: {exc}")
+                break
+            batch_metrics = runner.collect(batch_chunks)
+            for m in runner.metric_names:
+                accumulated[m].extend(batch_metrics.get(m, []))
+            n_done = batch_end
+
+            # Check convergence after MIN_TRIALS
+            if n_done >= MIN_TRIALS and prev_means is not None:
+                curr_means = np.array([np.mean(accumulated[m]) if accumulated[m]
+                                       else 0.0 for m in runner.metric_names])
+                # L2 relative change of full profile vector
+                l2_change = np.linalg.norm(curr_means - prev_means)
+                l2_norm = np.linalg.norm(prev_means) + 1e-15
+                l2_rel = l2_change / l2_norm
+                if l2_rel < CONV_THRESH:
+                    converged = True
+                    break
+
+            prev_means = np.array([np.mean(accumulated[m]) if accumulated[m]
+                                   else 0.0 for m in runner.metric_names])
+
+        if n_done == 0:
+            continue
+
+        # Compute mean/std profile from accumulated trials
         mean_profile = {}
         std_profile = {}
         for m in runner.metric_names:
-            vals = metrics.get(m, [])
+            vals = accumulated[m]
             if len(vals) > 0:
                 mean_profile[m] = np.mean(vals)
                 std_profile[m] = np.std(vals)
@@ -895,11 +930,11 @@ def collect_profiles(runner):
         # Save to cache — include raw trial values so D6 can reuse them
         means_arr = np.array([mean_profile[m] for m in runner.metric_names])
         stds_arr = np.array([std_profile[m] for m in runner.metric_names])
-        # Raw trial matrix: n_metrics × n_trials (ragged → pad with nan)
-        max_trials = max((len(metrics.get(m, [])) for m in runner.metric_names), default=0)
+        # Raw trial matrix: n_metrics × actual_trials (ragged → pad with nan)
+        max_trials = max((len(accumulated[m]) for m in runner.metric_names), default=0)
         raw_arr = np.full((len(runner.metric_names), max_trials), np.nan)
         for i, m in enumerate(runner.metric_names):
-            vals = metrics.get(m, [])
+            vals = accumulated[m]
             raw_arr[i, :len(vals)] = vals
         np.savez(cache_path, means=means_arr, stds=stds_arr, raw=raw_arr)
 
@@ -907,7 +942,8 @@ def collect_profiles(runner):
         profiles_std[name] = std_profile
         domains[name] = domain
         n_nonzero = sum(1 for v in mean_profile.values() if abs(v) > 1e-15)
-        print(f"  {name:20s} [{domain:13s}]  {n_nonzero}/{len(runner.metric_names)} active metrics")
+        tag = f"{n_done}t" + (" converged" if converged else " max")
+        print(f"  {name:20s} [{domain:13s}]  {n_nonzero}/{len(runner.metric_names)} active metrics  [{tag}]")
 
     if n_cached > 0:
         print(f"  ({n_cached}/{len(SOURCES)} loaded from cache)")
@@ -946,6 +982,37 @@ def principal_projection(X):
     # Project to first k components
     coords = U * s  # (n_sources, n_components)
     return coords, variance_explained, cumvar, Z, Vt
+
+
+def tsne_projection(Z):
+    """3D t-SNE from rank-normalized data. Perplexity adapts to sample size.
+
+    Perplexity scales with n: min(30, max(2, (n-1)//3)).  Higher perplexity
+    for larger sets makes conditional distributions smoother, preventing
+    sources with flat neighborhoods from being exiled by repulsive gradients.
+
+    Post-processes with 10-MAD outlier clipping as a safety net for any
+    remaining extreme outliers.
+    """
+    from sklearn.manifold import TSNE
+    n = Z.shape[0]
+    perp = min(30, max(2, (n - 1) // 3))
+    tsne = TSNE(n_components=3, perplexity=perp, max_iter=2000,
+                init='pca', learning_rate='auto', random_state=42)
+    coords = tsne.fit_transform(Z)
+
+    # Robust outlier clipping: median ± 10 MAD per axis.
+    for ax in range(coords.shape[1]):
+        col = coords[:, ax]
+        med = np.median(col)
+        mad = np.median(np.abs(col - med))
+        if mad < 1e-10:
+            mad = np.std(col)
+        if mad > 1e-10:
+            lo, hi = med - 10 * mad, med + 10 * mad
+            coords[:, ax] = np.clip(col, lo, hi)
+
+    return coords
 
 
 def _rank_normalize(X):
@@ -1515,8 +1582,12 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
         relevance = (_count / _cmax if _cmax > 1e-15
                      else np.zeros(len(_count)))
 
+        # t-SNE for this view (perplexity scales with active sources)
+        tsne_v = tsne_projection(Z_v)
+
         view_results[vname] = {
             "coords": coords_v,
+            "tsne": tsne_v,
             "varexp": varexp_v,
             "labels": labels_v,
             "n_metrics": n_eff,
@@ -1650,8 +1721,11 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
               f"PC1+2={cumvar_opt[1]*100:.1f}%  eff_dim={pr_opt:.1f}  "
               f"geos: {', '.join(opt_geos[:8])}{'...' if len(opt_geos) > 8 else ''}")
 
+        tsne_opt = tsne_projection(Z_opt)
+
         view_results["Optimized"] = {
             "coords": coords_opt,
+            "tsne": tsne_opt,
             "varexp": varexp_opt,
             "labels": labels_opt,
             "n_metrics": n_after_opt,
@@ -1778,8 +1852,18 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
               f"PC1+2={cumvar_emp[1]*100:.1f}%  eff_dim={pr_emp:.1f}  "
               f"{n_emp} sources")
 
+        # t-SNE on empirical sources only, expand to full array
+        tsne_emp_only = tsne_projection(R_emp_c)
+        tsne_emp_full = np.zeros((_n_all, 3))
+        _ei2 = 0
+        for _i2 in range(_n_all):
+            if emp_mask[_i2]:
+                tsne_emp_full[_i2] = tsne_emp_only[_ei2]
+                _ei2 += 1
+
         view_results["Empirical"] = {
             "coords": coords_emp_full,
+            "tsne": tsne_emp_full,
             "varexp": varexp_emp,
             "labels": labels_emp_full,
             "n_metrics": len(metric_names),
@@ -1803,6 +1887,11 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
         'Lorenz Attractor', 'Rossler Attractor', 'Duffing Oscillator',
         "Chua's Circuit", 'Double Pendulum', 'Mackey-Glass',
         'Pomeau-Manneville', 'Kicked Rotor',
+        'Van der Pol Oscillator', 'Noisy Period-2', "Langton's Ant",
+        'Forest Fire', 'Stochastic Resonance',
+        'Sunspot Number', 'Damped Pendulum',
+        'Bernoulli Shift', 'Arnold Cat Map', 'Ikeda Map',
+        'Hénon-Heiles', 'Rössler Hyperchaos', 'Sprott-B',
     }
     print(f"\n  Computing Chaotic view ...")
     chaos_mask = np.array([n in CHAOTIC_SOURCES for n in names])
@@ -1890,8 +1979,17 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
               f"PC1+2={cumvar_ch[1]*100:.1f}%  eff_dim={pr_ch:.1f}  "
               f"{n_chaos} sources  {nc_ch} clusters")
 
+        tsne_ch_only = tsne_projection(R_ch_c)
+        tsne_ch_full = np.zeros((_n_all, 3))
+        _ci2 = 0
+        for _i2 in range(_n_all):
+            if chaos_mask[_i2]:
+                tsne_ch_full[_i2] = tsne_ch_only[_ci2]
+                _ci2 += 1
+
         view_results["Chaotic"] = {
             "coords": coords_ch_full,
+            "tsne": tsne_ch_full,
             "varexp": varexp_ch,
             "labels": labels_ch_full,
             "n_metrics": len(metric_names),
@@ -1906,6 +2004,291 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
         }
     else:
         print(f"    Too few chaotic sources ({n_chaos}), skipping")
+
+    # ---- High Entropy view: zoom into the noise/crypto/compression cluster
+    #      to show that the framework can separate RANDU from good crypto,
+    #      and reveal how close white noise is to AES even at this resolution.
+    HIGH_ENTROPY_SOURCES = {
+        # IID / near-IID noise
+        'White Noise', 'Gaussian Noise', 'Blue Noise', 'Pink Noise',
+        'Beta Noise', 'Dice Rolls',
+        # Correlated stochastic processes
+        'ARMA(2,1)', 'Ornstein-Uhlenbeck',
+        # Crypto & PRNGs (good → bad)
+        'AES Encrypted',
+        'XorShift32', 'Wichmann-Hill',
+        'MINSTD (Park-Miller)', 'glibc LCG', 'RANDU',
+        'Middle-Square (von Neumann)',
+        # Compression output
+        'Bzip2 (level 1)', 'Bzip2 (level 9)',
+        'Gzip (level 1)', 'Gzip (level 9)',
+        # Other high-entropy
+        'Pi Digits', 'Neural Net (Dense)', 'Entanglement Entropy',
+    }
+    print(f"\n  Computing High Entropy view ...")
+    he_mask = np.array([n in HIGH_ENTROPY_SOURCES for n in names])
+    n_he = int(he_mask.sum())
+    print(f"    {n_he} high-entropy sources")
+
+    if n_he >= 5:
+        from scipy.stats import rankdata as _rd_he
+
+        he_names = [n for n, m in zip(names, he_mask) if m]
+        he_domains = {n: domains[n] for n in he_names}
+        X_he = X[he_mask]
+
+        R_he = _rank_normalize(X_he)
+        he_mean = R_he.mean(axis=0)
+        R_he_c = R_he - he_mean
+
+        U_he, s_he, Vt_he = np.linalg.svd(R_he_c, full_matrices=False)
+        varexp_he = s_he**2 / np.sum(s_he**2)
+        coords_he_only = U_he * s_he
+
+        nc_he = min(5, n_he // 3)
+        n_pc_he = min(20, coords_he_only.shape[1])
+        clusters_he, labels_he_only, _, _ = cluster_atlas(
+            coords_he_only[:, :n_pc_he], he_names, n_clusters=nc_he)
+
+        pr_he = np.sum(varexp_he)**2 / np.sum(varexp_he**2)
+        axes_he = {}
+        for pc_idx in range(min(3, len(Vt_he))):
+            loadings = np.abs(Vt_he[pc_idx])
+            top_idx = np.argsort(loadings)[::-1][:3]
+            geo_load = {}
+            for j in range(len(metric_names)):
+                geo = metric_names[j].split(':')[0]
+                geo_load[geo] = geo_load.get(geo, 0.0) + Vt_he[pc_idx, j]**2
+            top_geo = max(geo_load, key=geo_load.get)
+            top_metric = metric_names[top_idx[0]].split(':')[1]
+            axes_he[f"pc{pc_idx+1}"] = {
+                "top_geometry": top_geo, "top_metric": top_metric,
+            }
+
+        he_cluster_desc = {}
+        for c_id, members in clusters_he.items():
+            domain_counts = Counter(he_domains[m] for m in members)
+            top_doms = [d for d, _ in domain_counts.most_common(2)]
+            label = ' + '.join(d.replace('_', ' ').title() for d in top_doms)
+            he_cluster_desc[c_id] = {
+                "label": label, "size": len(members),
+                "members": members, "top_domains": top_doms,
+            }
+        seen_he = {}
+        for c_id, desc in he_cluster_desc.items():
+            if desc["label"] in seen_he:
+                other = seen_he[desc["label"]]
+                he_cluster_desc[other]["label"] += " I"
+                desc["label"] += " II"
+            seen_he[desc["label"]] = c_id
+
+        # Relevance
+        _ranks_he = np.zeros_like(R_he)
+        for _j in range(R_he.shape[1]):
+            _col = np.nan_to_num(R_he[:, _j], nan=0.0)
+            _ranks_he[:, _j] = (_rd_he(_col) / n_he
+                                if np.std(_col) > 1e-15 else 0.5)
+        _count_he = np.sum(_ranks_he > 0.90, axis=1).astype(float)
+        _cmax_he = _count_he.max()
+        rel_he_only = (_count_he / _cmax_he if _cmax_he > 1e-15
+                       else np.zeros(n_he))
+
+        # Expand to full arrays
+        _n_all = len(names)
+        coords_he_full = np.zeros((_n_all, coords_he_only.shape[1]))
+        labels_he_full = np.zeros(_n_all, dtype=int)
+        rel_he_full = np.zeros(_n_all)
+        _ci = 0
+        for _i in range(_n_all):
+            if he_mask[_i]:
+                coords_he_full[_i] = coords_he_only[_ci]
+                labels_he_full[_i] = labels_he_only[_ci]
+                rel_he_full[_i] = rel_he_only[_ci]
+                _ci += 1
+
+        cumvar_he = np.cumsum(varexp_he)
+        print(f"  {'High Entropy':15s}  {len(metric_names):3d} metrics  "
+              f"PC1+2={cumvar_he[1]*100:.1f}%  eff_dim={pr_he:.1f}  "
+              f"{n_he} sources  {nc_he} clusters")
+
+        tsne_he_only = tsne_projection(R_he_c)
+        tsne_he_full = np.zeros((_n_all, 3))
+        _ci2 = 0
+        for _i2 in range(_n_all):
+            if he_mask[_i2]:
+                tsne_he_full[_i2] = tsne_he_only[_ci2]
+                _ci2 += 1
+
+        view_results["High Entropy"] = {
+            "coords": coords_he_full,
+            "tsne": tsne_he_full,
+            "varexp": varexp_he,
+            "labels": labels_he_full,
+            "n_metrics": len(metric_names),
+            "eff_dim": float(pr_he),
+            "question": "Can the framework distinguish sources that all look like noise?",
+            "detects": "Subtle structural differences within the high-entropy cluster: "
+                       "PRNG lattice defects, compression artifacts, spectral color, "
+                       "correlation structure",
+            "geometries": sorted(set(m.split(':')[0] for m in metric_names)),
+            "axes": axes_he,
+            "clusters": he_cluster_desc,
+            "relevance": rel_he_full.tolist(),
+        }
+    else:
+        print(f"    Too few high-entropy sources ({n_he}), skipping")
+
+    # ---- Helper for source-filtered views (avoids ~80 lines of copy-paste) ----
+    def _compute_source_view(view_name, source_set, question, detects,
+                             n_cluster_div=3):
+        """Compute a source-filtered lens view and store in view_results."""
+        from scipy.stats import rankdata as _rd_sv
+        mask = np.array([n in source_set for n in names])
+        n_src = int(mask.sum())
+        print(f"\n  Computing {view_name} view ...")
+        print(f"    {n_src} sources")
+        if n_src < 5:
+            print(f"    Too few sources ({n_src}), skipping")
+            return
+
+        sv_names = [n for n, m in zip(names, mask) if m]
+        sv_domains = {n: domains[n] for n in sv_names}
+        X_sv = X[mask]
+
+        R_sv = _rank_normalize(X_sv)
+        R_sv_c = R_sv - R_sv.mean(axis=0)
+
+        U_sv, s_sv, Vt_sv = np.linalg.svd(R_sv_c, full_matrices=False)
+        varexp_sv = s_sv**2 / np.sum(s_sv**2)
+        coords_sv_only = U_sv * s_sv
+
+        nc = min(5, max(2, n_src // n_cluster_div))
+        n_pc = min(20, coords_sv_only.shape[1])
+        clusters_sv, labels_sv_only, _, _ = cluster_atlas(
+            coords_sv_only[:, :n_pc], sv_names, n_clusters=nc)
+
+        pr = np.sum(varexp_sv)**2 / np.sum(varexp_sv**2)
+        axes = {}
+        for pc_idx in range(min(3, len(Vt_sv))):
+            loadings = np.abs(Vt_sv[pc_idx])
+            top_idx = np.argsort(loadings)[::-1][:3]
+            geo_load = {}
+            for j in range(len(metric_names)):
+                geo = metric_names[j].split(':')[0]
+                geo_load[geo] = geo_load.get(geo, 0.0) + Vt_sv[pc_idx, j]**2
+            top_geo = max(geo_load, key=geo_load.get)
+            top_metric = metric_names[top_idx[0]].split(':')[1]
+            axes[f"pc{pc_idx+1}"] = {
+                "top_geometry": top_geo, "top_metric": top_metric,
+            }
+
+        cluster_desc = {}
+        for c_id, members in clusters_sv.items():
+            domain_counts = Counter(sv_domains[m] for m in members)
+            top_doms = [d for d, _ in domain_counts.most_common(2)]
+            label = ' + '.join(d.replace('_', ' ').title() for d in top_doms)
+            cluster_desc[c_id] = {
+                "label": label, "size": len(members),
+                "members": members, "top_domains": top_doms,
+            }
+        seen = {}
+        for c_id, desc in cluster_desc.items():
+            if desc["label"] in seen:
+                other = seen[desc["label"]]
+                cluster_desc[other]["label"] += " I"
+                desc["label"] += " II"
+            seen[desc["label"]] = c_id
+
+        # Relevance
+        _ranks = np.zeros_like(R_sv)
+        for _j in range(R_sv.shape[1]):
+            _col = np.nan_to_num(R_sv[:, _j], nan=0.0)
+            _ranks[:, _j] = (_rd_sv(_col) / n_src
+                             if np.std(_col) > 1e-15 else 0.5)
+        _count = np.sum(_ranks > 0.90, axis=1).astype(float)
+        _cmax = _count.max()
+        rel_only = _count / _cmax if _cmax > 1e-15 else np.zeros(n_src)
+
+        # Expand to full arrays
+        _n_all = len(names)
+        coords_full = np.zeros((_n_all, coords_sv_only.shape[1]))
+        labels_full = np.zeros(_n_all, dtype=int)
+        rel_full = np.zeros(_n_all)
+        _ci = 0
+        for _i in range(_n_all):
+            if mask[_i]:
+                coords_full[_i] = coords_sv_only[_ci]
+                labels_full[_i] = labels_sv_only[_ci]
+                rel_full[_i] = rel_only[_ci]
+                _ci += 1
+
+        cumvar = np.cumsum(varexp_sv)
+        print(f"  {view_name:15s}  {len(metric_names):3d} metrics  "
+              f"PC1+2={cumvar[1]*100:.1f}%  eff_dim={pr:.1f}  "
+              f"{n_src} sources  {nc} clusters")
+
+        tsne_only = tsne_projection(R_sv_c)
+        tsne_full = np.zeros((_n_all, 3))
+        _ci2 = 0
+        for _i2 in range(_n_all):
+            if mask[_i2]:
+                tsne_full[_i2] = tsne_only[_ci2]
+                _ci2 += 1
+
+        view_results[view_name] = {
+            "coords": coords_full,
+            "tsne": tsne_full,
+            "varexp": varexp_sv,
+            "labels": labels_full,
+            "n_metrics": len(metric_names),
+            "eff_dim": float(pr),
+            "question": question,
+            "detects": detects,
+            "geometries": sorted(set(m.split(':')[0] for m in metric_names)),
+            "axes": axes,
+            "clusters": cluster_desc,
+            "relevance": rel_full.tolist(),
+        }
+
+    # ---- Biological view: DNA sequences, proteins, biological dynamics
+    BIOLOGICAL_SOURCES = {
+        'DNA Human', 'DNA Chimp', 'DNA Dog', 'DNA SARS-CoV-2',
+        'DNA Phage Lambda', 'DNA Plasmodium', 'DNA Thermus', 'DNA Centromere',
+        'Human Proteome', 'Codon Usage',
+        'Lotka-Volterra', 'SIR Epidemic', 'Hodgkin-Huxley', 'Phyllotaxis',
+    }
+    _compute_source_view(
+        "Biological", BIOLOGICAL_SOURCES,
+        question="How does the framework distinguish biological sequence "
+                 "structure from biological process dynamics?",
+        detects="Split between genomic sequences (alphabet composition, codon "
+                "bias, repeat structure) and dynamical biological models "
+                "(oscillations, epidemics, neural firing)",
+    )
+
+    # ---- Geophysical view: earth/climate/space observational data
+    GEOPHYSICAL_SOURCES = {
+        'Earthquake Magnitudes', 'Earthquake Depths', 'Earthquake Intervals',
+        'El Centro 1940', 'Seismograph (ANMO)',
+        'Rainfall (ORD Hourly)', 'Ocean Wind (Buoy)', 'Wave Height (Buoy)',
+        'Barometric Pressure (Buoy)', 'Geomagnetic ap Index',
+        'Potomac River Flow', 'GOES X-Ray Flux', 'Surface Wind (ORD 5-min)',
+        'Tidal Gauge (SF)',
+        'Temperature', 'Pressure', 'Humidity', 'Wind Speed',
+        'LIGO Hanford', 'LIGO Livingston',
+        'Kepler Exoplanet', 'Kepler Non-planet',
+        'Sunspot Number', 'Solar Wind Speed', 'Solar Wind IMF',
+        'Kilauea Tremor', 'Ambient Microseism', 'Deep Earthquake P-wave',
+        'Tohoku Aftershock Intervals', 'Seismic b-value (SoCal)',
+    }
+    _compute_source_view(
+        "Geophysical", GEOPHYSICAL_SOURCES,
+        question="How does the framework organize the natural world — "
+                 "seismic, atmospheric, solar, and gravitational signals?",
+        detects="Structure families within observational data: turbulent "
+                "atmospheric flows, quasi-periodic solar cycles, bursty "
+                "seismic events, detector noise characteristics",
+    )
 
     # ---- Surrogate-Contrast view: features = (real - shuffled),
     #      showing only sequence-dependent structure.
@@ -2036,8 +2419,11 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
                   f"PC1+2={cumvar_sc[1]*100:.1f}%  eff_dim={pr_sc:.1f}  "
                   f"geos: {', '.join(sc_geos[:6])}{'...' if len(sc_geos) > 6 else ''}")
 
+            tsne_sc = tsne_projection(Z_sc)
+
             view_results["Surrogate-Contrast"] = {
                 "coords": coords_sc,
+                "tsne": tsne_sc,
                 "varexp": varexp_sc,
                 "labels": labels_sc,
                 "n_metrics": n_after_sc,
@@ -2648,6 +3034,7 @@ def main(tier='complete'):
 
     profiles, profiles_std, domains, descriptions = direction_1(runner)
     names, X, coords, varexp, cumvar, Z = direction_2(profiles, runner.metric_names)
+    tsne_coords = tsne_projection(Z)
     direction_3(names, domains)
     neighbors, dist = direction_4(names, Z, domains)
     clusters, labels, order, link = direction_5(Z, names, domains)
@@ -2762,6 +3149,7 @@ def main(tier='complete'):
                 "domain": domains[names[i]],
                 "description": descriptions.get(names[i], ""),
                 "pc": coords[i, :10].tolist(),
+                "tsne": tsne_coords[i, :3].tolist(),
                 "cluster": int(labels[i]),
                 "relevance": round(float(global_relevance[i]), 4),
                 "seq_fraction": round(surr_results[names[i]]['seq_fraction'], 3)
@@ -2784,7 +3172,11 @@ def main(tier='complete'):
         "n_metrics": len(runner.metric_names),
         "n_geometries": len(geometry_catalog),
         "data_size": DATA_SIZE,
-        "n_trials": N_TRIALS,
+        "n_trials": f"{MIN_TRIALS}-{MAX_TRIALS} (adaptive)",
+        "tsne_metadata": {
+            "perplexity": 15,
+            "max_iter": 2000,
+        },
         "geometry_catalog": geometry_catalog,
         "clusters": {
             str(c_id): {
@@ -2807,6 +3199,7 @@ def main(tier='complete'):
                 "n_metrics": vr["n_metrics"],
                 "eff_dim": vr["eff_dim"],
                 "pc": vr["coords"][:, :5].tolist(),
+                "tsne": vr["tsne"][:, :3].tolist() if "tsne" in vr else None,
                 "variance_explained": vr["varexp"][:5].tolist(),
                 "labels": vr["labels"].tolist(),
                 "axes": vr.get("axes", {}),

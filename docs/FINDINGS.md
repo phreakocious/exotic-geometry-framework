@@ -1,14 +1,17 @@
 # Complete Findings
 
-All validated discoveries and negative results from 68 investigations.
+All validated discoveries and negative results from 77 investigations.
 
-## Validated Positive Findings (147)
+## Validated Positive Findings (170)
 
 ### Methodology Validation
 | # | Finding | Effect Size | Investigation |
 |---|---------|-------------|---------------|
 | 1 | All hash functions (MD5, SHA-1, SHA-256, SHA-3, BLAKE2, SHA-512) are geometrically indistinguishable from random | d ≈ 0, 0 significant metrics | `1d/hashes.py` |
 | 2 | 21 geometries collapse to ~6 independent dimensions | r > 0.85 clusters | Redundancy analysis |
+| 2a | GARCH(1,1) returns now detectable vs IID normal (was negative) | 29 sig; Symplectic:windowed_area_cv d=3.6, Lorentzian:causal_order d=2.5 | `1d/negative_reeval.py` |
+| 2b | markov_mixing (spectral gap of value-transition matrix) is non-redundant | F=5025, max \|r\|=0.902 with framework; noise>0.5, sine<0.1 | `1d/markov_explore.py` |
+| 2c | memory_order (order-2 vs order-1 Markov log-likelihood) is orthogonal to framework | max \|r\|=0.573; Lorenz>0.3, noise<0.2; genuinely new axis | `1d/protocol_orthogonality.py` |
 
 ### Cryptography
 | # | Finding | Effect Size | Investigation |
@@ -51,6 +54,8 @@ All validated discoveries and negative results from 68 investigations.
 | 13h | Middle-Square detectable at 500 bytes (72 sig) | N=500 | `1d/rng.py` |
 | 13i | E8, Higher-Order Stats, Torus T², Ammann-Beenker are top PRNG weakness detectors | heatmap | `1d/rng.py` |
 | 13j | Penrose index_diversity is single most discriminating metric | d=-37 (RANDU) | `1d/rng.py` |
+| 13k | Klein Bottle linear_complexity detects XorShift32 as GF(2)-linear | d>1000; LC=0.125 vs ~1.0 for all other sources; Berlekamp-Massey LFSR saturates at 32 bits | `1d/gf2_explore.py` |
+| 13l | Klein Bottle rank_deficit orthogonal to linear_complexity (r=-0.035) | XorShift=0.067 (suspiciously full-rank), random≈0.03, Thue-Morse=0.875; max \|r\|=0.85 with framework | `1d/gf2_explore.py` |
 
 ### Chaotic Systems
 | # | Finding | Effect Size | Investigation |
@@ -60,6 +65,8 @@ All validated discoveries and negative results from 68 investigations.
 | 16 | Each chaotic map has a unique geometric fingerprint | Fisher: 17/45 pairs | `1d/chaos.py` |
 | 17 | Lorenz uniquely destroys Penrose 5-fold symmetry | d = 60 | `1d/chaos.py` |
 | 18 | Rossler shows extreme Tropical linearity | d = 266 | `1d/chaos.py` |
+| 18a | Standard map (K=6) detected as non-random despite uniform mixing | 44 sig; Predictability:sample_entropy d=−46, Cayley:spectral_gap d=−17 | `1d/negative_reeval.py` |
+| 18b | Arnold cat map detected as non-random despite Anosov mixing | 19 sig; Predictability:sample_entropy d=−86, SpectralGraph:spectral_dim d=+42 | `1d/negative_reeval.py` |
 
 ### Biology
 | # | Finding | Effect Size | Investigation |
@@ -164,6 +171,8 @@ All validated discoveries and negative results from 68 investigations.
 | 38j | mod6=1 vs mod6=5 gaps geometrically distinct (Lemke Oliver–Soundararajan) | 46 sig; Projective ℙ² d=−5.90 top discriminator | `1d/primes_deep2.py` |
 | 38k | Both residue classes retain independent sequential structure | mod6=1: 9 sig, mod6=5: 7 sig vs dist-match | `1d/primes_deep2.py` |
 | 38l | 7/14 survivors persist at ALL scales (1K through 1M) — fundamental | Lorentzian (3), Aperiodic (3), HOS:perm_entropy (1) | `1d/primes_deep2.py` |
+| 38m | Sieved Cramér model has lowest KL divergence (0.011) but HIGHEST framework detection (83 sig) | Transition structure and geometric structure are orthogonal | `1d/prime_protocol.py` |
+| 38n | Prime gap state machine dissolves with scale: determinism 0.28→0.14, H_cond 2.88→3.42 bits (10³→10⁷) | Transition structure is a finite-range artifact, not fundamental | `1d/prime_protocol.py` |
 
 ### Number Theory
 | # | Finding | Effect Size | Investigation |
@@ -308,22 +317,53 @@ All validated discoveries and negative results from 68 investigations.
 | 80g | All 44 geometries detect structure in at least 1 EEG class | 1449 total detections; E8, Recurrence, Multifractal lead | `1d/eeg_geometry.py` |
 | 80h | Resting EEG neighbors in structure space: ARMA, Pink Noise, Bearing Normal | linear stochastic processes; confirms D3 zero-nonlinear result | `1d/eeg_geometry.py` |
 | 80i | Seizure EEG neighbors: Bearing Outer, Kuramoto Oscillators | nonlinear dynamical systems; consistent with ictal dynamics | `1d/eeg_geometry.py` |
+| 81a | Signature distance matrix has massive spatial structure | 77/80 spatial metrics sig vs shuffled; d up to +76 | `2d/meta_geometry.py` |
+| 81b | Metric correlation field has spatial structure | 71/80 spatial metrics sig; block-diagonal by geometry family | `2d/meta_geometry.py` |
+| 81c | Mean 15 sig metrics pairwise across 16 domains | binary and bio most distinguishable; geophysics/quantum least | `2d/meta_geometry.py` |
+| 81d | Top discriminating geometry: Cantor Set (F=8.80), metric: mean_gap (F=21.7) | gap structure varies most across domains | `2d/meta_geometry.py` |
+| 81e | Bottom discriminators: quasicrystal geometries (F=1.6–2.0) | QC metrics uniform across domains — most data lacks QC structure | `2d/meta_geometry.py` |
+| 81f | Effective dimensionality 10.3; 11 SVs above Marchenko-Pastur; 90% at dim 25 | metric space genuinely high-dimensional, not reducible | `2d/meta_geometry.py` |
+| 81g | Fibonacci Word ≈ L-System Algae (d=0.0025) — framework detects substitution equivalence | both are Lindenmayer systems; geometric identity validates framework | `2d/meta_geometry.py` |
+| 81h | AES ≈ Gzip ≈ Bzip2 ≈ LCG ≈ White Noise cluster (d≈0.01) | maximal entropy sources geometrically indistinguishable — correct | `2d/meta_geometry.py` |
+| 81i | Random Telegraph most isolated source (NN d=0.65) | Poisson-switched binary has no geometric peer in atlas | `2d/meta_geometry.py` |
+| 81j | LOO 5-NN domain classification: 47.5% (vs 6.25% random) | framework captures domain structure but geometric clusters ≠ provenance labels | `2d/meta_geometry.py` |
+| 81k | Bio 100% classified, number_theory 0%, geophysics 0% | bio has coherent geometric signature; number_theory/geophysics too heterogeneous | `2d/meta_geometry.py` |
 
-## Negative Results (25)
+### Astrophysics
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 82a | **GW150914 detected** with massive significance in ASD-whitened strain (no template) | H1: 91 Bonferroni-sig metrics (α=2×10⁻⁴), L1: 58 | `1d/gravitational_waves.py` |
+| 82b | **54 metrics coincident in both detectors, all same-sign** — zero opposite-sign | 21 geometry families; sign coherence rules out artifacts | `1d/gravitational_waves.py` |
+| 82c0 | Top discriminators: Mandelbrot escape_time_variance, HOS kurt_max, Zariski nonsep_fraction | H1 d=−14.9, L1 d=+20.3 (kurt_max); p < 10⁻⁵⁰ | `1d/gravitational_waves.py` |
+| 82c1 | Chirp geometric profile: low entropy, narrow vocabulary, high kurtosis, smooth phase-space | entropy/vocabulary negative d, kurtosis/Zariski/symplectic positive d | `1d/gravitational_waves.py` |
+| 82c2 | **Raw strain produces null** (max \|d\|=1.0) — correct negative control | seismic noise dominates; whitening essential | `1d/gravitational_waves.py` |
+| 82c | Artificial SETI signals detectable at SNR -13 dB | 0.05 linear SNR | `1d/seti.py` |
+| 82d | Exotic geometry outperforms spectral features for Spread Spectrum/Chaos | 64 sig vs 1 sig (spectral) @ SNR 0.5 | `1d/seti.py` |
+| 82e | Geometry detects 7/7 artificial signal types in "Cocktail" noise | Colored + RFI | `1d/seti.py` |
+
+### AI / Text
+| # | Finding | Effect Size | Investigation |
+|---|---------|-------------|---------------|
+| 83a | **AI vs Human text massively distinguishable** at raw byte level (UTF-8) | 112/252 sig metrics, d > 6.0 | `1d/llm_text_detection.py` |
+| 83b | 100% classification accuracy (LOO 5-NN) on 16KB windows | 60/60 correct | `1d/llm_text_detection.py` |
+| 83c | Fractal geometry is top discriminator: AI text is "smoother" | Mandelbrot interior d=+6.09, escape_time d=+5.86 | `1d/llm_text_detection.py` |
+| 83d | Higher-Order Statistics (Kurtosis) discriminates AI text | d = +5.62 (AI distribution more peaked) | `1d/llm_text_detection.py` |
+
+## Negative Results (27)
 
 These are equally important — they define the boundaries of what geometric analysis can and cannot do.
 
 | # | Finding | Implication |
 |---|---------|-------------|
 | 1 | **AES-CTR indistinguishable from random** across ALL geometries, preprocessings, higher-order stats, and bit planes | Fundamental limit; AES works |
-| 2 | MT19937 essentially passes (1 borderline detection: S² × ℝ sphere_concentration d=-1.27) | Byte-level structure is marginal |
-| 3 | XorShift128 undetected raw (0 sig), but DE2 reveals 2 metrics | Thurston height_drift exposed by delay embedding |
-| 4 | MINSTD nearly passes (1 sig: S² × ℝ; standard chi2+entropy catch 2) | Distributional bias caught by standard tests first |
+| 2 | MT19937 passes (0 sig after metric pruning; was 1 borderline) | Byte-level structure undetectable |
+| 3 | XorShift128 undetected raw (0 sig), but DE2 reveals 2 metrics (note: XorShift32 now detected by Klein Bottle linear_complexity, see #13k) | Thurston height_drift exposed by delay embedding; 128-bit state too large for BM at 4K bytes |
+| 4 | MINSTD passes (0 sig after metric pruning; was 1 borderline) | Byte-level LCG structure undetectable |
 | 4a | SFC64 and PCG64 completely indistinguishable from os.urandom | Modern PRNGs are geometrically random |
 | 5 | RC4 stream looks random (even 24-bit key) | Stream cipher output is geometrically indistinguishable |
-| 6 | Standard map ≈ random | Uniformly mixing on torus |
-| 7 | Arnold cat map ≈ random | Uniformly mixing on torus |
-| 8 | LSB steganography nearly invisible (d=1.06, 1 metric at 100% rate only) | Byte-level changes too small for most geometries |
+| 6 | ~~Standard map ≈ random~~ **RECLASSIFIED** → Positive #18a (44 sig with new Predictability/Cayley geometries) | Mixing ≠ random; deterministic skeleton detected |
+| 7 | ~~Arnold cat map ≈ random~~ **RECLASSIFIED** → Positive #18b (19 sig with new Predictability/SpectralGraph geometries) | Anosov mixing ≠ random |
+| 8 | LSB steganography invisible (0 sig after metric pruning; was 1 borderline) | Byte-level changes too small for all geometries |
 | 8a | Matrix embedding completely invisible to all geometries (confirmed 1D and 2D) | d=0.00 across 131 metrics, 4 representations, all rates |
 | 8b | Bitplane extraction does not improve stego detection | 8x sample reduction destroys statistical power |
 | 9 | GBM indistinguishable from IID normal | Random walk is geometrically random |
@@ -331,7 +371,7 @@ These are equally important — they define the boundaries of what geometric ana
 | 11 | Random vs encrypted is the hardest classification boundary | Both designed to look random |
 | 12 | Multi-scale analysis doesn't improve general classification | 69.5% < 79.5% baseline |
 | 13 | Cepstrum mostly useless after uint8 quantization | Information crushed |
-| 14 | GARCH hard to detect after byte quantization | Variance-of-variance destroyed |
+| 14 | ~~GARCH hard to detect after byte quantization~~ **RECLASSIFIED** → Positive #2a (29 sig with Symplectic/Lorentzian/G2) | CDF-encoded returns detectable; volatility clustering has geometric signature |
 | 15 | GoL ≈ HighLife | Near-identical rules (differ only in B6) |
 | 16 | Sandpile 10k ≈ 50k iterations | Both at SOC steady state |
 | 17 | Kruskal ≈ Aldous-Broder maze generation | Both produce uniform spanning trees |
@@ -342,10 +382,15 @@ These are equally important — they define the boundaries of what geometric ana
 | 21 | **EEG φⁿ lattice not supported** — φ ranks #5/12 at u=0.5, #1/12 at u=1/φ (p=0.06); Kuiper omnibus p=0.614; FOOOF extraction weakens signal (p=0.35); one (method×band×window×target) combination reaches p=0.025 but fails Kuiper | Real spectral organization exists but is not robustly φ-specific across extraction methods or omnibus tests |
 | 21 | **CF(Sqrt2) vs shuffled = 0 sig** — constant sequence shuffled is identical (`1d/math_constants.py`) | Validates methodology (not a failure) |
 | 22 | **Base-10 digits of Pi/e/Phi/Sqrt2 all indistinguishable from each other (0 sig)** (`1d/math_constants.py`) | Normal number digits = i.i.d. uniform |
+| 23 | **GF(256) Reed-Solomon syndrome metrics dead** — syndrome_weight F=0.6, syndrome_entropy r=1.000 with 2-adic:mean_distance; positive control failed (sub-block syndromes non-zero even for codewords) (`1d/syndrome_explore.py`) | GF(256) algebra is orthogonal to real-valued structure by design |
+| 24 | **D16 (16D) and Leech lattice (24D) redundant with existing framework** — D16_unique_roots r=0.983 with D4 Triality, Leech_unique_roots r=0.981 with Boltzmann; Leech_lattice_dist r=0.924 closest to passing (`1d/leech_explore.py`) | Higher-D lattice projections remeasure the same distributional properties E8/D4 already capture |
+| 25 | **Protocol informatics metrics mostly redundant** — 4/5 killed: determinism_idx r=0.935, time_asymmetry r=0.919, state_compression ≡ determinism_idx, nw_alignment r=0.955 (`1d/protocol_orthogonality.py`) | State machine metrics on byte sequences largely recaptured by existing dynamical/entropy metrics |
+| 26 | **Markov kl_from_iid dead** — r=0.996 with existing metrics (essentially identical to entropy_rate) (`1d/markov_explore.py`) | KL divergence from IID already measured by Information geometry |
+| 27 | **NW sequence alignment is noise** — real/shuffled score ratio = 1.00 at all prime gap ranges; no conserved motifs (`1d/prime_protocol.py`) | Needleman-Wunsch alignment inapplicable to non-biological sequences |
 
 ## Key Takeaway
 
-The framework detects genuine structure with large effect sizes (d = 7-266) while producing zero false positives on validated random sources. The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly. The Structure Atlas investigation (`structure_atlas.py`) mapped 179 data sources from 16 domains into the 233-metric structure space and found it has 8.9 effective dimensions (PC1+2 = 40.0%) — the framework's metrics, despite numbering 233, span a compact but sufficient space to classify diverse real-world data. 54% of all nearest-neighbor pairs cross domain boundaries, revealing that the framework captures universal structural motifs rather than domain-specific artifacts. Cross-domain twins (EEG Eyes Closed ↔ Bearing Outer d=0.084, NASDAQ ↔ Accel Stairs d=0.16) share geometric profiles despite having nothing in common physically.
+The framework detects genuine structure with large effect sizes (d = 7-266) while producing zero false positives on validated random sources (self-check: 1/200 at Bonferroni, within expected FPR). The AES-CTR negative result confirms that the methodology is honest — geometries report "no structure" when encryption is working correctly. A 2026-03-05 re-evaluation of all 25 negative results (`negative_reeval.py`) reclassified 3 former negatives as positives: the Standard Map and Arnold Cat Map — previously indistinguishable from random — are now detected by Predictability and Cayley/SpectralGraph geometries (44 and 19 sig respectively), and GARCH(1,1) returns are now detectable via Symplectic and Lorentzian geometries (29 sig). The remaining 22 negatives held, and 4 borderline detections (MT19937, MINSTD, LSB stego, protein ordering) dropped to 0 sig after metric pruning — the framework got both sharper and cleaner. The Structure Atlas investigation (`structure_atlas.py`) mapped 199 data sources from 16 domains into the 200-metric structure space and found it has 9.2 effective dimensions (PC1+2 = 39.1%) — the framework's 200 metrics (across 54 geometries) span a compact but sufficient space to classify diverse real-world data. 54% of all nearest-neighbor pairs cross domain boundaries, revealing that the framework captures universal structural motifs rather than domain-specific artifacts. Cross-domain twins (EEG Eyes Closed ↔ Bearing Outer d=0.084, NASDAQ ↔ Accel Stairs d=0.16) share geometric profiles despite having nothing in common physically.
 
 The 2D spatial geometry battery (8 geometries, 80 metrics) demonstrates that genuinely different mathematical lenses — differential geometry (Surface), algebraic topology (Persistent Homology 2D), complex analysis (Conformal 2D), integral geometry (Minkowski Functionals), scaling analysis (Multiscale Fractal 2D), Hodge theory (Hodge-Laplacian), and spectral analysis (Spectral Power 2D) — each contribute unique discriminative power. On stego co-occurrence matrices, PVD detection jumps from 13/15 (Spatial Field alone) to 49/80 (all 8 geometries). On 10 diverse field types, all 45 pairs are distinguished.
 
@@ -362,3 +407,5 @@ The EEG golden ratio investigation (`eeg_phi.py`) demonstrates the framework's v
 The RNG quality testing investigation (`rng.py`) provides a clean validation story: 10 generators spanning a quality gradient from cryptographic to historically broken. CRYPTO/GOOD generators return 0 significant metrics (self-check urandom vs urandom also 0), while RANDU (44 sig) and Middle-Square (78 sig) are massively detected. Geometric metrics outperform standard statistical tests by 11x on the worst generators. Delay embedding newly reveals XorShift128 (undetected raw), and RANDU is detectable from just 500 bytes. Different weaknesses have distinct geometric fingerprints — Penrose quasicrystal metrics detect lattice structure (d=-37), while Higher-Order Statistics catches nonlinear correlations.
 
 The unsolved problems investigation (`unsolved.py`) addresses two famous open questions. For normality of π: digits of π, e, and √2 are completely indistinguishable from random bytes across 131 geometric metrics, in both base-256 and base-10, at four different digit positions (0K-48K), and under delay embedding at τ=1-5. Combined with the CF result (π passes iid Gauss-Kuzmin), this is comprehensive geometric evidence for normality. For Goldbach's comet: g(2n) is massively structured (86 sig vs random), with strong sequential correlations (51 sig vs shuffled). The Hardy-Littlewood prediction captures most structure (r=0.992) but 17 metrics detect patterns beyond HL — primarily via E8 Lattice and Higher-Order Statistics. This gap persists across scales from n=100 to n=200K.
+
+The gravitational wave investigation (`gravitational_waves.py`) applies the full 252-metric framework to LIGO GW150914 strain data, comparing a 200 ms event window against 500 background windows with Bonferroni correction (α = 2×10⁻⁴). In ASD-whitened data, 91 metrics are Bonferroni-significant in H1 and 58 in L1. Of these, 54 are significant in both detectors with perfect sign agreement — zero opposite-sign coincidences across 21 geometry families. Top effects reach d = −14.9 (Mandelbrot escape_time_variance, H1) and d = +20.3 (HOS kurt_max, L1). The coherent geometric portrait of a chirp: low entropy (predictable), narrow bigram vocabulary (narrow-band), high kurtosis (concentrated merger burst), smooth phase-space orbit (deterministic), high symplectic area variation (frequency sweep). Raw strain produces a null (max |d| = 1.0) — the correct negative control confirming that whitening is essential and the framework isn't hallucinating structure in seismic noise. This is template-free burst detection: the framework identifies structural anomaly without knowing what a gravitational wave looks like.
