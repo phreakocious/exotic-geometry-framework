@@ -24,6 +24,9 @@
     <meta name="twitter:description" content="182 data sources from 16 domains, projected through 252 exotic geometry metrics into a 3D phase space. Interactive." />
     <meta name="twitter:image" content="https://nullphase.net/sa/og-image.png" />
     <script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;0,800;1,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 
     <script async src="https://unpkg.com/es-module-shims@1.10.1/dist/es-module-shims.js"></script>
     <script type="importmap">
@@ -35,28 +38,28 @@
         }
     </script>
     <style>
-        body { margin: 0; background-color: #0a0a0a; color: #ddd; font-family: 'Inter', system-ui, sans-serif; overflow: hidden; }
+        body { margin: 0; background-color: #0a0015; color: #ddd; font-family: 'Exo 2', 'Inter', system-ui, sans-serif; overflow: hidden; }
         canvas { display: block; }
         .glass-card {
-            background: rgba(10,10,10,0.4);
+            background: rgba(10,5,25,0.55);
             padding: 12px;
-            border-radius: 8px; 
-            border: 1px solid #333;
+            border-radius: 8px;
+            border: 1px solid rgba(0,255,180,0.12);
             backdrop-filter: blur(10px);
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
             pointer-events: auto;
         }
         .glass-card a {
-            color: #3498db;
+            color: #00ffb4;
             text-decoration: none;
             transition: color 0.2s;
         }
         .glass-card a:hover {
-            color: #5dade2;
+            color: #7bffce;
             text-decoration: underline;
         }
         #ui { position: absolute; top: 15px; left: 15px; z-index: 1000; pointer-events: none; width: 280px; display: flex; flex-direction: column; gap: 6px; transition: transform 0.3s ease; }
-        #ui h1 { margin: 0; font-size: 1.1rem; letter-spacing: -0.02em; font-weight: 700; color: #eee; }
+        #ui h1 { margin: 0; font-size: 1.15rem; letter-spacing: 0.04em; font-weight: 800; background: linear-gradient(135deg, #00ffb4, #7b8fff, #ff6eff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
         #ui p { margin: 3px 0 0; font-size: 0.75rem; color: #888; line-height: 1.3; }
         
         #legend { 
@@ -76,7 +79,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.8);
+            background: rgba(5,0,15,0.85);
             backdrop-filter: blur(5px);
             z-index: 2000;
             display: none;
@@ -94,9 +97,9 @@
             position: sticky;
             top: 0;
             float: right;
-            background: #222;
+            background: rgba(15,10,30,0.8);
             color: #fff;
-            border: none;
+            border: 1px solid rgba(0,255,180,0.15);
             padding: 5px 10px;
             cursor: pointer;
             border-radius: 4px;
@@ -109,21 +112,23 @@
             top: 20px;
             right: 20px;
             z-index: 100;
-            background: rgba(10,10,10,0.85);
-            border: 1px solid #111;
+            background: rgba(10,5,25,0.85);
+            border: 1px solid rgba(0,255,180,0.15);
             color: #ddd;
             padding: 8px 12px;
             border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            font-weight: 400;
             text-transform: uppercase;
+            letter-spacing: 0.08em;
             cursor: pointer;
             backdrop-filter: blur(10px);
             transition: background 0.2s;
         }
         #ui-toggle:hover {
-            background: rgba(30,30,30,0.95);
-            border-color: #444;
+            background: rgba(20,10,40,0.95);
+            border-color: rgba(0,255,180,0.3);
         }
 
         .ui-hidden #ui { transform: translateX(-150%); }
@@ -144,27 +149,28 @@
         }
         .legend-title {
             grid-column: span 2;
-            font-size: 10px; 
-            color: #555; 
-            text-transform: uppercase; 
-            margin-bottom: 10px; 
-            border-bottom: 1px solid #222; 
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            color: #555;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(0,255,180,0.1);
             padding-bottom: 5px;
             letter-spacing: 0.1em;
-            font-weight: 700;
+            font-weight: 400;
         }
         .legend-item { display: flex; align-items: center; font-size: 11px; color: #ccc; }
         .legend-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; flex-shrink: 0; }
 
-                #tooltip { position: absolute; padding: 12px; background: rgba(20,20,20,0.95); border: 1px solid #444; border-radius: 6px; pointer-events: none; display: none; z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.1s ease-out, transform 0.1s ease-out; transform: scale(0.95); opacity: 0; }
+                #tooltip { position: absolute; padding: 12px; background: rgba(10,5,25,0.95); border: 1px solid rgba(0,255,180,0.2); border-radius: 6px; pointer-events: none; display: none; z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.1s ease-out, transform 0.1s ease-out; transform: scale(0.95); opacity: 0; }
                 
                         #ui-hint {
                             position: fixed;
                             padding: 8px 12px;
-                            background: rgba(15, 15, 15, 0.98);
+                            background: rgba(10, 5, 25, 0.98);
                             color: #ddd;
-                            border: 1px solid #333;
-                            border-left: 3px solid #3498db;
+                            border: 1px solid rgba(0,255,180,0.12);
+                            border-left: 3px solid rgba(0,255,180,0.5);
                             font-size: 11px;
                             border-radius: 4px;
                             pointer-events: none;
@@ -180,7 +186,7 @@
         .label { color: #888; font-size: 10px; pointer-events: none; text-shadow: 0 0 4px rgba(0,0,0,0.8); }
         .view-btn {
             background: transparent;
-            border: 1px solid #333;
+            border: 1px solid rgba(123,143,255,0.2);
             color: #666;
             font-size: 9px;
             text-transform: uppercase;
@@ -192,10 +198,10 @@
             white-space: nowrap;
         }
         .view-btn:hover { border-color: #555; color: #aaa; }
-        .view-btn.active { border-color: #3498db; color: #ddd; background: rgba(52, 152, 219, 0.15); }
+        .view-btn.active { border-color: #00ffb4; color: #ddd; background: rgba(0, 255, 180, 0.15); }
 
         .proj-btn {
-            background: #222; border: 1px solid #333; color: #666; font-size: 9px;
+            background: rgba(15,10,30,0.6); border: 1px solid rgba(123,143,255,0.2); color: #666; font-size: 9px;
             text-transform: uppercase; padding: 5px 0; cursor: pointer; flex: 1;
             transition: all 0.2s; text-align: center; position: relative;
         }
@@ -203,18 +209,19 @@
         .proj-btn:last-child { border-radius: 0 3px 3px 0; }
         .proj-btn:not(:first-child) { margin-left: -1px; }
         .proj-btn:hover { color: #aaa; border-color: #555; z-index: 1; }
-        .proj-btn.active { border-color: #e67e22; color: #ddd; background: rgba(230, 126, 34, 0.15); z-index: 2; }
+        .proj-btn.active { border-color: #7b8fff; color: #ddd; background: rgba(123, 143, 255, 0.15); z-index: 2; }
         .collapsible-header {
             cursor: pointer;
             user-select: none;
             display: flex;
             align-items: center;
             gap: 6px;
-            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
             color: #666;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            font-weight: 700;
+            letter-spacing: 0.08em;
+            font-weight: 400;
             margin-bottom: 10px;
         }
         .collapsed > .collapsible-header {
@@ -240,19 +247,19 @@
         #explorer-panel .axis-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
         #explorer-panel .axis-row label { font-size: 10px; color: #888; font-weight: 700; width: 14px; }
         .metric-select {
-            flex: 1; background: #111; color: #ccc; border: 1px solid #333; border-radius: 3px;
+            flex: 1; background: rgba(10,5,25,0.6); color: #ccc; border: 1px solid rgba(0,255,180,0.12); border-radius: 3px;
             font-size: 10px; padding: 3px 4px; outline: none; max-width: 260px;
         }
-        .metric-select:focus { border-color: #e67e22; }
+        .metric-select:focus { border-color: rgba(123,143,255,0.5); }
         .metric-select optgroup { color: #888; font-style: normal; }
-        .metric-select option { color: #ccc; background: #111; }
+        .metric-select option { color: #ccc; background: #0a0015; }
         #preset-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
         .preset-pill {
-            background: transparent; border: 1px solid #333; color: #666; font-size: 9px;
+            background: transparent; border: 1px solid rgba(123,143,255,0.2); color: #666; font-size: 9px;
             padding: 2px 7px; border-radius: 10px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
         }
         .preset-pill:hover { border-color: #555; color: #aaa; }
-        .preset-pill.active { border-color: #e67e22; color: #ddd; background: rgba(230, 126, 34, 0.15); }
+        .preset-pill.active { border-color: #7b8fff; color: #ddd; background: rgba(123, 143, 255, 0.15); }
         #overlay { 
             position: fixed; 
             top: 0; 
@@ -262,7 +269,7 @@
             display: flex; 
             align-items: center; 
             justify-content: center; 
-            background: #050505; 
+            background: #050510;
             z-index: 5000; 
             transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1); 
         }
@@ -290,28 +297,28 @@
             height: 100%;
             border: 1px solid transparent;
             border-radius: 50%;
-            border-top-color: #3498db;
+            border-top-color: #00ffb4;
             animation: loader-spin 3s linear infinite;
         }
         .loader-ring:nth-child(2) {
             width: 75%;
             height: 75%;
-            border-top-color: #e74c3c;
+            border-top-color: #ff6eff;
             animation-duration: 2s;
             animation-direction: reverse;
         }
         .loader-ring:nth-child(3) {
             width: 50%;
             height: 50%;
-            border-top-color: #2ecc71;
+            border-top-color: #00b4ff;
             animation-duration: 1.5s;
         }
         .loader-diamond {
             width: 14px;
             height: 14px;
-            background: #fff;
+            background: #00ffb4;
             transform: rotate(45deg);
-            box-shadow: 0 0 20px rgba(255,255,255,0.8);
+            box-shadow: 0 0 20px rgba(0,255,180,0.8);
             animation: loader-pulse 1.5s ease-in-out infinite;
         }
         @keyframes loader-spin {
@@ -322,17 +329,21 @@
             50% { transform: rotate(45deg) scale(1.2); opacity: 1; }
         }
         .loader-title {
-            font-size: 13px;
+            font-family: 'Exo 2', 'Inter', system-ui, sans-serif;
+            font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 0.4em;
             font-weight: 800;
             color: #fff;
             margin-bottom: 12px;
-            text-shadow: 0 0 10px rgba(255,255,255,0.3);
+            background: linear-gradient(135deg, #00ffb4, #7b8fff, #ff6eff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
         .loader-status {
             font-size: 11px;
-            color: #3498db;
+            color: #00ffb4;
             margin-bottom: 20px;
             height: 14px;
             font-family: 'JetBrains Mono', 'Courier New', monospace;
@@ -350,7 +361,7 @@
         .progress-bar {
             width: 0%;
             height: 100%;
-            background: linear-gradient(90deg, #3498db, #e74c3c, #2ecc71);
+            background: linear-gradient(90deg, #00ffb4, #ff6eff, #00b4ff);
             background-size: 200% 100%;
             transition: width 0.4s cubic-bezier(0.1, 0.7, 1.0, 0.1);
             animation: gradient-shift 3s linear infinite;
@@ -361,7 +372,7 @@
         }
         .loader-subtext {
             font-size: 9px;
-            color: #444;
+            color: rgba(0,255,180,0.3);
             text-transform: uppercase;
             letter-spacing: 0.15em;
             font-weight: 600;
@@ -369,6 +380,7 @@
     </style>
 </head>
 <body>
+    <div id="aurora-bg" style="position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 120% 60% at 30% 20%,rgba(0,255,180,0.08),transparent 60%),radial-gradient(ellipse 80% 80% at 80% 70%,rgba(120,0,255,0.1),transparent 60%),radial-gradient(ellipse 60% 40% at 60% 10%,rgba(0,180,255,0.06),transparent 50%);"></div>
     <div id="overlay">
         <div class="loader-container">
             <div class="geometric-loader">
@@ -388,13 +400,13 @@
     <button id="ui-toggle">Toggle UI</button>
     <div id="ui">
         <div class="glass-card">
-            <div style="margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                <a href="/" style="color: #888; text-decoration: none; font-size: 10px; display: flex; align-items: center; gap: 5px;">
+            <div style="margin-bottom: 8px; border-bottom: 1px solid rgba(0,255,180,0.1); padding-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                <a href="/" style="color: rgba(0,255,180,0.5); text-decoration: none; font-family: 'JetBrains Mono', monospace; font-size: 9px; display: flex; align-items: center; gap: 5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">
                     <span>←</span> Back
                 </a>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                    <img src="../assets/nullphase_circular.svg" style="width: 16px; height: 16px; opacity: 0.8;">
-                    <span style="font-size: 9px; color: #888; letter-spacing: 1px;">NULLPHASE.NET</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <img src="../assets/nullphase_circular.svg" style="width: 20px; height: 20px; opacity: 0.8;">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: rgba(0,255,180,0.4); letter-spacing: 0.08em; font-weight: 500;">NULLPHASE.NET</span>
                 </div>
             </div>
             <h1>Structure Atlas</h1>
@@ -403,72 +415,72 @@
                 <span id="sourceCount" style="color: #ddd;">...</span> data sources from <span id="domainCount" style="color: #ddd;">...</span> <span title="Categories of data origin: chaos, noise, medical, financial, etc." style="border-bottom: 1px dotted #666; cursor: help;">domains</span>.
                 Projected from <span id="metricCount" style="color: #ddd;">...</span> <span title="Numerical measurements extracted by each geometry. Each geometry produces multiple metrics that capture different structural properties of the data." style="border-bottom: 1px dotted #666; cursor: help;">metrics</span> across <span id="geomCount" style="color: #ddd;">33</span> <a href="https://github.com/phreakocious/exotic-geometry-framework" target="_blank" title="Mathematical spaces (hyperbolic, symplectic, projective, etc.) used as lenses to reveal hidden structure in byte sequences.">exotic geometries</a> from <span id="sampleSize" style="color: #ddd;">16384</span> uint8 samples.
             </p>
-            <div id="status" style="margin-top: 10px; font-size: 11px; color: #3498db;">Initializing...</div>
+            <div id="status" style="margin-top: 10px; font-size: 11px; color: #00ffb4;">Initializing...</div>
         </div>
 
         <div id="controls" class="glass-card">
             <div class="collapsible-header">Controls</div>
             <div class="collapsible-body">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">Labels</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;">Labels</label>
                 <span id="distVal" style="font-size: 10px; color: #ddd;">40</span>
             </div>
-            <input type="range" id="labelDist" min="0" max="150" value="40" style="width: 100%; height: 4px; accent-color: #3498db; margin-bottom: 15px; display: block;">
+            <input type="range" id="labelDist" min="0" max="150" value="40" style="width: 100%; height: 4px; accent-color: #00ffb4; margin-bottom: 15px; display: block;">
 
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;" title="Filter data by uniqueness. Low values show only the most unique/isolated sources (outliers) from each domain. High values reveal the dense clusters.">Density</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Filter data by uniqueness. Low values show only the most unique/isolated sources (outliers) from each domain. High values reveal the dense clusters.">Density</label>
                 <span id="densityVal" style="font-size: 10px; color: #ddd;">100%</span>
             </div>
-            <input type="range" id="densitySlider" min="0" max="100" value="100" style="width: 100%; height: 4px; accent-color: #9b59b6; margin-bottom: 15px; display: block;">
+            <input type="range" id="densitySlider" min="0" max="100" value="100" style="width: 100%; height: 4px; accent-color: #a78bfa; margin-bottom: 15px; display: block;">
 
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;" title="Scale the coordinate spread. Higher values push points apart; lower values compress them toward the center.">Scale</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Scale the coordinate spread. Higher values push points apart; lower values compress them toward the center.">Scale</label>
                 <span id="scaleVal" style="font-size: 10px; color: #ddd;">3.00</span>
             </div>
-            <input type="range" id="scaleSlider" min="25" max="2000" value="300" style="width: 100%; height: 4px; accent-color: #2ecc71; margin-bottom: 15px; display: block;">
+            <input type="range" id="scaleSlider" min="25" max="2000" value="300" style="width: 100%; height: 4px; accent-color: #00b4ff; margin-bottom: 15px; display: block;">
 
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;" title="Hide sources with low relevance to the current view. Relevance = fraction of the view's metrics where a source scores in the top 10%, discounted for low-complexity (binary/low-entropy) inputs that produce degenerate geometry embeddings. Each view has its own relevance scores.">Relevance</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Hide sources with low relevance to the current view. Relevance = fraction of the view's metrics where a source scores in the top 10%, discounted for low-complexity (binary/low-entropy) inputs that produce degenerate geometry embeddings. Each view has its own relevance scores.">Relevance</label>
                 <span id="relevanceVal" style="font-size: 10px; color: #ddd;">0%</span>
             </div>
-            <input type="range" id="relevanceSlider" min="0" max="100" value="0" style="width: 100%; height: 4px; accent-color: #e67e22; margin-bottom: 20px; display: block;">
+            <input type="range" id="relevanceSlider" min="0" max="100" value="0" style="width: 100%; height: 4px; accent-color: #7b8fff; margin-bottom: 20px; display: block;">
 
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                <span style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;">Color</span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;">Color</span>
                 <label style="font-size: 10px; color: #888; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                    <input type="radio" name="colorMode" value="domain" checked style="accent-color: #3498db;"> Domain
+                    <input type="radio" name="colorMode" value="domain" checked style="accent-color: #00ffb4;"> Domain
                 </label>
                 <label style="font-size: 10px; color: #888; cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                    <input type="radio" name="colorMode" value="cluster" style="accent-color: #e67e22;"> Cluster
+                    <input type="radio" name="colorMode" value="cluster" style="accent-color: #7b8fff;"> Cluster
                 </label>
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 12px;">
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer;" title="Draw lines connecting all sources from the same data domain.">
-                    <input type="checkbox" id="showDomainWebs" style="accent-color: #3498db;"> Domain Webs
+                    <input type="checkbox" id="showDomainWebs" style="accent-color: #00ffb4;"> Domain Webs
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer;" title="Draw lines connecting sources in the same geometric cluster.">
-                    <input type="checkbox" id="showClusterWebs" style="accent-color: #e67e22;"> Cluster Webs
+                    <input type="checkbox" id="showClusterWebs" style="accent-color: #7b8fff;"> Cluster Webs
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer;" title="Draw vertical lines connecting each data point to the ground plane.">
-                    <input type="checkbox" id="showStemLines" checked style="accent-color: #3498db;"> Stem Lines
+                    <input type="checkbox" id="showStemLines" checked style="accent-color: #00ffb4;"> Stem Lines
                 </label>
                 <label style="display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; cursor: pointer;" title="Circles: lightweight flat points. Spheres: 3D volumes.">
-                    <input type="checkbox" id="renderSpheres" checked style="accent-color: #3498db;"> Spheres
+                    <input type="checkbox" id="renderSpheres" checked style="accent-color: #00ffb4;"> Spheres
                 </label>
             </div>
 
             <div id="view-selector" style="display: none; margin-bottom: 12px;">
-                <div style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-bottom: 6px;">View</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; margin-bottom: 6px;">View</div>
                 <div id="view-buttons" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
             </div>
 
             <div style="display: flex; gap: 5px;">
                 <input type="file" id="json-upload" accept=".json" style="display: none;">
-                <button id="load-json" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Load a custom structure_atlas_data.json file">Load</button>
-                <button id="open-catalog" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Browse all exotic geometries">Catalog</button>
-                <button id="rotate-view" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Cycle through axis-aligned camera views: XY front, XZ top, YZ side, and isometric corners">Rotate</button>
-                <button id="pivot-axes" style="background: #222; border: 1px solid #333; color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Cycle which principal components map to X/Y/Z axes">Pivot</button>
+                <button id="load-json" style="background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Load a custom structure_atlas_data.json file">Load</button>
+                <button id="open-catalog" style="background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Browse all exotic geometries">Catalog</button>
+                <button id="rotate-view" style="background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Cycle through axis-aligned camera views: XY front, XZ top, YZ side, and isometric corners">Rotate</button>
+                <button id="pivot-axes" style="background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 9px; text-transform: uppercase; padding: 6px 4px; border-radius: 3px; cursor: pointer; flex: 1; transition: all 0.2s;" title="Cycle which principal components map to X/Y/Z axes">Pivot</button>
             </div>
             <div id="projection-group" style="display: flex; margin-top: 5px;">
                 <button class="proj-btn active" data-proj="pca" title="Principal Component Analysis --- interpretable linear axes">PCA</button>
@@ -489,8 +501,8 @@
             <div class="collapsible-header">Character Map</div>
             <div class="collapsible-body" style="display: flex; flex-direction: column; gap: 15px;">
             <div>
-                <label id="pc1-label" style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;" title="First principal component.">PC1: Distributional Order</label>
-                <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #00ffff, #3498db, #e74c3c); border-radius: 2px; position: relative;">
+                <label id="pc1-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="First principal component.">PC1: Distributional Order</label>
+                <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #00ffd5, #00ffb4, #ff6eff); border-radius: 2px; position: relative;">
                     <div id="pc1-pointer" style="position: absolute; top: -4px; left: 50%; width: 2px; height: 12px; background: white; box-shadow: 0 0 5px white; transition: left 0.2s ease;"></div>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #666;">
@@ -500,8 +512,8 @@
             </div>
 
             <div>
-                <label id="pc2-label" style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;" title="Second principal component.">PC2: Spectral Character</label>
-                <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #2ecc71, #3498db, #9b59b6); border-radius: 2px; position: relative;">
+                <label id="pc2-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Second principal component.">PC2: Spectral Character</label>
+                <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #00b4ff, #00ffb4, #a78bfa); border-radius: 2px; position: relative;">
                     <div id="pc2-pointer" style="position: absolute; top: -4px; left: 50%; width: 2px; height: 12px; background: white; box-shadow: 0 0 5px white; transition: left 0.2s ease;"></div>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #666;">
@@ -511,8 +523,8 @@
             </div>
 
             <div>
-                <label id="pc3-label" style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;" title="Third principal component.">PC3: Source Formality</label>
-                <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #f1c40f, #3498db, #1abc9c); border-radius: 2px; position: relative;">
+                <label id="pc3-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Third principal component.">PC3: Source Formality</label>
+                <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #ffb86c, #00ffb4, #00ffd5); border-radius: 2px; position: relative;">
                     <div id="pc3-pointer" style="position: absolute; top: -4px; left: 50%; width: 2px; height: 12px; background: white; box-shadow: 0 0 5px white; transition: left 0.2s ease;"></div>
                 </div>
                 <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #666;">
@@ -521,20 +533,20 @@
                 </div>
             </div>
 
-            <div id="char-label" style="font-size: 11px; color: #888; font-style: italic; text-align: center; border-top: 1px solid #222; padding-top: 10px;">Hover a data source to analyze</div>
+            <div id="char-label" style="font-size: 11px; color: #888; font-style: italic; text-align: center; border-top: 1px solid rgba(0,255,180,0.1); padding-top: 10px;">Hover a data source to analyze</div>
             </div><!-- .collapsible-body -->
         </div>
 
         <div class="glass-card" style="padding: 10px;">
             <div style="position: relative;">
                 <input type="text" id="searchInput" placeholder="Search data sources..."
-                    style="width: 100%; background: rgba(0,0,0,0.5); border: 1px solid #333; color: #fff; padding: 10px; padding-right: 30px; border-radius: 4px; font-size: 13px; outline: none; box-sizing: border-box; backdrop-filter: blur(5px);">
+                    style="width: 100%; background: rgba(5,0,15,0.5); border: 1px solid rgba(0,255,180,0.15); color: #fff; padding: 10px; padding-right: 30px; border-radius: 4px; font-size: 13px; outline: none; box-sizing: border-box; backdrop-filter: blur(5px);">
                 <button id="clearSearch" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #666; font-size: 18px; cursor: pointer; display: none; padding: 0 5px; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#666'">&times;</button>
             </div>
             <div style="display: flex; align-items: center; gap: 6px; margin-top: 5px;">
-                <div id="search-status" style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; display: none; flex: 1;"></div>
-                <button id="searchPrev" style="display: none; background: #222; border: 1px solid #333; color: #aaa; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; line-height: 1;" title="Previous match">&lsaquo;</button>
-                <button id="searchNext" style="display: none; background: #222; border: 1px solid #333; color: #aaa; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; line-height: 1;" title="Next match">&rsaquo;</button>
+                <div id="search-status" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; display: none; flex: 1;"></div>
+                <button id="searchPrev" style="display: none; background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; line-height: 1;" title="Previous match">&lsaquo;</button>
+                <button id="searchNext" style="display: none; background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; line-height: 1;" title="Next match">&rsaquo;</button>
             </div>
         </div>
     </div>
@@ -545,7 +557,7 @@
     <div id="modal-overlay">
         <div id="modal-content" class="glass-card">
             <button class="modal-close" id="close-catalog">Close</button>
-            <h2 style="margin: 0 0 20px; font-size: 1.2rem; color: #fff; border-bottom: 1px solid #222; padding-bottom: 10px;">Exotic Geometry Catalog</h2>
+            <h2 style="margin: 0 0 20px; font-size: 1.2rem; color: #fff; border-bottom: 1px solid rgba(0,255,180,0.1); padding-bottom: 10px;">Exotic Geometry Catalog</h2>
             <div id="catalog-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;"></div>
         </div>
     </div>
@@ -934,7 +946,7 @@
         const dropOverlay = document.createElement('div');
         dropOverlay.id = 'drop-overlay';
         dropOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);z-index:4000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(5px);';
-        dropOverlay.innerHTML = '<div style="color:#3498db;font-size:24px;font-weight:700;border:2px dashed #3498db;padding:50px;border-radius:15px;background:rgba(20,20,20,0.9);pointer-events:none;">Drop JSON to Load Atlas</div>';
+        dropOverlay.innerHTML = '<div style="color:#00ffb4;font-size:24px;font-weight:700;border:2px dashed #00ffb4;padding:50px;border-radius:15px;background:rgba(10,5,25,0.9);pointer-events:none;">Drop JSON to Load Atlas</div>';
         document.body.appendChild(dropOverlay);
 
         window.addEventListener('dragenter', (e) => {
@@ -1681,7 +1693,7 @@
             });
         });
 
-        const clusterPalette = ['#e67e22', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6', '#1abc9c', '#e74c3c', '#fd79a8'];
+        const clusterPalette = ['#7b8fff', '#ffb86c', '#00b4ff', '#00ffb4', '#a78bfa', '#00ffd5', '#ff6eff', '#ff79c6'];
 
         function getClusterColor(cId) {
             if (cId === undefined || cId === null) return '#888888';
@@ -1721,12 +1733,12 @@
         });
 
         const VIEW_COLORS = {
-            distributional: '#3498db',
-            topological: '#e74c3c',
-            dynamical: '#2ecc71',
-            symmetry: '#f39c12',
-            scale: '#9b59b6',
-            quasicrystal: '#1abc9c',
+            distributional: '#00ffb4',
+            topological: '#ff6eff',
+            dynamical: '#00b4ff',
+            symmetry: '#ffb86c',
+            scale: '#a78bfa',
+            quasicrystal: '#00ffd5',
             other: '#666',
         };
 
@@ -2322,13 +2334,13 @@
 
             // Update UI labels for explorer mode
             const subtitle = document.getElementById('atlas-subtitle');
-            subtitle.innerHTML = '<span style="color:#e67e22">Explorer</span>: direct metric plot (z-scored)';
+            subtitle.innerHTML = '<span style="color:#7b8fff">Explorer</span>: direct metric plot (z-scored)';
             ['pc1', 'pc2', 'pc3'].forEach((key, idx) => {
                 const metIdx = [xi, yi, zi][idx];
                 const el = document.getElementById(`${key}-label`);
                 if (el) {
                     const axisName = ['X', 'Y', 'Z'][idx];
-                    el.innerHTML = `<span style="color:#e67e22; font-weight:900;">${axisName}</span>: ${metricLabel(metIdx)}`;
+                    el.innerHTML = `<span style="color:#7b8fff; font-weight:900;">${axisName}</span>: ${metricLabel(metIdx)}`;
                     el.title = `${data.metric_names[metIdx]} (z-score, clamped ±5σ)`;
                 }
                 document.getElementById(`${key}-min`).textContent = '-5σ';
@@ -2339,8 +2351,8 @@
         async function init() {
             // Scene & Setup
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0a0a0a);
-            scene.fog = new THREE.FogExp2(0x0a0a0a, 0.015);
+            scene.background = new THREE.Color(0x0a0015);
+            scene.fog = new THREE.FogExp2(0x0a0015, 0.015);
 
             axisGroup = new THREE.Group();
             scene.add(axisGroup);
@@ -2657,7 +2669,7 @@
                             ? `${searchMatchIdx + 1}/${searchMatches.length}: ${searchMatches[searchMatchIdx].name}`
                             : `Found: ${searchMatches[0].name}`;
                         searchStatus.style.display = 'block';
-                        searchStatus.style.color = '#3498db';
+                        searchStatus.style.color = '#00ffb4';
                     }
                 }
 
@@ -2735,13 +2747,13 @@
                 setTimeout(() => document.getElementById('overlay').remove(), 800);
             } catch (e) {
                 console.error("Failed to load atlas data:", e);
-                status.style.color = "#e74c3c";
+                status.style.color = "#ff6eff";
                 status.textContent = "Error: System failure.";
                 if (loaderStatus) {
                     loaderStatus.textContent = "Data retrieval error";
-                    loaderStatus.style.color = "#e74c3c";
+                    loaderStatus.style.color = "#ff6eff";
                 }
-                if (progressBar) progressBar.style.background = "#e74c3c";
+                if (progressBar) progressBar.style.background = "#ff6eff";
                 if (typeof messageInterval !== 'undefined') clearInterval(messageInterval);
             }
 
@@ -2844,9 +2856,9 @@
             const arrowLen = Math.min(b.maxX - b.minX, b.maxY - b.minY, b.maxZ - b.minZ) * 0.25;
 
             const axesDef = [
-                { dir: new THREE.Vector3(1, 0, 0), color: '#e74c3c', label: shortName(pc1) },
-                { dir: new THREE.Vector3(0, 1, 0), color: '#2ecc71', label: shortName(pc2) },
-                { dir: new THREE.Vector3(0, 0, -1), color: '#3498db', label: shortName(pc3) },
+                { dir: new THREE.Vector3(1, 0, 0), color: '#ff6eff', label: shortName(pc1) },
+                { dir: new THREE.Vector3(0, 1, 0), color: '#00b4ff', label: shortName(pc2) },
+                { dir: new THREE.Vector3(0, 0, -1), color: '#00ffb4', label: shortName(pc3) },
             ];
 
             axesDef.forEach(({ dir, color, label }) => {
@@ -2871,7 +2883,7 @@
                 axisGroup.add(cone);
 
                 // Label at tip (using GPU sprite)
-                const texInfo = createTextTexture(label, color);
+                const texInfo = createTextTexture(label, color, true);
                 const spriteMat = new THREE.SpriteMaterial({
                     map: texInfo.texture,
                     transparent: true,
@@ -2918,8 +2930,8 @@
             const sizeY = b.maxY - b.minY;
             const sizeZ = b.maxZ - b.minZ;
 
-            const edgeColor = 0x888888;
-            const gridColor = 0x333333;
+            const edgeColor = 0x4a3880;
+            const gridColor = 0x2a1d55;
 
             // Wall XY (Back/Front) - Vertical Plane
             wallXY = createCustomGrid(sizeX, sizeY, step, edgeColor, gridColor);
@@ -3117,24 +3129,26 @@
             instancesDirty = false;
         }
 
-        function createTextTexture(text, color) {
+        function createTextTexture(text, color, mono) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const fontSize = 48; // High resolution for better scaling
-            ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+            const fontFace = mono ? `'JetBrains Mono', 'Courier New', monospace` : `'Exo 2', 'Inter', system-ui, sans-serif`;
+            const fontWeight = mono ? 500 : 600;
+            ctx.font = `${fontWeight} ${fontSize}px ${fontFace}`;
             const metrics = ctx.measureText(text);
-            
+
             canvas.width = Math.ceil(metrics.width) + 20;
             canvas.height = fontSize + 20;
-            
-            ctx.font = `${fontSize}px Inter, system-ui, sans-serif`;
+
+            ctx.font = `${fontWeight} ${fontSize}px ${fontFace}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            
+
             // Text shadow for legibility
             ctx.shadowColor = 'rgba(0,0,0,0.9)';
             ctx.shadowBlur = 8;
-            
+
             ctx.fillStyle = color;
             ctx.fillText(text, canvas.width / 2, canvas.height / 2);
             
@@ -3559,7 +3573,7 @@
                             <div style="margin-top:6px;">
                                 <div style="font-size:10px; color:#777;" title="Fraction of the ${data.n_metrics || '?'} geometric metrics that change significantly when byte order is randomized. 0% = no metric detects ordering (purely distributional). Higher values mean more metrics are sensitive to sequential structure.">Sequential structure: ${pct}%</div>
                                 <div style="margin-top:2px; height:4px; background:#222; border-radius:2px; overflow:hidden;">
-                                    <div style="width:${pct}%; height:100%; background: linear-gradient(90deg, #3498db, #e74c3c);"></div>
+                                    <div style="width:${pct}%; height:100%; background: linear-gradient(90deg, #00ffb4, #ff6eff);"></div>
                                 </div>
                             </div>`;
                     }
@@ -3568,7 +3582,7 @@
                     let neighborsHtml = '';
                     if (s.neighbors && s.neighbors.length > 0) {
                         const items = s.neighbors.map(n => {
-                            const c = n.cross_domain ? '#e67e22' : '#666';
+                            const c = n.cross_domain ? '#7b8fff' : '#666';
                             const arrow = n.cross_domain ? '\u2192' : '\u00b7';
                             return `<div style="color:${c}; font-size:10px;">${arrow} ${n.name} <span style="color:#555">(${n.distance.toFixed(2)})</span></div>`;
                         }).join('');
