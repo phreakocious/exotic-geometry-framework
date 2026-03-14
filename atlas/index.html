@@ -151,7 +151,7 @@
             grid-column: span 2;
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
-            color: #555;
+            color: #7a7a9a;
             text-transform: uppercase;
             margin-bottom: 10px;
             border-bottom: 1px solid rgba(0,255,180,0.1);
@@ -162,7 +162,7 @@
         .legend-item { display: flex; align-items: center; font-size: 11px; color: #ccc; }
         .legend-color { width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; flex-shrink: 0; }
 
-                #tooltip { position: absolute; padding: 12px; background: rgba(10,5,25,0.95); border: 1px solid rgba(0,255,180,0.2); border-radius: 6px; pointer-events: none; display: none; z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.1s ease-out, transform 0.1s ease-out; transform: scale(0.95); opacity: 0; }
+                #tooltip { position: absolute; padding: 14px 16px; background: rgba(8,4,20,0.94); border: 1px solid rgba(0,255,180,0.18); border-radius: 8px; pointer-events: none; display: none; z-index: 100; box-shadow: 0 0 20px rgba(0,255,180,0.06), 0 10px 30px rgba(0,0,0,0.5); transition: opacity 0.1s ease-out, transform 0.1s ease-out; transform: scale(0.95); opacity: 0; backdrop-filter: blur(12px); }
                 
                         #ui-hint {
                             position: fixed;
@@ -180,14 +180,15 @@
                             line-height: 1.4;
                             box-shadow: 0 5px 25px rgba(0,0,0,0.8);
                         }        
-                #tooltip h3 { margin: 0 0 5px; font-size: 13px; color: #fff; }
-        #tooltip div { font-size: 11px; color: #aaa; margin-bottom: 3px; }
+                #tooltip h3 { margin: 0 0 5px; font-size: 15px; font-weight: 700; background: linear-gradient(135deg, #00ffb4, #7b8fff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        #tooltip div { font-size: 12px; color: #aaa; margin-bottom: 3px; }
+        #tooltip table { font-family: 'JetBrains Mono', monospace; }
 
         .label { color: #888; font-size: 10px; pointer-events: none; text-shadow: 0 0 4px rgba(0,0,0,0.8); }
         .view-btn {
             background: transparent;
             border: 1px solid rgba(123,143,255,0.2);
-            color: #666;
+            color: #8b8bab;
             font-size: 9px;
             text-transform: uppercase;
             letter-spacing: 0.03em;
@@ -201,7 +202,7 @@
         .view-btn.active { border-color: #00ffb4; color: #ddd; background: rgba(0, 255, 180, 0.15); }
 
         .proj-btn {
-            background: rgba(15,10,30,0.6); border: 1px solid rgba(123,143,255,0.2); color: #666; font-size: 9px;
+            background: rgba(15,10,30,0.6); border: 1px solid rgba(123,143,255,0.2); color: #8b8bab; font-size: 9px;
             text-transform: uppercase; padding: 5px 0; cursor: pointer; flex: 1;
             transition: all 0.2s; text-align: center; position: relative;
         }
@@ -218,7 +219,7 @@
             gap: 6px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
-            color: #666;
+            color: #8b8bab;
             text-transform: uppercase;
             letter-spacing: 0.08em;
             font-weight: 400;
@@ -255,7 +256,7 @@
         .metric-select option { color: #ccc; background: #0a0015; }
         #preset-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
         .preset-pill {
-            background: transparent; border: 1px solid rgba(123,143,255,0.2); color: #666; font-size: 9px;
+            background: transparent; border: 1px solid rgba(123,143,255,0.2); color: #8b8bab; font-size: 9px;
             padding: 2px 7px; border-radius: 10px; cursor: pointer; transition: all 0.2s; white-space: nowrap;
         }
         .preset-pill:hover { border-color: #555; color: #aaa; }
@@ -411,7 +412,7 @@
             </div>
             <h1>Structure Atlas</h1>
             <p id="atlas-subtitle">3D phase space projection - PCA</p>
-            <p style="font-size: 0.75rem; color: #666; line-height: 1.5; margin-top: 8px;">
+            <p style="font-size: 0.75rem; color: #8b8bab; line-height: 1.5; margin-top: 8px;">
                 <span id="sourceCount" style="color: #ddd;">...</span> data sources from <span id="domainCount" style="color: #ddd;">...</span> <span title="Categories of data origin: chaos, noise, medical, financial, etc." style="border-bottom: 1px dotted #666; cursor: help;">domains</span>.
                 Projected from <span id="metricCount" style="color: #ddd;">...</span> <span title="Numerical measurements extracted by each geometry. Each geometry produces multiple metrics that capture different structural properties of the data." style="border-bottom: 1px dotted #666; cursor: help;">metrics</span> across <span id="geomCount" style="color: #ddd;">33</span> <a href="https://github.com/phreakocious/exotic-geometry-framework" target="_blank" title="Mathematical spaces (hyperbolic, symplectic, projective, etc.) used as lenses to reveal hidden structure in byte sequences.">exotic geometries</a> from <span id="sampleSize" style="color: #ddd;">16384</span> uint8 samples.
             </p>
@@ -422,31 +423,31 @@
             <div class="collapsible-header">Controls</div>
             <div class="collapsible-body">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;">Labels</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;">Labels</label>
                 <span id="distVal" style="font-size: 10px; color: #ddd;">40</span>
             </div>
             <input type="range" id="labelDist" min="0" max="150" value="40" style="width: 100%; height: 4px; accent-color: #00ffb4; margin-bottom: 15px; display: block;">
 
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Filter data by uniqueness. Low values show only the most unique/isolated sources (outliers) from each domain. High values reveal the dense clusters.">Density</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Filter data by uniqueness. Low values show only the most unique/isolated sources (outliers) from each domain. High values reveal the dense clusters.">Density</label>
                 <span id="densityVal" style="font-size: 10px; color: #ddd;">100%</span>
             </div>
             <input type="range" id="densitySlider" min="0" max="100" value="100" style="width: 100%; height: 4px; accent-color: #a78bfa; margin-bottom: 15px; display: block;">
 
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Scale the coordinate spread. Higher values push points apart; lower values compress them toward the center.">Scale</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Scale the coordinate spread. Higher values push points apart; lower values compress them toward the center.">Scale</label>
                 <span id="scaleVal" style="font-size: 10px; color: #ddd;">3.00</span>
             </div>
             <input type="range" id="scaleSlider" min="25" max="2000" value="300" style="width: 100%; height: 4px; accent-color: #00b4ff; margin-bottom: 15px; display: block;">
 
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
-                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Hide sources with low relevance to the current view. Relevance = fraction of the view's metrics where a source scores in the top 10%, discounted for low-complexity (binary/low-entropy) inputs that produce degenerate geometry embeddings. Each view has its own relevance scores.">Relevance</label>
+                <label style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Hide sources with low relevance to the current view. Relevance = fraction of the view's metrics where a source scores in the top 10%, discounted for low-complexity (binary/low-entropy) inputs that produce degenerate geometry embeddings. Each view has its own relevance scores.">Relevance</label>
                 <span id="relevanceVal" style="font-size: 10px; color: #ddd;">0%</span>
             </div>
             <input type="range" id="relevanceSlider" min="0" max="100" value="0" style="width: 100%; height: 4px; accent-color: #7b8fff; margin-bottom: 20px; display: block;">
 
             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;">Color</span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;">Color</span>
                 <label style="font-size: 10px; color: #888; cursor: pointer; display: flex; align-items: center; gap: 4px;">
                     <input type="radio" name="colorMode" value="domain" checked style="accent-color: #00ffb4;"> Domain
                 </label>
@@ -471,7 +472,7 @@
             </div>
 
             <div id="view-selector" style="display: none; margin-bottom: 12px;">
-                <div style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; margin-bottom: 6px;">View</div>
+                <div style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; margin-bottom: 6px;">View</div>
                 <div id="view-buttons" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
             </div>
 
@@ -501,39 +502,39 @@
             <div class="collapsible-header">Character Map</div>
             <div class="collapsible-body" style="display: flex; flex-direction: column; gap: 15px;">
             <div>
-                <label id="pc1-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="First principal component.">PC1: Distributional Order</label>
+                <label id="pc1-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="First principal component.">PC1: Distributional Order</label>
                 <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #00ffd5, #00ffb4, #ff6eff); border-radius: 2px; position: relative;">
                     <div id="pc1-pointer" style="position: absolute; top: -4px; left: 50%; width: 2px; height: 12px; background: white; box-shadow: 0 0 5px white; transition: left 0.2s ease;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #666;">
+                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #7a7a9a;">
                     <span id="pc1-min">...</span>
                     <span id="pc1-max">...</span>
                 </div>
             </div>
 
             <div>
-                <label id="pc2-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Second principal component.">PC2: Spectral Character</label>
+                <label id="pc2-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Second principal component.">PC2: Spectral Character</label>
                 <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #00b4ff, #00ffb4, #a78bfa); border-radius: 2px; position: relative;">
                     <div id="pc2-pointer" style="position: absolute; top: -4px; left: 50%; width: 2px; height: 12px; background: white; box-shadow: 0 0 5px white; transition: left 0.2s ease;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #666;">
+                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #7a7a9a;">
                     <span id="pc2-min">...</span>
                     <span id="pc2-max">...</span>
                 </div>
             </div>
 
             <div>
-                <label id="pc3-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Third principal component.">PC3: Source Formality</label>
+                <label id="pc3-label" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400;" title="Third principal component.">PC3: Source Formality</label>
                 <div style="margin-top: 8px; height: 4px; background: linear-gradient(to right, #ffb86c, #00ffb4, #00ffd5); border-radius: 2px; position: relative;">
                     <div id="pc3-pointer" style="position: absolute; top: -4px; left: 50%; width: 2px; height: 12px; background: white; box-shadow: 0 0 5px white; transition: left 0.2s ease;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #666;">
+                <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 8px; color: #7a7a9a;">
                     <span id="pc3-min">...</span>
                     <span id="pc3-max">...</span>
                 </div>
             </div>
 
-            <div id="char-label" style="font-size: 11px; color: #888; font-style: italic; text-align: center; border-top: 1px solid rgba(0,255,180,0.1); padding-top: 10px;">Hover a data source to analyze</div>
+            <div id="char-label" style="font-size: 12px; color: #888; font-style: italic; text-align: center; border-top: 1px solid rgba(0,255,180,0.1); padding-top: 10px;">Hover a data source to analyze</div>
             </div><!-- .collapsible-body -->
         </div>
 
@@ -541,10 +542,10 @@
             <div style="position: relative;">
                 <input type="text" id="searchInput" placeholder="Search data sources..."
                     style="width: 100%; background: rgba(5,0,15,0.5); border: 1px solid rgba(0,255,180,0.15); color: #fff; padding: 10px; padding-right: 30px; border-radius: 4px; font-size: 13px; outline: none; box-sizing: border-box; backdrop-filter: blur(5px);">
-                <button id="clearSearch" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #666; font-size: 18px; cursor: pointer; display: none; padding: 0 5px; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#666'">&times;</button>
+                <button id="clearSearch" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #8b8bab; font-size: 18px; cursor: pointer; display: none; padding: 0 5px; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#8b8bab'">&times;</button>
             </div>
             <div style="display: flex; align-items: center; gap: 6px; margin-top: 5px;">
-                <div id="search-status" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; display: none; flex: 1;"></div>
+                <div id="search-status" style="font-family: 'JetBrains Mono', monospace; font-size: 9px; color: #8b8bab; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; display: none; flex: 1;"></div>
                 <button id="searchPrev" style="display: none; background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; line-height: 1;" title="Previous match">&lsaquo;</button>
                 <button id="searchNext" style="display: none; background: rgba(15,10,30,0.6); border: 1px solid rgba(0,255,180,0.12); color: #aaa; font-size: 11px; padding: 2px 7px; border-radius: 3px; cursor: pointer; line-height: 1;" title="Next match">&rsaquo;</button>
             </div>
@@ -557,7 +558,7 @@
     <div id="modal-overlay">
         <div id="modal-content" class="glass-card">
             <button class="modal-close" id="close-catalog">Close</button>
-            <h2 style="margin: 0 0 20px; font-size: 1.2rem; color: #fff; border-bottom: 1px solid rgba(0,255,180,0.1); padding-bottom: 10px;">Exotic Geometry Catalog</h2>
+            <h2 style="margin: 0 0 20px; font-size: 1.4rem; font-weight: 800; background: linear-gradient(135deg, #00ffb4, #7b8fff, #ff6eff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; border-bottom: 1px solid rgba(0,255,180,0.1); padding-bottom: 10px;">Exotic Geometry Catalog</h2>
             <div id="catalog-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;"></div>
         </div>
     </div>
@@ -1134,7 +1135,7 @@
                         const el = document.getElementById(`${key}-label`);
                         if (el) {
                             const axisName = ['X', 'Y', 'Z'][idx];
-                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ PC${idx+1}</span>: ${shortLabel} <span style="color:#555">(${pct}%)</span>`;
+                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#8b8bab">/ PC${idx+1}</span>: ${shortLabel} <span style="color:#7a7a9a">(${pct}%)</span>`;
                             const originalTitle = el.getAttribute('data-original-title') || el.title;
                             if (!el.getAttribute('data-original-title')) el.setAttribute('data-original-title', originalTitle);
                             
@@ -1527,14 +1528,14 @@
                     if (el && ax) {
                         const axisName = ['X', 'Y', 'Z'][idx];
                         if (currentProjection === 'tsne') {
-                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ ${ax.label}</span>`;
+                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#8b8bab">/ ${ax.label}</span>`;
                             el.title = `${ax.label} (non-linear embedding, no variance decomposition)`;
                         } else {
                             const pct = (ax.variance * 100).toFixed(1);
                             const shortLabel = ax.label.replace(/^PC\d+:\s*/, '');
                             const match = ax.label.match(/^PC(\d+)/);
                             const pcNum = match ? match[1] : (idx + 1);
-                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ PC${pcNum}</span>: ${shortLabel} <span style="color:#555">(${pct}%)</span>`;
+                            el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#8b8bab">/ PC${pcNum}</span>: ${shortLabel} <span style="color:#7a7a9a">(${pct}%)</span>`;
                             el.title = `PC${pcNum} (${pct}% of variance). ${ax.description || shortLabel}`;
                         }
                     }
@@ -1568,7 +1569,7 @@
                         const match = ax.label.match(/^PC(\d+)/);
                         const pcNum = match ? match[1] : (idx + 1);
                         const axisName = ['X', 'Y', 'Z'][idx];
-                        el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ PC${pcNum}</span>: ${shortLabel} <span style="color:#555">(${pct}%)</span>`;
+                        el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#8b8bab">/ PC${pcNum}</span>: ${shortLabel} <span style="color:#7a7a9a">(${pct}%)</span>`;
                         const vAx = vAxes[key] || {};
                         const geo = vAx.top_geometry || '';
                         const met = vAx.top_metric ? prettifyMetric(vAx.top_metric) : shortLabel;
@@ -1750,15 +1751,17 @@
                 geometries.sort((a,b) => a.name.localeCompare(b.name)).forEach(g => {
                     const item = document.createElement('div');
                     const vc = VIEW_COLORS[g.view] || '#666';
-                    item.style.cssText = `border-left: 3px solid ${vc}; padding-left: 15px; margin-bottom: 10px;`;
-                    const metricsHtml = g.metrics ? `<div style="font-size: 10px; color: #555; margin-top: 4px;">${g.metrics.map(prettifyMetric).join(' · ')}</div>` : '';
+                    item.style.cssText = `border-left: 2px solid ${vc}; padding: 10px 14px; margin-bottom: 8px; background: rgba(10,5,25,0.4); border-radius: 0 6px 6px 0; transition: background 0.2s;`;
+                    item.onmouseenter = () => item.style.background = 'rgba(0,255,180,0.04)';
+                    item.onmouseleave = () => item.style.background = 'rgba(10,5,25,0.4)';
+                    const metricsHtml = g.metrics ? `<div style="font-family:'JetBrains Mono',monospace; font-size: 11px; color: rgba(123,143,255,0.4); margin-top: 5px; letter-spacing:0.02em;">${g.metrics.map(prettifyMetric).join(' · ')}</div>` : '';
                     item.innerHTML = `
                         <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px;">
-                            <span style="color: #fff; font-weight: 700; font-size: 13px;">${g.name}</span>
-                            <span style="color: ${vc}; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">${g.view}</span>
+                            <span style="color: #eee; font-weight: 700; font-size: 15px;">${g.name}</span>
+                            <span style="font-family:'JetBrains Mono',monospace; color: ${vc}; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; padding: 2px 8px; border: 1px solid ${vc}33; border-radius: 8px;">${g.view}</span>
                         </div>
-                        <div style="color: #aaa; font-size: 11px; line-height: 1.5;">${g.description}</div>
-                        <div style="color: #777; font-size: 10px; margin-top: 3px; font-style: italic;">Detects: ${g.detects}</div>
+                        <div style="color: rgba(200,200,220,0.7); font-size: 13px; line-height: 1.5;">${g.description}</div>
+                        <div style="color: rgba(0,255,180,0.35); font-size: 12px; margin-top: 3px; font-style: italic;">Detects: ${g.detects}</div>
                         ${metricsHtml}
                     `;
                     list.appendChild(item);
@@ -2536,7 +2539,7 @@
                             if (el) {
                                 // Update text
                                 const axisName = ['X', 'Y', 'Z'][idx];
-                                el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#666">/ PC${idx+1}</span>: ${shortLabel} <span style="color:#555">(${pct}%)</span>`;
+                                el.innerHTML = `<span style="color:#ddd; font-weight:900;">${axisName}</span> <span style="color:#8b8bab">/ PC${idx+1}</span>: ${shortLabel} <span style="color:#7a7a9a">(${pct}%)</span>`;
                                 
                                 // Update tooltip: preserve original description if present
                                 const originalTitle = el.getAttribute('data-original-title') || el.title;
@@ -3413,7 +3416,7 @@
                 const count = domainCounts[domain] || 0;
                 item.innerHTML = `
                     <div class="legend-color" style="background: ${data.domain_colors[domain]}"></div>
-                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${domain.replace('_', ' ')} <span style="color:#666; font-size:9px;">(${count})</span></div>
+                    <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${domain.replace('_', ' ')} <span style="color:#7a7a9a; font-size:9px;">(${count})</span></div>
                 `;
                 
                 item.addEventListener('click', (e) => {
@@ -3562,7 +3565,7 @@
 
                     // Description
                     const desc = s.description
-                        ? `<div style="color:#888; font-style:italic; margin-bottom:6px; max-width:280px;">${s.description}</div>`
+                        ? `<div style="color:rgba(167,139,250,0.7); font-style:italic; margin-bottom:6px; max-width:300px; font-size:12px;">${s.description}</div>`
                         : '';
 
                     // Sequential structure bar
@@ -3571,9 +3574,9 @@
                         const pct = (s.seq_fraction * 100).toFixed(0);
                         seqHtml = `
                             <div style="margin-top:6px;">
-                                <div style="font-size:10px; color:#777;" title="Fraction of the ${data.n_metrics || '?'} geometric metrics that change significantly when byte order is randomized. 0% = no metric detects ordering (purely distributional). Higher values mean more metrics are sensitive to sequential structure.">Sequential structure: ${pct}%</div>
-                                <div style="margin-top:2px; height:4px; background:#222; border-radius:2px; overflow:hidden;">
-                                    <div style="width:${pct}%; height:100%; background: linear-gradient(90deg, #00ffb4, #ff6eff);"></div>
+                                <div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:rgba(0,255,180,0.5); text-transform:uppercase; letter-spacing:0.06em;" title="Fraction of the ${data.n_metrics || '?'} geometric metrics that change significantly when byte order is randomized. 0% = no metric detects ordering (purely distributional). Higher values mean more metrics are sensitive to sequential structure.">Sequential structure ${pct}%</div>
+                                <div style="margin-top:3px; height:3px; background:rgba(123,143,255,0.1); border-radius:2px; overflow:hidden;">
+                                    <div style="width:${pct}%; height:100%; background: linear-gradient(90deg, #00ffb4, #7b8fff, #ff6eff); border-radius:2px;"></div>
                                 </div>
                             </div>`;
                     }
@@ -3584,10 +3587,10 @@
                         const items = s.neighbors.map(n => {
                             const c = n.cross_domain ? '#7b8fff' : '#666';
                             const arrow = n.cross_domain ? '\u2192' : '\u00b7';
-                            return `<div style="color:${c}; font-size:10px;">${arrow} ${n.name} <span style="color:#555">(${n.distance.toFixed(2)})</span></div>`;
+                            return `<div style="color:${c}; font-size:11px; font-family:'JetBrains Mono',monospace;">${arrow} ${n.name} <span style="color:rgba(123,143,255,0.5); font-size:10px;">(${n.distance.toFixed(2)})</span></div>`;
                         }).join('');
-                        neighborsHtml = `<div style="margin-top:6px; border-top:1px solid #333; padding-top:4px;">
-                            <div style="font-size:9px; color:#555; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:2px;" title="Three closest sources in the full ${data.n_metrics || '?'}-metric space (rank-normalized distance). Orange arrows mark cross-domain neighbors \u2014 structurally similar data from different origins.">Nearest neighbors</div>
+                        neighborsHtml = `<div style="margin-top:6px; border-top:1px solid rgba(123,143,255,0.12); padding-top:5px;">
+                            <div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:rgba(0,255,180,0.4); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:3px;" title="Three closest sources in the full ${data.n_metrics || '?'}-metric space (rank-normalized distance). Lavender arrows mark cross-domain neighbors \u2014 structurally similar data from different origins.">Nearest neighbors</div>
                             ${items}</div>`;
                     }
 
@@ -3601,7 +3604,7 @@
                     // In explorer mode, show z-score values; in PCA mode, show raw PC coords
                     let coordHtml;
                     const coordRow = (label, val) =>
-                        `<tr><td style="color:#666; padding-right:8px; white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis;">${label}</td><td style="color:#ddd; text-align:right; font-variant-numeric:tabular-nums;">${val}</td></tr>`;
+                        `<tr><td style="color:rgba(0,255,180,0.4); padding-right:10px; white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis; font-size:11px;">${label}</td><td style="color:#ccc; text-align:right; font-variant-numeric:tabular-nums; font-size:11px;">${val}</td></tr>`;
                     if (explorerActive && explorerZScores) {
                         const si = hitIdx;
                         const nMet = data.metric_names.length;
@@ -3617,8 +3620,8 @@
                     }
 
                     tooltip.innerHTML = `
-                        <h3 style="margin:0 0 2px;">${s.name}</h3>
-                        <div style="color:#666; font-size:10px; margin-bottom:4px;">${s.domain} &middot; ${(data.clusters && data.clusters[String(s.cluster)] && data.clusters[String(s.cluster)].label) || 'cluster ' + s.cluster}</div>
+                        <h3 style="margin:0 0 3px;">${s.name}</h3>
+                        <div style="font-family:'JetBrains Mono',monospace; color:rgba(123,143,255,0.5); font-size:11px; margin-bottom:5px; letter-spacing:0.03em;">${s.domain} · ${(data.clusters && data.clusters[String(s.cluster)] && data.clusters[String(s.cluster)].label) || 'cluster ' + s.cluster}</div>
                         ${desc}
                         ${coordHtml}
                         ${seqHtml}
