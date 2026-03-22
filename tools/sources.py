@@ -327,19 +327,16 @@ def gen_pi_digits(rng, size):
     try:
         from mpmath import mp
 
-        # Generate extra digits so trials can window into different positions
-        n_total = size * 4
-        mp.dps = n_total * 4 + 100
-        pi_str = mp.nstr(mp.pi, n_total * 3 + 50, strip_zeros=False)
-        digits = pi_str.replace(".", "")[1:]
-        vals = []
-        for i in range(0, len(digits) - 1, 3):
-            chunk = digits[i : i + 3]
-            if len(chunk) == 3:
-                vals.append(int(chunk) % 256)
-            if len(vals) >= n_total:
-                break
-        all_vals = np.array(vals[:n_total], dtype=np.uint8)
+        # True base-256 digits of pi's fractional part.
+        # Avoids the old 3-decimal-digit mod-256 encoding which created
+        # a non-uniform distribution (values 232-255 underrepresented).
+        n_total = size * 4  # extra so trials can window
+        mp.dps = int(n_total * 2.41) + 50  # log10(256) ≈ 2.408
+        pi_frac_int = int(mp.frac(mp.pi) * mp.power(256, n_total))
+        all_vals = np.empty(n_total, dtype=np.uint8)
+        for i in range(n_total - 1, -1, -1):
+            all_vals[i] = pi_frac_int & 0xFF
+            pi_frac_int >>= 8
         start = int(rng.integers(0, max(1, len(all_vals) - size)))
         return all_vals[start : start + size]
     except ImportError:
@@ -1120,14 +1117,21 @@ def gen_square(rng, size):
     "Collatz Parity",
     domain="number_theory",
     description="Collatz parity sequence --- binary trace (even/odd) of the 3n+1 orbit, "
-    "conjectured to behave like a biased coin flip with P(odd) ≈ log₂(3)/(1+log₂(3))",
+    "conjectured to behave like a biased coin flip with P(odd) ≈ log₂(3)/(1+log₂(3)). "
+    "Restarts from consecutive integers on cycle collapse",
 )
 def gen_collatz_parity(rng, size):
-    n = int(rng.integers(10_000, 100_000_000))
+    n_start = int(rng.integers(10_000, 100_000_000))
     vals = np.empty(size, dtype=np.uint8)
-    for i in range(size):
-        vals[i] = n % 2 * 255
+    idx = 0
+    n = n_start
+    while idx < size:
+        vals[idx] = n % 2 * 255
+        idx += 1
         n = n // 2 if n % 2 == 0 else 3 * n + 1
+        if n <= 4:
+            n_start += 1
+            n = n_start
     return vals
 
 
@@ -1147,6 +1151,107 @@ def gen_collatz_stopping(rng, size):
             n = n // 2 if n % 2 == 0 else 3 * n + 1
             steps += 1
         vals[i] = min(steps, 255)
+    return vals
+
+
+@source(
+    "Collatz Gap Lengths",
+    domain="number_theory",
+    description="BSL gap vector from Collatz orbits --- number of halvings between consecutive "
+    "odd steps (v_i in the Böhm-Sontacchi-Lagarias equation). Distribution approximately "
+    "geometric(1/2) with correlations encoding the multiplicative walk structure of 3n+1",
+)
+def gen_collatz_gaps(rng, size):
+    """The gap vector v = (v_1, ..., v_p) records how many times you divide by 2
+    between consecutive odd steps in the shortcut Collatz map. Each v_i >= 1
+    (since 3n+1 is always even). These gaps are the natural coordinates of the
+    BSL equation: a cycle exists iff rho(v) = 0 mod D for some gap vector."""
+    n = int(rng.integers(10_000, 100_000_000))
+    # Ensure odd start
+    if n % 2 == 0:
+        n += 1
+    vals = np.empty(size, dtype=np.uint8)
+    idx = 0
+    while idx < size:
+        # n is odd. Apply 3n+1 and count halvings until next odd
+        n = 3 * n + 1
+        v = 0
+        while n % 2 == 0:
+            n //= 2
+            v += 1
+        # v >= 1 always (3n+1 is even for odd n)
+        vals[idx] = min(v, 255)
+        idx += 1
+        if n <= 4:
+            n = int(rng.integers(10_000, 100_000_000))
+            if n % 2 == 0:
+                n += 1
+    return vals
+
+
+@source(
+    "Gaussian Collatz Orbit",
+    domain="number_theory",
+    description="Collatz map over Gaussian integers Z[i] with divisor pi=1+i and multiplier 3. "
+    "Unlike integer Collatz, non-trivial cycles are proven to exist: three period-16 orbits "
+    "at D=13. The only atlas source with proven non-trivial dynamical cycles",
+)
+def gen_gaussian_collatz(rng, size):
+    """Run the Collatz analog T: Z[i] -> Z[i] defined by:
+      T(z) = z/(1+i)       if (1+i) | z   (i.e. Re(z)+Im(z) is even)
+      T(z) = (3z+1)/(1+i)  otherwise
+    At n=16, p=5: D = (1+i)^16 - 3^5 = 256-243 = 13, and three period-16
+    cycles exist (starting at 2-8i, -48+4i, -43-35i). Encode Re(z) mod 256."""
+    a = int(rng.integers(-100, 101))
+    b = int(rng.integers(-100, 101))
+    vals = np.empty(size, dtype=np.uint8)
+    for idx in range(size):
+        vals[idx] = a % 256
+        if (a + b) % 2 == 0:
+            # (1+i) | z: divide by (1+i)
+            # (a+bi)/(1+i) = ((a+b) + (b-a)i) / 2
+            a, b = (a + b) // 2, (b - a) // 2
+        else:
+            # odd step: (3z+1)/(1+i) = (3a+1 + 3bi)/(1+i)
+            # = ((3a+1+3b) + (3b-3a-1)i) / 2
+            a, b = (3 * a + 1 + 3 * b) // 2, (3 * b - 3 * a - 1) // 2
+        # Restart on divergence
+        if a * a + b * b > 10**14:
+            a = int(rng.integers(-100, 101))
+            b = int(rng.integers(-100, 101))
+    return vals
+
+
+@source(
+    "BSL Residues",
+    domain="number_theory",
+    description="BSL numerator rho(v) mod D for random gap vectors --- probes equidistribution "
+    "of the Collatz cycle equation. If residues are uniform, no algebraic structure "
+    "prevents cycles; zero-avoidance is then a 'near miss' phenomenon. "
+    "Uses (p=10, q=19, D=465239), a verified zero-avoidance case",
+)
+def gen_bsl_residues(rng, size):
+    """Sample random compositions v of q into p parts (v_i >= 1) and compute
+    rho(v) = sum_{j=0}^{p-1} 3^{p-1-j} * 2^{S_j} mod D, where S_j = sum of
+    first j gaps. The equidistribution of these residues is the central heuristic
+    assumption underlying the Collatz cycle sparsity bound."""
+    p, q = 10, 19
+    D = (1 << q) - 3**p  # 524288 - 59049 = 465239
+    # Precompute powers of 3 mod D
+    pow3 = [pow(3, p - 1 - j, D) for j in range(p)]
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        # Random composition of q into p parts with v_i >= 1:
+        # choose p-1 of q-1 divider positions
+        dividers = np.sort(rng.choice(q - 1, p - 1, replace=False)) + 1
+        v = np.diff(np.concatenate(([0], dividers, [q])))
+        # Partial sums S_0=0, S_1=v_1, S_2=v_1+v_2, ...
+        S = 0
+        rho = 0
+        for j in range(p):
+            rho = (rho + pow3[j] * pow(2, int(S), D)) % D
+            S += v[j]
+        vals[i] = rho % 256
     return vals
 
 
@@ -1307,14 +1412,24 @@ def gen_nn_dense(rng, size):
 @source(
     "Neural Net (Pruned 90%)",
     domain="binary",
-    description="Pruned neural network weights (90% zero) --- extreme sparsity typical of compressed models, "
-    "creates a near-zero-dominated distribution with scattered non-zero entries",
+    description="Pruned neural network weights (90% zero) --- extreme sparsity typical of compressed models. "
+    "Zeros encode as byte 0; non-zero weights scaled to [1, 255] preserving sign via abs",
 )
 def gen_nn_pruned(rng, size):
     weights = rng.standard_normal(size) * 0.1
     mask = rng.random(size) < 0.9
     weights[mask] = 0
-    return _to_uint8(weights)
+    # Encode sparsity faithfully: zeros stay 0, non-zero weights map to [1, 255]
+    result = np.zeros(size, dtype=np.uint8)
+    nonzero = weights != 0
+    if nonzero.any():
+        abs_w = np.abs(weights[nonzero])
+        lo, hi = abs_w.min(), abs_w.max()
+        if hi - lo < 1e-15:
+            result[nonzero] = 128
+        else:
+            result[nonzero] = ((abs_w - lo) / (hi - lo) * 254 + 1).astype(np.uint8)
+    return result
 
 
 # --- Void-filling generators ---
