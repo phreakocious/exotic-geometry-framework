@@ -184,11 +184,13 @@ def gen_henon(rng, size):
     x, y = 0.1 * rng.random(), 0.1 * rng.random()
     for _ in range(1000):
         x, y = 1.0 - 1.4 * x**2 + y, 0.3 * x
-    vals = np.zeros(size, dtype=np.uint8)
+    raw = np.empty(size, dtype=np.float64)
     for i in range(size):
         x, y = 1.0 - 1.4 * x**2 + y, 0.3 * x
-        vals[i] = int(np.clip((x + 1.5) / 3.0 * 255, 0, 255))
-    return vals
+        raw[i] = x
+    lo, hi = np.percentile(raw, [0.5, 99.5])
+    clipped = np.clip(raw, lo, hi)
+    return ((clipped - lo) / (hi - lo) * 255).astype(np.uint8)
 
 
 @source(
@@ -247,14 +249,16 @@ def gen_rossler(rng, size):
         dy = (x + a * y) * dt
         dz = (b + z * (x - c)) * dt
         x, y, z = x + dx, y + dy, z + dz
-    vals = np.zeros(size, dtype=np.uint8)
+    raw = np.empty(size, dtype=np.float64)
     for i in range(size):
         dx = (-y - z) * dt
         dy = (x + a * y) * dt
         dz = (b + z * (x - c)) * dt
         x, y, z = x + dx, y + dy, z + dz
-        vals[i] = int(np.clip((x + 12) / 24 * 255, 0, 255))
-    return vals
+        raw[i] = x
+    lo, hi = np.percentile(raw, [0.5, 99.5])
+    clipped = np.clip(raw, lo, hi)
+    return ((clipped - lo) / (hi - lo) * 255).astype(np.uint8)
 
 
 # --- Number theory ---
@@ -1715,7 +1719,20 @@ def _get_protein_seq():
 def gen_protein_globular(rng, size):
     seq = _get_protein_seq()
     if len(seq) == 0:
-        return rng.integers(0, 256, size, dtype=np.uint8)
+        import warnings
+        warnings.warn(
+            "Human Proteome: data/protein/human_swissprot.fa not found. "
+            "Using synthetic AA sequence with Swiss-Prot frequencies.",
+            stacklevel=2,
+        )
+        # Swiss-Prot amino acid frequencies (ASCII codes)
+        aa = np.array([65,67,68,69,70,71,72,73,75,76,
+                       77,78,80,81,82,83,84,86,87,89], dtype=np.uint8)
+        freq = np.array([.0826,.0137,.0546,.0675,.0386,.0708,.0227,.0593,
+                         .0584,.0966,.0242,.0406,.0470,.0393,.0553,.0655,
+                         .0534,.0687,.0108,.0292])
+        freq /= freq.sum()
+        return rng.choice(aa, size=size, p=freq).astype(np.uint8)
     max_start = max(0, len(seq) - size)
     start = rng.integers(0, max_start + 1) if max_start > 0 else 0
     chunk = seq[start : start + size]
@@ -2830,7 +2847,9 @@ def gen_sandpile(rng, size):
                 if c2 < L - 1:
                     grid[r2, c2 + 1] += 1
         vals[i] = topples
-    return _to_uint8(vals)
+    # Avalanche sizes follow a power law: log1p preserves scale-free structure.
+    # Linear _to_uint8 compresses bulk into byte 0 (79% zeros → 56% after log).
+    return _to_uint8(np.log1p(vals))
 
 
 @source(
@@ -3550,15 +3569,19 @@ def gen_ikeda(rng, size):
         x_new = 1.0 + u * (x * ct - y * st)
         y_new = u * (x * st + y * ct)
         x, y = x_new, y_new
-    vals = np.zeros(size, dtype=np.uint8)
+    raw = np.empty(size)
     for i in range(size):
         t = 0.4 - 6.0 / (1.0 + x * x + y * y)
         ct, st = np.cos(t), np.sin(t)
         x_new = 1.0 + u * (x * ct - y * st)
         y_new = u * (x * st + y * ct)
         x, y = x_new, y_new
-        vals[i] = int(np.clip((x + 2) / 5 * 255, 0, 255))
-    return vals
+        raw[i] = x
+    lo, hi = np.percentile(raw, 0.5), np.percentile(raw, 99.5)
+    if hi - lo < 1e-10:
+        hi = lo + 1.0
+    clipped = np.clip(raw, lo, hi)
+    return ((clipped - lo) / (hi - lo) * 255).astype(np.uint8)
 
 
 @source(
@@ -3600,7 +3623,7 @@ def gen_henon_heiles(rng, size):
         px += 0.5 * dt * fx
         py += 0.5 * dt * fy
 
-    vals = np.zeros(size, dtype=np.uint8)
+    raw = np.empty(size, dtype=np.float64)
     for i in range(size):
         fx = -x - 2 * x * y
         fy = -y - x * x + y * y
@@ -3612,8 +3635,10 @@ def gen_henon_heiles(rng, size):
         fy = -y - x * x + y * y
         px += 0.5 * dt * fx
         py += 0.5 * dt * fy
-        vals[i] = int(np.clip((x + 0.5) / 1.0 * 255, 0, 255))
-    return vals
+        raw[i] = x
+    lo, hi = np.percentile(raw, [0.5, 99.5])
+    clipped = np.clip(raw, lo, hi)
+    return ((clipped - lo) / (hi - lo) * 255).astype(np.uint8)
 
 
 @source(
@@ -3661,12 +3686,20 @@ def gen_rossler_hyperchaos(rng, size):
         if np.any(np.abs(state) > 1e6):
             state = 0.1 * rng.standard_normal(4)
 
-    vals = np.zeros(size, dtype=np.uint8)
+    # Two-pass: collect raw x, then percentile-encode.
+    # x has extreme tails (range ~[-670, 541]) but 99% within [-3, 6].
+    # Hardcoded clip compresses bulk into ~66 bytes. Percentile gives ~220.
+    raw = np.empty(size)
     for i in range(size):
         state = rk4_step(state, dt)
         if np.any(np.abs(state) > 1e6) or np.any(np.isnan(state)):
             state = 0.1 * rng.standard_normal(4)
-        vals[i] = int(np.clip((state[0] + 20) / 40 * 255, 0, 255))
+        raw[i] = state[0]
+    lo, hi = np.percentile(raw, 0.5), np.percentile(raw, 99.5)
+    if hi - lo < 1e-10:
+        hi = lo + 1.0
+    clipped = np.clip(raw, lo, hi)
+    vals = ((clipped - lo) / (hi - lo) * 255).astype(np.uint8)
     return vals
 
 
@@ -3816,16 +3849,18 @@ def gen_spike_train(rng, size):
     I_mean = rng.uniform(0.02, 0.06)  # mean input current (just above threshold)
     I_std = rng.uniform(0.01, 0.04)
     v = 0.0
-    vals = np.empty(size, dtype=np.float64)
+    raw = np.empty(size, dtype=np.float64)
     for i in range(size):
         I = I_mean + I_std * rng.standard_normal()
         v += -v / tau + I
         if v >= threshold:
-            vals[i] = threshold * 1.5  # spike overshoot
+            raw[i] = threshold * 1.5  # spike overshoot
             v = reset
         else:
-            vals[i] = v
-    return _to_uint8(vals)
+            raw[i] = v
+    lo, hi = np.percentile(raw, [0.5, 99.5])
+    clipped = np.clip(raw, lo, hi)
+    return ((clipped - lo) / (hi - lo) * 255).astype(np.uint8)
 
 
 # ================================================================
@@ -4080,7 +4115,9 @@ def gen_quantum_walk(rng, size):
     x_orig = np.linspace(0, 1, len(prob))
     x_new = np.linspace(0, 1, size)
     vals = np.interp(x_new, x_orig, prob)
-    return _to_uint8(vals)
+    # log1p(N·p) maps natural scale p~1/N to log(2). Linear encoding wastes
+    # resolution: 80 unique bytes vs 165 after log transform.
+    return _to_uint8(np.log1p(N * vals))
 
 
 @source(
@@ -4111,7 +4148,11 @@ def gen_kicked_rotor(rng, size):
         psi_x *= kick_phase
         psi = np.fft.ifft(psi_x)
         vals[t] = np.sum(ns**2 * np.abs(psi) ** 2)
-    return _to_uint8(vals)
+    # Energy grows diffusively then plateaus (Anderson localization).
+    # Percentile encoding captures both growth and plateau fluctuations.
+    lo, hi = np.percentile(vals, [0.5, 99.5])
+    clipped = np.clip(vals, lo, hi)
+    return ((clipped - lo) / (hi - lo) * 255).astype(np.uint8)
 
 
 @source(
@@ -4254,7 +4295,9 @@ def gen_sir_epidemic(rng, size):
         I = I + new_infected - new_recovered
         R = R + new_recovered - new_susceptible
         vals[i] = I / N
-    return _to_uint8(vals)
+    # I/N is near zero between outbreaks. log1p(N·x) maps small fractions
+    # to resolvable values (same pattern as Quantum Walk encoding).
+    return _to_uint8(np.log1p(N * vals))
 
 
 @source(

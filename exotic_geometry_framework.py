@@ -5297,6 +5297,17 @@ def _quasicrystal_spectral_1d(data: np.ndarray, target_ratio: float) -> dict:
     acf_smooth = np.convolve(acf_seg, np.ones(acf_win) / acf_win, mode='same')
     acf_residual = acf_seg - acf_smooth
 
+    # Gate: if ACF residual is at the noise floor, correlation is meaningless.
+    # White noise ACF residual std ≈ 0.88/√N; structured data >> 2/√N.
+    if np.std(acf_residual) < 2.0 / np.sqrt(N):
+        acf_self_similarity = 0.0
+        return {
+            "ratio_symmetry": ratio_symmetry,
+            "peak_sharpness": peak_sharpness,
+            "subword_complexity": subword_complexity,
+            "acf_self_similarity": acf_self_similarity,
+        }
+
     def _acf_corr_at_ratio(ratio):
         scaled = acf_idx / ratio
         valid = (scaled >= 0) & (scaled < len(acf_seg) - 1)
@@ -5313,23 +5324,33 @@ def _quasicrystal_spectral_1d(data: np.ndarray, target_ratio: float) -> dict:
             return 0.0
         return np.sum(a_centered * i_centered) / np.sqrt(a_var * i_var)
 
-    # Use absolute correlation: some substitution rules (e.g. Octonacci)
-    # produce sign-flipped ACF self-similarity at the target ratio.
-    acf_target_cc = abs(_acf_corr_at_ratio(target_ratio))
-    acf_null_ratios = [1.12, 1.31, 1.55, 1.78, 2.05, 2.33, 2.73, 3.17]
-    acf_null_ratios = [r for r in acf_null_ratios
-                       if abs(r - target_ratio) > 0.08
-                       and abs(r - target_ratio**2) > 0.15
-                       and abs(r - 1.0 / target_ratio) > 0.08]
-    acf_null_ccs = [abs(_acf_corr_at_ratio(r)) for r in acf_null_ratios]
-    acf_null_mean = np.mean(acf_null_ccs)
-    acf_null_std = np.std(acf_null_ccs)
+    # Scan |correlation| densely across [0.7·r, 1.3·r]. True QC has a sharp
+    # peak at the target ratio (peak/mean >> 1); smooth ACFs (brownian, 1/f)
+    # have flat profiles (peak/mean ≈ 1). The peak/mean ratio is extremely
+    # seed-stable (CV < 0.07 on QC sources, CV ≈ 0 on non-QC).
+    scan_ratios = np.linspace(target_ratio * 0.7, target_ratio * 1.3, 31)
+    scan_ccs = np.array([abs(_acf_corr_at_ratio(r)) for r in scan_ratios])
+    target_idx = np.argmin(np.abs(scan_ratios - target_ratio))
+    target_cc = scan_ccs[target_idx]
+    mean_cc = np.mean(scan_ccs)
 
-    if acf_null_std > 1e-10:
-        acf_z = (acf_target_cc - acf_null_mean) / acf_null_std
+    # Signal strength gate: if target correlation is below the Pearson R
+    # noise floor (≈ 3/√n_pairs), the peak/mean ratio is meaningless —
+    # random fluctuations among near-zero values create spurious ratios.
+    # Fibonacci QC gives target_cc ≈ 0.107; Dragon Curve gives ≈ 0.008.
+    n_valid = int(np.sum((acf_idx / target_ratio) < len(acf_seg) - 1))
+    cc_noise_floor = 2.5 / np.sqrt(max(n_valid, 30))
+    if target_cc < cc_noise_floor:
+        acf_self_similarity = 0.0
     else:
-        acf_z = 10.0 if acf_target_cc > acf_null_mean + 0.01 else 0.0
-    acf_self_similarity = float(np.clip(acf_z / 5.0, 0, 1))
+        peak_ratio = target_cc / (mean_cc + 1e-10)
+        # Gate: peak/mean < 2 is consistent with harmonic-series ACF
+        # (oscillators like Rössler give ~1.6) or noise fluctuations.
+        # True QC gives peak/mean > 20, so the gap is enormous.
+        if peak_ratio < 2.0:
+            acf_self_similarity = 0.0
+        else:
+            acf_self_similarity = float(np.clip((peak_ratio - 2.0) / 8.0, 0, 1))
 
     return {
         "ratio_symmetry": ratio_symmetry,
@@ -10772,9 +10793,10 @@ class GeometryAnalyzer:
         results = analyzer.analyze(data)
     """
 
-    # Class-level cache: geometry class → SHA256 of its source code.
-    # Computed once per class, reused across all analyzer instances.
-    _code_hash_cache: Dict[type, str] = {}
+    # Module-level hash: computed once, invalidates all per-data caches
+    # when any part of the framework changes.  (Previously per-class, but
+    # that missed changes to module-level helper functions.)
+    _module_hash: Optional[str] = None
 
     def __init__(self, cache_dir=None):
         self.geometries: List[ExoticGeometry] = []
@@ -11065,18 +11087,19 @@ class GeometryAnalyzer:
                     ))
                     continue
 
-                # Check cache — key includes geometry source code hash so
-                # that implementation changes automatically invalidate entries.
+                # Check cache — key includes module-level hash so that
+                # changes to helper functions (not just class methods)
+                # automatically invalidate entries.
                 if self.cache_dir is not None:
-                    cls = type(geom)
-                    if cls not in GeometryAnalyzer._code_hash_cache:
+                    if GeometryAnalyzer._module_hash is None:
+                        _mod_file = os.path.abspath(inspect.getfile(type(geom)))
                         try:
-                            src = inspect.getsource(cls)
-                        except (OSError, TypeError):
-                            src = ""
-                        GeometryAnalyzer._code_hash_cache[cls] = \
-                            hashlib.sha256(src.encode()).hexdigest()[:16]
-                    code_hash = GeometryAnalyzer._code_hash_cache[cls]
+                            with open(_mod_file, 'rb') as _f:
+                                GeometryAnalyzer._module_hash = \
+                                    hashlib.sha256(_f.read()).hexdigest()[:16]
+                        except OSError:
+                            GeometryAnalyzer._module_hash = ""
+                    code_hash = GeometryAnalyzer._module_hash
                     cache_key = hashlib.sha256(
                         (geom.name + "|" + data_hash + "|" + code_hash).encode()
                     ).hexdigest()
