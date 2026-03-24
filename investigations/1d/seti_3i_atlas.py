@@ -294,7 +294,7 @@ def select_files(manifest, nodes_per_band=3):
         if len(bands_seen[band]) >= nodes_per_band:
             continue
         bands_seen[band].add(node)
-        selected.extend(files)
+        selected.extend((info, band) for info in files)
     return selected
 
 
