@@ -503,3 +503,122 @@ def make_figure(band_results, pooled_results, metric_names):
     print(f"\n  Figure saved: {out_path}")
     return out_path
 
+
+# ---------------------------------------------------------------------------
+# Task 8: Main pipeline orchestration
+# ---------------------------------------------------------------------------
+def process_file(analyzer, metric_names, file_info, band):
+    filename = file_info['filename']
+    on_off = "OFF" if file_info['is_off'] else "ON"
+    label = f"{band}_{file_info['node']}_{on_off}"
+    path = download_file(filename)
+    if path is None:
+        return None
+    print(f"    Loading {filename} ...", flush=True)
+    try:
+        spec, meta = load_spectrogram(path)
+    except Exception as e:
+        print(f"    FAILED to load: {e}")
+        return None
+    print(f"    Shape: {spec.shape}  "
+          f"fch1={meta['fch1']:.1f} MHz  foff={meta['foff']:.6f} MHz  "
+          f"tsamp={meta['tsamp']:.3f} s")
+    spec = sigma_clip_spectrogram(spec, sigma=3.0)
+    extractions = extract_all(spec, label=label)
+    if not extractions:
+        print(f"    WARNING: no valid extractions from {filename}")
+        return None
+    print(f"    {len(extractions)} extractions, analyzing ...", end=" ", flush=True)
+    profiles = []
+    for name, data in extractions:
+        metrics = analyze_extraction(analyzer, metric_names, name, data)
+        profiles.append(metrics)
+    print(f"done ({len(profiles)} profiles)")
+    return label, profiles
+
+
+def main():
+    print("=" * 78)
+    print("3I/ATLAS SETI INVESTIGATION")
+    print("Geometric analysis of GBT radio telescope observations")
+    print("=" * 78)
+
+    # Phase 1: File selection
+    print(f"\n{'='*78}")
+    print("PHASE 1: FILE MANIFEST")
+    print(f"{'='*78}")
+    manifest = fetch_file_manifest()
+    selected = select_files(manifest, nodes_per_band=3)
+    if not selected:
+        print("ERROR: No files selected. Check portal connectivity.")
+        sys.exit(1)
+
+    # Phase 2: Download, extract, analyze
+    print(f"\n{'='*78}")
+    print("PHASE 2: DOWNLOAD, EXTRACT, ANALYZE")
+    print(f"{'='*78}")
+    analyzer, metric_names = _init_analyzer()
+    n_metrics = len(metric_names)
+    bonf = ALPHA / n_metrics
+    print(f"  {n_metrics} metrics, Bonferroni alpha = {bonf:.2e}")
+
+    band_on = defaultdict(list)
+    band_off = defaultdict(list)
+
+    for file_info, band in selected:
+        result = process_file(analyzer, metric_names, file_info, band)
+        if result is None:
+            continue
+        label, profiles = result
+        if file_info['is_off']:
+            band_off[band].extend(profiles)
+        else:
+            band_on[band].extend(profiles)
+
+    # Phase 3: Statistical comparison
+    print(f"\n{'='*78}")
+    print("PHASE 3: STATISTICAL COMPARISON")
+    print(f"{'='*78}")
+    band_results = {}
+    pooled_results = {}
+    for band in ['L', 'S', 'C', 'X']:
+        on = band_on.get(band, [])
+        off = band_off.get(band, [])
+        print(f"\n  {band}-band: {len(on)} ON profiles, {len(off)} OFF profiles")
+        if len(on) < 3 or len(off) < 3:
+            print(f"    SKIP -- insufficient data")
+            continue
+        ranked = compare_exploratory(on, off)
+        band_results[band] = {'exploratory': ranked, 'n_on': len(on), 'n_off': len(off)}
+        print(f"    Exploratory top 5:")
+        for m, d in ranked[:5]:
+            print(f"      {m:50s}  d={d:+.2f}")
+        n_sig, findings = compare_pooled(on, off, metric_names)
+        pooled_results[band] = (n_sig, findings)
+        print(f"    Pooled: {n_sig} significant metrics")
+        for m, d, p in findings[:5]:
+            print(f"      {m:50s}  d={d:+.2f}  p={p:.2e}")
+
+    # Phase 4: Summary
+    print(f"\n{'='*78}")
+    print("SUMMARY")
+    print(f"{'='*78}")
+    total_sig = sum(pooled_results.get(b, (0, []))[0] for b in ['L', 'S', 'C', 'X'])
+    print(f"  Total significant ON vs OFF metrics (pooled): {total_sig}")
+    for band in ['L', 'S', 'C', 'X']:
+        n_sig = pooled_results.get(band, (0, []))[0]
+        n_on = len(band_on.get(band, []))
+        n_off = len(band_off.get(band, []))
+        print(f"  {band}-band: {n_sig:3d} sig  ({n_on} ON, {n_off} OFF profiles)")
+
+    # Phase 5: Figure
+    print(f"\n{'='*78}")
+    print("GENERATING FIGURE")
+    print(f"{'='*78}")
+    make_figure(band_results, pooled_results, metric_names)
+
+    return band_results, pooled_results
+
+
+if __name__ == "__main__":
+    main()
