@@ -126,3 +126,24 @@ def test_cohens_d_zero_variance():
     b = np.array([2.0, 2.0, 2.0])
     d = cohens_d(a, b)
     assert d == float('-inf')
+
+
+# ---------------------------------------------------------------------------
+# File manifest and download infrastructure
+# ---------------------------------------------------------------------------
+def test_parse_gbt_filename():
+    from seti_3i_atlas import parse_gbt_filename
+    info = parse_gbt_filename("blc20_guppi_61027_31308_DIAG_3I_ATLAS_0061.rawspec.0002.h5")
+    assert info['node'] == 'blc20'
+    assert info['scan'] == '0061'
+    assert info['part'] == '0002'
+    assert info['is_off'] is False
+    info_off = parse_gbt_filename("blc20_guppi_61027_31308_DIAG_3I_ATLAS_OFF_0062.rawspec.0002.h5")
+    assert info_off['is_off'] is True
+    assert info_off['node'] == 'blc20'
+
+
+def test_parse_gbt_filename_returns_none_for_non_matching():
+    from seti_3i_atlas import parse_gbt_filename
+    assert parse_gbt_filename("random_file.h5") is None
+    assert parse_gbt_filename("README.md") is None
