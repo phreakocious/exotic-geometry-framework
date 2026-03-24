@@ -17,6 +17,7 @@ import re
 import urllib.request
 from collections import defaultdict
 
+import hdf5plugin  # registers bitshuffle and other third-party HDF5 filters
 import h5py
 import numpy as np
 from scipy import stats
@@ -274,12 +275,17 @@ def classify_band(scan_str):
     return 'unknown'
 
 
-def select_files(manifest, nodes_per_band=3):
+def select_files(manifest, nodes_per_band=3, part='0002'):
     """Pick representative ON/OFF pairs per band.
 
     Groups by band and node. For each band, selects up to nodes_per_band
     nodes and returns their ON and OFF file info dicts.
+
+    Only includes files matching `part` (default '0002', ~50 MB each).
+    Part 0000 is ~10 GB and part 0001 is ~1 GB — skip those.
     """
+    # Filter to the requested rawspec part only
+    manifest = [info for info in manifest if info['part'] == part]
     # Group by (band, node)
     groups = defaultdict(list)
     for info in manifest:
@@ -548,7 +554,7 @@ def main():
     print("PHASE 1: FILE MANIFEST")
     print(f"{'='*78}")
     manifest = fetch_file_manifest()
-    selected = select_files(manifest, nodes_per_band=3)
+    selected = select_files(manifest, nodes_per_band=2)  # 2 nodes/band = ~48 files × 50 MB
     if not selected:
         print("ERROR: No files selected. Check portal connectivity.")
         sys.exit(1)
