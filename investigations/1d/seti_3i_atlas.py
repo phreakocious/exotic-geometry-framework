@@ -26,6 +26,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
+from exotic_geometry_framework import GeometryAnalyzer
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -148,6 +150,64 @@ def cohens_d(a, b):
         diff = np.mean(a) - np.mean(b)
         return 0.0 if abs(diff) < 1e-15 else np.sign(diff) * float('inf')
     return (np.mean(a) - np.mean(b)) / ps
+
+# ---------------------------------------------------------------------------
+# Task 5: Geometry analysis with result caching
+# ---------------------------------------------------------------------------
+def _init_analyzer():
+    analyzer = GeometryAnalyzer().add_all_geometries()
+    dummy = analyzer.analyze(np.random.default_rng(0).integers(0, 256, 200, dtype=np.uint8))
+    metric_names = []
+    for r in dummy.results:
+        for mn in sorted(r.metrics.keys()):
+            metric_names.append(f"{r.geometry_name}:{mn}")
+    return analyzer, metric_names
+
+
+def _framework_hash():
+    """Hash exotic_geometry_framework.py for cache invalidation."""
+    fw_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           '..', '..', 'exotic_geometry_framework.py')
+    with open(fw_path, 'rb') as f:
+        return hashlib.sha256(f.read()).hexdigest()[:16]
+
+
+_FW_HASH = None
+
+
+def analyze_extraction(analyzer, metric_names, name, data):
+    """Analyze a single uint8 extraction. Returns {metric: value} dict."""
+    global _FW_HASH
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    if _FW_HASH is None:
+        _FW_HASH = _framework_hash()
+    data_hash = hashlib.sha256(data.tobytes()).hexdigest()[:16]
+    cache_key = hashlib.sha256(
+        f"{name}|{data_hash}|{_FW_HASH}".encode()
+    ).hexdigest()[:24]
+    cache_path = os.path.join(CACHE_DIR, f"{cache_key}.npz")
+    if os.path.exists(cache_path):
+        loaded = np.load(cache_path, allow_pickle=True)
+        return dict(loaded['metrics'].item())
+    result = analyzer.analyze(data)
+    metrics = {}
+    for r in result.results:
+        for mn, mv in r.metrics.items():
+            key = f"{r.geometry_name}:{mn}"
+            if key in metric_names and np.isfinite(mv):
+                metrics[key] = mv
+    np.savez_compressed(cache_path, metrics=metrics)
+    return metrics
+
+
+def analyze_file_extractions(analyzer, metric_names, extractions):
+    """Analyze all extractions from one file. Returns {name: {metric: value}}."""
+    results = {}
+    for name, data in extractions:
+        metrics = analyze_extraction(analyzer, metric_names, name, data)
+        results[name] = metrics
+    return results
+
 
 # ---------------------------------------------------------------------------
 # File manifest and download infrastructure
@@ -284,3 +344,47 @@ def load_spectrogram(path):
             'n_freq': spec.shape[1],
         }
     return spec, meta
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Statistical comparison engine
+# ---------------------------------------------------------------------------
+def compare_exploratory(on_profiles, off_profiles):
+    """Exploratory per-file comparison. Rank metrics by |Cohen's d|."""
+    all_metrics = set()
+    for p in on_profiles + off_profiles:
+        all_metrics.update(p.keys())
+    ranked = []
+    for m in sorted(all_metrics):
+        on_vals = [p[m] for p in on_profiles if m in p]
+        off_vals = [p[m] for p in off_profiles if m in p]
+        if len(on_vals) < 3 or len(off_vals) < 3:
+            continue
+        d = cohens_d(np.array(on_vals), np.array(off_vals))
+        if np.isfinite(d):
+            ranked.append((m, d))
+    ranked.sort(key=lambda x: -abs(x[1]))
+    return ranked
+
+
+def compare_pooled(on_profiles, off_profiles, metric_names, alpha=ALPHA):
+    """Pooled comparison with Bonferroni correction.
+    Returns (n_significant, [(metric, d, p), ...]) sorted by |d|.
+    """
+    bonf = alpha / max(len(metric_names), 1)
+    n_sig = 0
+    findings = []
+    for m in metric_names:
+        on_vals = np.array([p[m] for p in on_profiles if m in p])
+        off_vals = np.array([p[m] for p in off_profiles if m in p])
+        if len(on_vals) < 3 or len(off_vals) < 3:
+            continue
+        d = cohens_d(on_vals, off_vals)
+        if not np.isfinite(d):
+            continue
+        _, p = stats.ttest_ind(on_vals, off_vals, equal_var=False)
+        if p < bonf and abs(d) > 0.8:
+            n_sig += 1
+            findings.append((m, d, p))
+    findings.sort(key=lambda x: -abs(x[1]))
+    return n_sig, findings
