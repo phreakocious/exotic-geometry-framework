@@ -221,3 +221,45 @@ def test_extract_all_short_time_axis():
     names = [n for n, _ in extractions]
     assert not any("ts_" in n for n in names)
     assert any("sp_" in n for n in names)
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Statistical comparison engine
+# ---------------------------------------------------------------------------
+def test_compare_exploratory():
+    """Exploratory comparison: rank by effect size, no correction."""
+    from seti_3i_atlas import compare_exploratory
+    rng = np.random.default_rng(42)
+    on_profiles = [
+        {'A:m1': rng.normal(5, 1), 'A:m2': rng.normal(0, 1)}
+        for _ in range(10)
+    ]
+    off_profiles = [
+        {'A:m1': rng.normal(0, 1), 'A:m2': rng.normal(0, 1)}
+        for _ in range(10)
+    ]
+    ranked = compare_exploratory(on_profiles, off_profiles)
+    assert len(ranked) > 0
+    assert ranked[0][0] == 'A:m1'
+    assert abs(ranked[0][1]) > 1.0
+
+
+def test_compare_pooled():
+    """Pooled comparison with Bonferroni correction."""
+    from seti_3i_atlas import compare_pooled
+    rng = np.random.default_rng(42)
+    metric_names = ['A:m1', 'A:m2', 'A:m3']
+    on_profiles = [
+        {'A:m1': rng.normal(10, 0.5), 'A:m2': rng.normal(0, 1),
+         'A:m3': rng.normal(0, 1)}
+        for _ in range(30)
+    ]
+    off_profiles = [
+        {'A:m1': rng.normal(0, 0.5), 'A:m2': rng.normal(0, 1),
+         'A:m3': rng.normal(0, 1)}
+        for _ in range(30)
+    ]
+    n_sig, findings = compare_pooled(on_profiles, off_profiles,
+                                      metric_names, alpha=0.05)
+    assert n_sig >= 1
+    assert findings[0][0] == 'A:m1'
