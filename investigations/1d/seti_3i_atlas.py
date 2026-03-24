@@ -388,3 +388,118 @@ def compare_pooled(on_profiles, off_profiles, metric_names, alpha=ALPHA):
             findings.append((m, d, p))
     findings.sort(key=lambda x: -abs(x[1]))
     return n_sig, findings
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Figure generation
+# ---------------------------------------------------------------------------
+def _apply_dark_theme():
+    plt.rcParams.update({
+        "figure.facecolor": "#181818",
+        "axes.facecolor": "#181818",
+        "axes.edgecolor": "#444444",
+        "axes.labelcolor": "white",
+        "text.color": "white",
+        "xtick.color": "#cccccc",
+        "ytick.color": "#cccccc",
+    })
+
+def _dark_ax(ax):
+    ax.set_facecolor('#181818')
+    for spine in ax.spines.values():
+        spine.set_color('#444444')
+    ax.tick_params(colors='#cccccc', labelsize=7)
+    return ax
+
+def make_figure(band_results, pooled_results, metric_names):
+    _apply_dark_theme()
+    fig = plt.figure(figsize=(18, 12))
+    gs = gridspec.GridSpec(2, 2, hspace=0.35, wspace=0.3,
+                           left=0.07, right=0.96, top=0.92, bottom=0.06)
+    fig.suptitle("3I/ATLAS — Geometric Structure: ON-Target vs OFF-Target",
+                 fontsize=14, fontweight='bold', color='white')
+    bands = ['L', 'S', 'C', 'X']
+    band_colors = {'L': '#ff6b6b', 'S': '#ffd93d', 'C': '#6bcb77', 'X': '#4d96ff'}
+
+    # Panel 1: Band summary bar chart
+    ax1 = _dark_ax(fig.add_subplot(gs[0, 0]))
+    n_sigs = [pooled_results.get(b, (0, []))[0] for b in bands]
+    colors = [band_colors[b] for b in bands]
+    bars = ax1.bar(bands, n_sigs, color=colors, edgecolor='#444444', linewidth=0.5)
+    ax1.set_ylabel('Significant Metrics (pooled)', fontsize=9)
+    ax1.set_title('ON vs OFF by Band', fontsize=10, color='#aaaaaa')
+    for bar, n in zip(bars, n_sigs):
+        if n > 0:
+            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                     str(n), ha='center', va='bottom', fontsize=9, color='white')
+
+    # Panel 2: Top discriminating metrics (horizontal bar)
+    ax2 = _dark_ax(fig.add_subplot(gs[0, 1]))
+    all_findings = []
+    for band in bands:
+        _, findings = pooled_results.get(band, (0, []))
+        for m, d, p in findings:
+            all_findings.append((m, d, p, band))
+    all_findings.sort(key=lambda x: -abs(x[1]))
+    top_n = min(15, len(all_findings))
+    if top_n > 0:
+        names = [f[0].split(':')[-1] for f in all_findings[:top_n]]
+        ds = [f[1] for f in all_findings[:top_n]]
+        cs = [band_colors[f[3]] for f in all_findings[:top_n]]
+        y_pos = np.arange(top_n)
+        ax2.barh(y_pos, ds, color=cs, edgecolor='#444444', linewidth=0.5)
+        ax2.set_yticks(y_pos)
+        ax2.set_yticklabels(names, fontsize=7)
+        ax2.invert_yaxis()
+        ax2.set_xlabel("Cohen's d", fontsize=9)
+        ax2.set_title('Top Discriminating Metrics', fontsize=10, color='#aaaaaa')
+        ax2.axvline(0, color='#666666', linewidth=0.5)
+    else:
+        ax2.text(0.5, 0.5, 'No significant metrics found',
+                 ha='center', va='center', transform=ax2.transAxes,
+                 fontsize=11, color='#888888')
+        ax2.set_title('Top Discriminating Metrics', fontsize=10, color='#aaaaaa')
+
+    # Panel 3: Exploratory heatmap (bottom, spanning both columns)
+    ax3 = _dark_ax(fig.add_subplot(gs[1, :]))
+    all_exploratory = {}
+    for band in bands:
+        br = band_results.get(band, {})
+        for m, d in br.get('exploratory', [])[:30]:
+            if m not in all_exploratory:
+                all_exploratory[m] = {}
+            all_exploratory[m][band] = d
+    ranked_metrics = sorted(all_exploratory.keys(),
+                            key=lambda m: max(abs(all_exploratory[m].get(b, 0))
+                                              for b in bands),
+                            reverse=True)[:20]
+    if ranked_metrics:
+        heatmap_data = np.zeros((len(ranked_metrics), len(bands)))
+        for i, m in enumerate(ranked_metrics):
+            for j, b in enumerate(bands):
+                heatmap_data[i, j] = all_exploratory[m].get(b, 0)
+        im = ax3.imshow(heatmap_data.T, aspect='auto', cmap='RdBu_r',
+                        vmin=-np.max(np.abs(heatmap_data)),
+                        vmax=np.max(np.abs(heatmap_data)))
+        ax3.set_xticks(range(len(ranked_metrics)))
+        ax3.set_xticklabels([m.split(':')[-1] for m in ranked_metrics],
+                            rotation=45, ha='right', fontsize=6)
+        ax3.set_yticks(range(len(bands)))
+        ax3.set_yticklabels(bands, fontsize=9)
+        ax3.set_title("Exploratory: Cohen's d by Metric x Band",
+                       fontsize=10, color='#aaaaaa')
+        cbar = fig.colorbar(im, ax=ax3, shrink=0.6, pad=0.02)
+        cbar.set_label("Cohen's d", fontsize=8, color='#cccccc')
+        cbar.ax.tick_params(colors='#cccccc', labelsize=7)
+    else:
+        ax3.text(0.5, 0.5, 'No exploratory data',
+                 ha='center', va='center', transform=ax3.transAxes,
+                 fontsize=11, color='#888888')
+
+    os.makedirs(FIG_DIR, exist_ok=True)
+    out_path = os.path.join(FIG_DIR, 'seti_3i_atlas.png')
+    fig.savefig(out_path, dpi=180, facecolor='#181818')
+    plt.close(fig)
+    print(f"\n  Figure saved: {out_path}")
+    return out_path
+
