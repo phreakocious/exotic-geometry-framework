@@ -121,6 +121,21 @@ def extract_spectral_profiles(spec, n_windows=N_WINDOWS, target_len=DATA_SIZE):
             result.append(to_uint8(np.interp(x_new, x_old, profile)))
     return result
 
+
+# ---------------------------------------------------------------------------
+# Task 4: Full extraction pipeline
+# ---------------------------------------------------------------------------
+def extract_all(spec, label, n_subbands=N_SUBBANDS, n_windows=N_WINDOWS,
+                target_len=DATA_SIZE):
+    extractions = []
+    ts_list = extract_time_series(spec, n_subbands=n_subbands, target_len=target_len)
+    for i, ts in enumerate(ts_list):
+        extractions.append((f"{label}/ts_{i}", ts))
+    sp_list = extract_spectral_profiles(spec, n_windows=n_windows, target_len=target_len)
+    for i, sp in enumerate(sp_list):
+        extractions.append((f"{label}/sp_{i}", sp))
+    return extractions
+
 # ---------------------------------------------------------------------------
 # Statistics
 # ---------------------------------------------------------------------------
@@ -247,3 +262,25 @@ def download_file(filename):
             os.remove(local_path)
         return None
     return local_path
+
+# ---------------------------------------------------------------------------
+# HDF5 reading and spectrogram loading
+# ---------------------------------------------------------------------------
+def load_spectrogram(path):
+    with h5py.File(path, 'r') as hf:
+        raw = hf['data'][:]
+        spec = raw[:, 0, :].astype(np.float32)
+        if 'mask' in hf:
+            mask_raw = hf['mask'][:]
+            mask_2d = mask_raw[:, 0, :] > 0
+            med = np.median(spec, axis=0)
+            spec[mask_2d] = np.broadcast_to(med, spec.shape)[mask_2d]
+        attrs = dict(hf['data'].attrs)
+        meta = {
+            'fch1': float(attrs.get('fch1', 0)),
+            'foff': float(attrs.get('foff', 0)),
+            'tsamp': float(attrs.get('tsamp', 0)),
+            'n_time': spec.shape[0],
+            'n_freq': spec.shape[1],
+        }
+    return spec, meta

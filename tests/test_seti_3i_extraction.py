@@ -1,6 +1,8 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'investigations', '1d'))
 
+import tempfile
+import h5py
 import numpy as np
 import pytest
 
@@ -147,3 +149,75 @@ def test_parse_gbt_filename_returns_none_for_non_matching():
     from seti_3i_atlas import parse_gbt_filename
     assert parse_gbt_filename("random_file.h5") is None
     assert parse_gbt_filename("README.md") is None
+
+
+# ---------------------------------------------------------------------------
+# HDF5 reading and spectrogram loading
+# ---------------------------------------------------------------------------
+def test_load_spectrogram_from_h5():
+    from seti_3i_atlas import load_spectrogram
+    rng = np.random.default_rng(42)
+    n_time, n_freq = 100, 4000
+    data = rng.normal(100, 10, (n_time, 1, n_freq)).astype(np.float32)
+    with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as f:
+        path = f.name
+    try:
+        with h5py.File(path, 'w') as hf:
+            hf.create_dataset('data', data=data)
+            hf['data'].attrs['fch1'] = 1500.0
+            hf['data'].attrs['foff'] = -0.00028
+            hf['data'].attrs['tsamp'] = 18.253611
+        spec, meta = load_spectrogram(path)
+        assert spec.shape == (n_time, n_freq)
+        assert spec.dtype == np.float32
+        assert 'fch1' in meta
+    finally:
+        os.unlink(path)
+
+
+def test_load_spectrogram_applies_mask():
+    from seti_3i_atlas import load_spectrogram
+    rng = np.random.default_rng(42)
+    n_time, n_freq = 50, 1000
+    data = rng.normal(100, 10, (n_time, 1, n_freq)).astype(np.float32)
+    mask = np.zeros((n_time, 1, n_freq), dtype=np.uint8)
+    mask[10, 0, 500] = 1
+    with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as f:
+        path = f.name
+    try:
+        with h5py.File(path, 'w') as hf:
+            hf.create_dataset('data', data=data)
+            hf.create_dataset('mask', data=mask)
+            hf['data'].attrs['fch1'] = 1500.0
+            hf['data'].attrs['foff'] = -0.00028
+            hf['data'].attrs['tsamp'] = 18.253611
+        spec, meta = load_spectrogram(path)
+        assert spec.shape == (n_time, n_freq)
+    finally:
+        os.unlink(path)
+
+
+# ---------------------------------------------------------------------------
+# Full extraction pipeline
+# ---------------------------------------------------------------------------
+def test_extract_all_from_spectrogram():
+    from seti_3i_atlas import extract_all
+    rng = np.random.default_rng(42)
+    spec = rng.normal(100, 10, (3000, 4000)).astype(np.float32)
+    extractions = extract_all(spec, label="test_blc20_L_ON")
+    assert len(extractions) > 0
+    for name, arr in extractions:
+        assert isinstance(name, str)
+        assert "test_blc20_L_ON" in name
+        assert arr.dtype == np.uint8
+        assert len(arr) == 2000
+
+
+def test_extract_all_short_time_axis():
+    from seti_3i_atlas import extract_all
+    rng = np.random.default_rng(42)
+    spec = rng.normal(100, 10, (16, 4000)).astype(np.float32)
+    extractions = extract_all(spec, label="test_short")
+    names = [n for n, _ in extractions]
+    assert not any("ts_" in n for n in names)
+    assert any("sp_" in n for n in names)
