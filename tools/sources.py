@@ -2364,6 +2364,60 @@ def gen_socal_bvalue(rng, size):
     return _real_data_gen(data, rng, size)
 
 
+_VLF_ECLIPSE = None
+_VLF_BASELINE = None
+
+
+def _get_vlf_eclipse():
+    global _VLF_ECLIPSE
+    if _VLF_ECLIPSE is not None:
+        return _VLF_ECLIPSE
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "data" / "eclipse" / "vlf_eclipse_rms.npy"
+    if not p.exists():
+        _VLF_ECLIPSE = np.array([])
+        return _VLF_ECLIPSE
+    _VLF_ECLIPSE = np.load(p).astype(np.float64)
+    return _VLF_ECLIPSE
+
+
+def _get_vlf_baseline():
+    global _VLF_BASELINE
+    if _VLF_BASELINE is not None:
+        return _VLF_BASELINE
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "data" / "eclipse" / "vlf_baseline_rms.npy"
+    if not p.exists():
+        _VLF_BASELINE = np.array([])
+        return _VLF_BASELINE
+    _VLF_BASELINE = np.load(p).astype(np.float64)
+    return _VLF_BASELINE
+
+
+@source(
+    "VLF Radio (Eclipse)",
+    domain="geophysics",
+    description="VLF radio RMS envelope during 2024-04-08 total solar eclipse --- "
+    "sensor ET0001 Cleveland OH (path of totality), 20 kHz sample rate, "
+    "D-layer collapse creates higher predictability (Eclipse Research Group)",
+)
+def gen_vlf_eclipse(rng, size):
+    data = _get_vlf_eclipse()
+    return _real_data_gen(data, rng, size)
+
+
+@source(
+    "VLF Radio (Baseline)",
+    domain="geophysics",
+    description="VLF radio RMS envelope from normal day (2024-04-10) --- "
+    "same sensor ET0001 Cleveland OH, 20 kHz, no eclipse, standard "
+    "D-layer daytime absorption conditions (Eclipse Research Group)",
+)
+def gen_vlf_baseline(rng, size):
+    data = _get_vlf_baseline()
+    return _real_data_gen(data, rng, size)
+
+
 _X86_TEXT = None
 
 
