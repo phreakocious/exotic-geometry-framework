@@ -1,7 +1,7 @@
 # Proposal: Structure Atlas Geometry Guide & Encyclopedia
 
 **Date:** 2026-03-25
-**Status:** Tier 1 complete (8/54 geometries drafted)
+**Status:** Tier 1+2 complete (16/54 geometries drafted)
 **Prototype:** `docs/geometry-guide-prototype.md`
 
 ## The Opportunity
@@ -39,8 +39,8 @@ This paragraph contains no formulas but communicates exactly what frustration de
 **Tier 1 — 8 encoding-invariant geometries (ordinal view)** ✓
 Priority because they're the ones whose results are physically meaningful regardless of data encoding. All 8 drafted: Boltzmann, Hölder Regularity, Recurrence Quantification, Ordinal Partition, Heisenberg (centered), Spectral Analysis, D4 Triality, Inflation (Substitution).
 
-**Tier 2 — High-discrimination geometries**
-The ones that dominate investigation results: Multifractal Spectrum, Predictability, Information Theory, Cayley, Tropical, Zariski, Julia Set, Lorentzian. These geometries carry the atlas's strongest scientific findings (seismic P-wave d=9.25, eclipse VLF d=1.19).
+**Tier 2 — High-discrimination geometries** ✓
+The ones that dominate investigation results: Multifractal Spectrum, Predictability, Information Theory, Cayley, Tropical, Zariski, Julia Set, Lorentzian. All 8 drafted. These geometries carry the atlas's strongest scientific findings (seismic P-wave d=9.25, eclipse VLF d=1.19).
 
 **Tier 3 — Remaining geometries**
 Distributional (Wasserstein, Zipf, Cantor), topological (Hyperbolic, Persistent Homology, Mandelbrot), symmetry (E8, G2, Spherical, SL(2,R)), etc. Important for completeness but lower SEO priority.
@@ -100,7 +100,7 @@ Match the atlas aesthetic (dark theme, Exo 2 + JetBrains Mono, glass cards, neon
 - [x] SEO injection script (`tools/inject_seo.py`) — crawlable content block in atlas HTML
 - [x] Meta tags updated with current counts and compelling descriptions
 - [x] JSON-LD structured data added
-- [x] Prototype content for 8 geometries (`docs/geometry-guide-prototype.md`)
+- [x] Prototype content for 16 geometries (`docs/geometry-guide-prototype.md`)
 - [x] Metric extremes data extracted for all target geometries
 
 ## What's Next
@@ -108,7 +108,7 @@ Match the atlas aesthetic (dark theme, Exo 2 + JetBrains Mono, glass cards, neon
 1. ~~**Finish Tier 1 content**~~ ✓ — All 8 encoding-invariant geometries drafted
 2. **Atlas `?source=` deep link** — Patch atlas viewer to focus on a named source from URL
 3. **Build script skeleton** — `tools/build_guide.py` reading markdown + JSON
-4. **Tier 2 content** — Write 8 high-discrimination geometry descriptions
+4. ~~**Tier 2 content**~~ ✓ — All 8 high-discrimination geometry descriptions drafted
 5. **Cross-domain connection pages** — Extract from ordinal NN analysis
 6. **Investigation page formatting** — Convert markdown investigations to guide HTML
 7. **Tier 3 content** — Remaining geometries

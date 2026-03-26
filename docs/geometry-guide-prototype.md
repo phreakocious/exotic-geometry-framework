@@ -1,6 +1,6 @@
 # Geometry Guide — Prototype
 
-Content for all 8 encoding-invariant geometries (Tier 1 complete). Each entry explains what the geometry detects through contrast and atlas examples, not mathematical definitions.
+Content for all 8 encoding-invariant geometries (Tier 1) and 8 high-discrimination geometries (Tier 2). Each entry explains what the geometry detects through contrast and atlas examples, not mathematical definitions.
 
 ---
 
@@ -177,3 +177,171 @@ A substitution rule maps each symbol to a word: Fibonacci does a→ab, b→a; Th
 ### When it lights up
 
 Inflation is the framework's substitution-rule detector. The combination of linear complexity + near-zero discrepancy + geometric ACF peaks is essentially unique to substitution sequences. In the ordinal view, it separates quasicrystalline sources (Fibonacci, Thue-Morse, L-System) from both periodic and random, which the other ordinal geometries struggle to do — Ordinal Partition sees Fibonacci as "moderately constrained" without distinguishing it from other aperiodic sequences. Inflation's acf_geometric metric also catches quantum walk and ocean/wave signals, suggesting that geometric self-similarity in autocorrelation structure is a broader phenomenon than pure substitution dynamics.
+
+---
+
+# Tier 2 — High-Discrimination Geometries
+
+These 8 geometries dominate the atlas's strongest scientific findings. They are not encoding-invariant — their metrics depend on the actual byte values, not just rank order.
+
+---
+
+## Multifractal Spectrum
+
+**What it measures:** Whether the signal's roughness is uniform or varies from place to place.
+
+A monofractal signal (like fractional Brownian motion) has the same scaling behavior everywhere — zoom in anywhere and you see the same texture. A multifractal signal (like turbulence or financial returns) has smooth regions and rough regions interspersed. This geometry computes the singularity spectrum f(α) via structure functions and measures how wide it is.
+
+### Metrics
+
+**spectrum_width** — The range of local scaling exponents (α_max − α_min). Zero means monofractal: every point has the same roughness. Seismic noise (ANMO) dominates the atlas at 0.78 — earthquake background has wildly varying local regularity from microseisms to cultural noise. GOES X-ray flux (0.49) is next: solar flares inject bursts of irregular scaling into a smooth background. Sawtooth wave (0.45) is surprisingly wide because the discontinuous resets create a sharp transition between smooth ramps and singular jumps. Constants score 0.0 (no scaling structure at all).
+
+**hurst_estimate** — The self-affinity exponent H = τ(2)/2. Sine wave scores 0.90 (strongly persistent, smooth). Chua's circuit (0.86) is also highly persistent — its double-scroll attractor stays in each lobe for extended stretches. Prime gaps and divisor count score 0.0: number-theoretic sequences have no self-affine scaling.
+
+### When it lights up
+
+Multifractal width is the primary separator between "simple" dynamics (periodic, noise, low-dimensional chaos) and "complex" dynamics (turbulence, geophysical processes, financial markets). In the seismic P-wave investigation, multifractal metrics contributed to the top discriminators — earthquake arrivals temporarily broaden the local spectrum width by injecting a new scaling regime into the ambient noise.
+
+---
+
+## Predictability
+
+**What it measures:** How much does knowing the past help predict the future?
+
+Computes conditional entropy H(X_t | X_{t-1}, ..., X_{t-k}) at increasing depths k = 1, 2, 4, 8. If the conditional entropy drops as you add more history, the signal has memory — past values constrain the future. Also includes sample entropy (SampEn), a phase-space regularity measure.
+
+### Metrics
+
+**excess_predictability** — Total information gain from knowing the past 8 values: H(X) - H(X | past_8). De Bruijn sequence scores 3.0 (maximally predictable — it's constructed so every 8-bit pattern appears exactly once, making the next bit deterministic given the last 7). Hilbert walk (2.90) and sawtooth (2.89) are nearly as predictable. White noise scores 0.0 (the past tells you nothing).
+
+**sample_entropy** — Regularity of the phase-space trajectory. Low = self-similar, predictable. High = complex, unpredictable. Pi digits (2.22) and BSL residues (2.21) are the most irregular signals in the atlas — close to the theoretical maximum for byte-valued data. Devil's staircase scores 0.019 (nearly zero — its long constant plateaus create trivially self-similar trajectories). Constants score exactly 0.0.
+
+**entropy_decay_rate** — How fast does conditional entropy decrease with depth? Baker map has the steepest positive slope (0.26): it reveals more structure at each depth. De Bruijn has the steepest negative slope (-0.31): it becomes maximally predictable at depth 7 and the entropy collapses. Near zero means either unpredictable at all depths (noise) or already fully predicted at depth 1 (simple periodic).
+
+**cond_entropy_k1 / cond_entropy_k8** — Conditional entropy at depths 1 and 8. White noise scores ~3.0 at both (8 bits of uncertainty, knowing the past doesn't help). Logistic period-3 scores 0.0 at both (past fully determines future). The gap between k1 and k8 reveals hidden long-range dependencies — PRNG outputs score identically at k1 and k8 (memoryless), while the baker map drops from 2.8 to 2.3 (its 2D structure creates long-range predictability invisible at lag 1).
+
+### When it lights up
+
+Predictability's sample_entropy and entropy_decay_rate were key discriminators in the negative re-evaluation study (2026-03-05). Standard map (44 significant metrics), Arnold cat (19), and GARCH (29) were reclassified from negative to positive detections largely on Predictability metrics. Sample entropy distinguishes deterministic chaos (moderate, ~1.5) from true noise (high, ~2.2) and periodicity (low, <0.5).
+
+---
+
+## Information Theory
+
+**What it measures:** How compressible is the signal, and where does the redundancy come from?
+
+Shannon entropy at multiple block sizes, compression ratio via Lempel-Ziv (zlib), and mutual information at lags 1 and 8. Together these measure the signal's intrinsic complexity from three complementary angles: distributional (are byte patterns uniform?), algorithmic (can a compressor find structure?), and temporal (does the past predict the future?).
+
+### Metrics
+
+**compression_ratio** — Lempel-Ziv compression ratio: compressed_size / original_size. 1.0 means incompressible (Wichmann-Hill, MINSTD, XorShift32 — good PRNGs are incompressible). 0.0 means trivially compressible (constants). Logistic period-2 scores 0.002 (alternating between two values compresses almost completely). This is a direct proxy for Kolmogorov complexity.
+
+**mutual_info_1** — Mutual information between consecutive bytes: how much does byte t tell you about byte t+1? Logistic periodic orbits score 1.0 (each byte perfectly predicts the next). L-System Dragon Curve scores 0.0 (its symbolic dynamics are unpredictable one step ahead despite being deterministic). This separates "locally predictable" from "locally random" deterministic systems.
+
+**mutual_info_8** — Mutual information at lag 8. Rule 30 scores 0.0 (no 8-step memory), while logistic period-2 still scores 1.0 (period divides 8). The comparison between lag-1 and lag-8 mutual information reveals the memory timescale: signals where MI_8 ≈ MI_1 have long memory; signals where MI_8 ≪ MI_1 have short memory.
+
+**excess_entropy** — The total shared information between past and future. Hilbert walk (0.95) and sawtooth (0.95) maximize this: their deterministic structure creates maximum past-future coupling. Random steps (0.94) are high too — the random-walk integration creates long-range correlations even from IID increments.
+
+**block_entropy_2 / block_entropy_4** — Shannon entropy of byte pairs and 4-grams, normalized. PRNGs and white noise score ~1.0 (all patterns equally likely). Constants and periodic orbits score 0.0. The drop from block_entropy_2 to block_entropy_4 measures how much additional structure emerges at longer pattern lengths.
+
+### When it lights up
+
+Information Theory metrics are the framework's workhorse for separating noise from structure. Compression ratio alone separates PRNGs (incompressible) from all other sources. Mutual information at multiple lags provides the temporal skeleton that static entropy measures miss. In the atlas, Information Theory drives the distributional view's separation between C1 (compressible, high MI: oscillators and periodic chaos) and C5 (incompressible, zero MI: noise and PRNGs).
+
+---
+
+## Cayley
+
+**What it measures:** The large-scale shape of the signal's state space.
+
+Delay-embeds the signal into 5D, builds a k-nearest-neighbor graph on the resulting point cloud, and measures three properties of the graph that are invariants of the "Cayley graph" of the underlying dynamics: how curved it is (hyperbolicity), how fast it grows (dimension), and how connected it is (spectral gap).
+
+### Metrics
+
+**growth_exponent** — How does the number of points within graph distance r scale? β ≈ 1 means the dynamics live on a curve (1D). β ≈ 2 means area-filling (2D manifold). β > 2 means volume-filling or branching. BTC returns score 2.07 (the highest in the atlas — financial returns fill a 2D manifold in delay space). Lotka-Volterra scores 0.56 (its limit cycles live on a 1D curve). DNA scores moderately (1.5-1.7), consistent with a branching structure in sequence space.
+
+**delta_hyp_norm** — Gromov δ-hyperbolicity, normalized by diameter. δ ≈ 0 means the graph is tree-like (hyperbolic, negative curvature). δ/diam ≈ 0.25 means flat (Euclidean). Logistic chaos (0.26) and DNA (0.26) are the most "flat" — their delay embeddings fill space uniformly, without tree-like branching. Periodic orbits score 0.0 (trivially tree-like — just a cycle).
+
+**spectral_gap** — Fiedler eigenvalue of the graph Laplacian: how well-connected is the state space? Large gap means rapid mixing (the dynamics explore the full space quickly). BTC returns (0.035) and neural net dense (0.029) have the largest gaps — both are highly mixing processes. Symbolic Henon scores 0.0 (its state space has disconnected components in the graph).
+
+### When it lights up
+
+Cayley's spectral_gap was a key discriminator in the negative re-evaluation study: it helped reclassify Arnold cat map and GARCH as positive detections. Growth exponent provides an intrinsic dimension estimate that complements the extrinsic dimension from fractal geometries. In the atlas, Cayley separates the distributional view's C3 (low growth, tree-like: symbolic dynamics and periodic orbits) from C2 (high growth, flat: continuous chaos and noise).
+
+---
+
+## Tropical
+
+**What it measures:** The piecewise-linear skeleton of the signal.
+
+Tropical geometry — named for the Brazilian mathematician Imre Simon — replaces addition with max and multiplication with addition, turning smooth curves into piecewise-linear ones. This geometry detects how many distinct linear regimes the signal passes through, how diverse their slopes are, and how much area the signal sweeps above its running minimum envelope.
+
+### Metrics
+
+**slope_changes** — How many times does the signal change its linear regime? Stern-Brocot walk, logistic edge-of-chaos, and Thue-Morse all hit 16,382 (maximum for the sample size — essentially every point is a slope change). Rössler attractor and constants score 0 (smooth or flat). This metric separates "jagged" dynamics (symbolic, chaotic, quasicrystalline) from "smooth" dynamics (oscillators, attractors, drifts).
+
+**unique_slopes** — How many distinct slope values appear? Arnold cat map and beta noise reach 21 (maximum diversity — the signal visits every possible local gradient). fBm scores 1.0 (its smooth increments have one dominant slope). This measures the "vocabulary" of the signal's piecewise-linear representation.
+
+**envelope_area** — Area between the signal and its running minimum. Forest fire (15,966) dominates: its bursty avalanche dynamics create tall, wide excursions above the baseline. Stern-Brocot walk (11,609) is next — its fractal staircase accumulates massive area. Rainfall (32) is among the lowest nonzero scores: precipitation is close to its own minimum most of the time (many dry hours).
+
+### When it lights up
+
+Tropical geometry provides a "complexity fingerprint" that's independent of the signal's amplitude distribution. Two signals with identical histograms can have completely different tropical profiles if one is smooth and the other is jagged. In the atlas, slope_changes is tightly correlated with ordinal transition_entropy (both measure local variability), but envelope_area captures a global property (excursion magnitude) that no ordinal metric touches. Tropical is most useful in the symmetry view, where it separates bursty processes (forest fire, Stern-Brocot) from smooth oscillators (Lorenz, Rössler) along the envelope axis.
+
+---
+
+## Zariski
+
+**What it measures:** Whether the signal lives on an algebraic variety — a surface defined by polynomial equations.
+
+Delay-embeds the signal and tests whether the resulting point cloud lies near the zero set of a low-degree polynomial. In algebraic geometry, the Zariski topology's closed sets are exactly these zero sets, making the topology non-Hausdorff (most pairs of points can't be separated by open sets). This geometry also measures the signal's pattern lattice: does it obey Boolean logic (classical), or does it deviate toward a Heyting algebra (intuitionistic)?
+
+### Metrics
+
+**heyting_gap** — How far is the signal's pattern lattice from Boolean? 1.0 means maximally non-Boolean: the law of excluded middle fails for many pattern pairs. Forest fire scores 1.0 — its intermittent dynamics create pattern relationships that violate classical logic (a pattern can be "neither always present nor always absent" in a meaningful sense). Logistic period-3 (0.90) and period-5 (0.78) are high too: their windows of periodicity within chaos create ambiguous pattern membership. Logistic full chaos and Rössler score 0.0 — fully chaotic systems are "Boolean" because every pattern either appears or doesn't, with no intermediate states.
+
+**nonsep_fraction** — What fraction of point pairs are non-separable in the Zariski topology? Collatz gap lengths score 0.9995 (almost all pairs are non-separable — the data lies almost exactly on an algebraic variety). Rainfall scores 0.96 (its exponential-like distribution creates a low-dimensional algebraic structure). Wichmann-Hill (0.007) is nearly zero — good PRNGs fill delay space uniformly, avoiding any algebraic surface.
+
+**algebraic_residual** — How well does a low-degree polynomial fit the delay-embedded cloud? Dice rolls (0.064) have the highest residual — the data is maximally far from any algebraic variety. Constants score 0.0 (trivially on a variety: the point {(c,c,c,...)}). This is the "anti-algebraic" metric: high values mean the signal has no polynomial recurrence relation.
+
+### When it lights up
+
+Zariski's heyting_gap (CV=1.76) is the framework's most variable metric across sources. It detects a specific structural property — intermittency — that other geometries approximate but don't directly measure. The forest fire / logistic period-3 cluster at the top of the heyting_gap ranking corresponds to "intermittent chaos": systems that switch between qualitatively different dynamical regimes. In investigations, heyting_gap discriminated between normal and abnormal ECG with moderate effect size, because cardiac arrhythmias are fundamentally intermittent.
+
+---
+
+## Julia Set
+
+**What it measures:** How the signal's values behave as starting conditions for a complex dynamical system.
+
+Maps pairs of consecutive data values to complex starting positions z₀ in the plane, then iterates z → z² + c (with a fixed parameter c). Some starting conditions escape to infinity; others are trapped in bounded orbits. The fractal boundary between escaping and trapped regions is the Julia set. The data's distribution of escape times and orbit stabilities reveals its "dynamical texture" as seen through this particular lens.
+
+### Metrics
+
+**escape_entropy** — Shannon entropy of the escape-time distribution. High entropy means the data samples many different escape times — the starting conditions are spread across different dynamical basins. Coupled map lattice (4.45) scores highest: its spatiotemporal chaos creates a rich diversity of starting conditions. Gaussian noise (4.39) is close behind. Logistic period-2 and Collatz parity score 0.0 — their starting conditions are degenerate (only 1-2 distinct z₀ values), so there's only one escape time.
+
+**stability** — Mean absolute value of the final iterate for non-escaping orbits. Devil's staircase (938) has the highest stability: its starting conditions land in far-flung bounded orbits that stay large without escaping. Berry random wave (911) and seismograph (911) are similar — their broad amplitude distributions create starting conditions near the boundary of the Julia set, where orbits are large but trapped. Constants score 0.0 (degenerate single-point orbit).
+
+### When it lights up
+
+Julia Set geometry acts as a "nonlinear filter" — it transforms the data through a fixed dynamical system and asks what the output looks like. This is conceptually different from geometries that analyze the data's own dynamics. It's most useful for separating signals with similar linear statistics but different amplitude distributions: two signals with the same mean and variance can have very different Julia escape profiles if one has heavy tails (creating starting conditions near the Julia set boundary) and the other is Gaussian (starting conditions far from the boundary).
+
+---
+
+## Lorentzian
+
+**What it measures:** How much of the signal's structure is causal — does the future follow from the past in a timelike way, or do successive values jump acausally?
+
+Embeds consecutive (time, value) pairs as events in 1+1 Minkowski spacetime with metric ds² = −dt² + dx². For each pair of events, the Minkowski interval classifies the separation: timelike (|Δx| < |Δt|, causally connected), spacelike (|Δx| > |Δt|, causally disconnected), or lightlike (|Δx| = |Δt|, on the light cone).
+
+### Metrics
+
+**causal_order_preserved** — Fraction of event pairs that are timelike-separated (causally ordered). Tidal gauge, projectile, and damped pendulum score 1.0 — smooth, slow-varying signals where each value follows causally from the previous one. Logistic edge-of-chaos scores 0.0 (every successive value is an acausal jump). This is the framework's most direct "smoothness vs. jumpiness" metric.
+
+**spacelike_fraction** — Fraction of pairs that are acausally separated. Logistic period-3 (0.18) and Chirikov standard map (0.16) score highest — their dynamics make large jumps between successive values. Lorenz and Rössler score 0.0: despite being chaotic, their continuous-time dynamics produce smooth trajectories in which consecutive samples are always causally close.
+
+**lightlike_fraction** — Fraction of pairs exactly on the light cone (|Δx| = |Δt|). Almost always near zero because exact equality is measure-zero for continuous data. Prime gaps (0.006) score highest: many consecutive prime gaps differ by exactly 1, landing on the light cone. This is a curiosity more than a useful discriminator.
+
+### When it lights up
+
+Lorentzian geometry captures something subtler than amplitude variance or entropy: the "speed" of the signal relative to its sampling rate. A high-frequency oscillation sampled slowly appears spacelike (large jumps); the same oscillation sampled fast appears timelike (smooth evolution). This makes Lorentzian metrics sensitive to the relationship between the signal's characteristic timescale and the observation timescale — a property relevant to aliasing detection and sampling adequacy. In the atlas, causal_order_preserved separates the distributional view's smooth oscillator cluster (C1) from the chaotic/noise clusters (C4, C5) along a "causality axis" orthogonal to the entropy axis.
