@@ -1,12 +1,12 @@
 # Exotic Geometry Framework
 
-Embed byte sequences into 52 exotic geometric spaces — E8 lattices, Heisenberg groups, tropical semirings, Penrose quasicrystals, Mandelbrot/Julia fractal dynamics, Lie/Coxeter root systems, and 8 native 2D spatial geometries — and measure what comes out. Structure that survives the embedding is real. Structure that doesn't is noise.
+Embed byte sequences into 62 exotic geometric spaces — E8 lattices, Heisenberg groups, tropical semirings, Penrose quasicrystals, Mandelbrot/Julia fractal dynamics, Lie/Coxeter root systems, and 8 native 2D spatial geometries — and measure what comes out. Structure that survives the embedding is real. Structure that doesn't is noise.
 
-This framework treats data analysis as a question of **geometry**: different mathematical spaces are sensitive to different kinds of hidden structure. A single data stream analyzed through 44 1D geometries (233 metrics) produces a geometric fingerprint that can distinguish chaotic maps, detect cipher weaknesses, identify DNA organisms, and find backdoors in neural network weights. A [Structure Atlas](#structure-atlas-how-the-framework-organizes-the-world) maps 179 data sources from 16 domains into a unified structure space, revealing cross-domain twins and dimensional organization. For 2D fields, 8 spatial geometries (80 metrics) span differential geometry, algebraic topology, conformal analysis, integral geometry, fractal scaling, Hodge theory, and spectral analysis.
+This framework treats data analysis as a question of **geometry**: different mathematical spaces are sensitive to different kinds of hidden structure. A single data stream analyzed through 54 1D geometries (200 metrics) produces a geometric fingerprint that can distinguish chaotic maps, detect cipher weaknesses, identify DNA organisms, and find backdoors in neural network weights. A [Structure Atlas](#structure-atlas-how-the-framework-organizes-the-world) maps 211 data sources from 16 domains into a unified structure space, revealing cross-domain twins and dimensional organization. For 2D fields, 8 spatial geometries (80 metrics) span differential geometry, algebraic topology, conformal analysis, integral geometry, fractal scaling, Hodge theory, and spectral analysis.
 
 **Key differentiator**: [Surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves these geometric embeddings capture genuinely nonlinear dynamical structure that no combination of entropy, autocorrelation, spectral slope, or other standard features can replicate. Simple features: **0 detections** against IAAFT surrogates. Full framework: **493 detections** across 6 signal types (279 from geometric embeddings, 214 from standard nonlinear features).
 
-**[Explore the Structure Atlas](https://nullphase.net/sa)** — interactive 3D visualization of 179 data sources mapped through 233 geometric metrics.
+**[Explore the Structure Atlas](https://nullphase.net/sa)** — interactive 3D visualization of 211 data sources mapped through 200 geometric metrics. **[Geometry Guide](https://nullphase.net/sa/guide/)** — what each geometry measures, how it works, atlas rankings.
 
 ## Headline Results
 
@@ -168,7 +168,7 @@ Twelve elementary CA rules spanning all four Wolfram complexity classes, analyze
 
 ### Structure Atlas: how the framework organizes the world
 
-179 data sources from 16 domains — chaos, number theory, noise, waveforms, bearings, binary, DNA, medical (ECG/EEG), financial, motion, astronomy, climate, speech, quantum, geophysics, exotic — mapped into 233-metric structure space. At 12,000 bytes per chunk, effective dimensionality = 8.9 (PC1+2 = 40.0%). Key findings:
+211 data sources from 16 domains — chaos, number theory, noise, waveforms, bearings, binary, DNA, medical (ECG/EEG), financial, motion, astronomy, climate, speech, quantum, geophysics, exotic — mapped into 200-metric structure space. At 16,384 bytes per chunk, effective dimensionality = 9.1 (PC1+2 = 39.5%). Key findings:
 
 - **Cross-domain twins**: EEG Eyes Closed ↔ Bearing Outer (d=0.084), EEG Seizure ↔ Speech (d=0.18), financial returns ↔ accelerometer (NASDAQ ↔ Accel Stairs d=0.16)
 - **DNA is unique**: synthetic and real DNA cluster tightly (Synthetic DNA ↔ DNA Chimp d=0.001), isolated from everything else in its own cluster
@@ -179,7 +179,7 @@ Twelve elementary CA rules spanning all four Wolfram complexity classes, analyze
 ![Structure Atlas 3D](docs/figures/structure_atlas_3d.png)
 ![Structure Atlas Techniques](docs/figures/structure_atlas_techniques.png)
 
-→ `investigations/1d/structure_atlas.py` · [Interactive 3D Atlas](https://nullphase.net/sa)
+→ `investigations/1d/structure_atlas.py` · [Interactive 3D Atlas](https://nullphase.net/sa) · [Geometry Guide](https://nullphase.net/sa/guide/)
 
 ### Bearing fault diagnosis (CWRU dataset)
 
@@ -220,9 +220,9 @@ Geometric metrics outperform standard statistical tests: RANDU has 44 geometric 
 
 → `investigations/1d/rng.py`
 
-### Ablation: 233 metrics → 20 effective dimensions
+### Ablation: 200 metrics → ~20 effective dimensions
 
-An honest self-assessment: a 14-feature simple baseline (entropy, autocorrelation, spectral slope, permutation entropy, kurtosis) detects the same phenomena as the full framework — 9-12 significant features across all test cases. The 233 framework metrics collapse to ~20 independent dimensions at 95% explained variance, with 212 metrics >95% redundant with another metric. But exotic geometries contribute 90-95% of all detections (e.g., heartbeat: simple=11, framework=182). Greedy geometry selection reaches 90% of max detections at 33 geometries. The framework is an amplifier — with one critical exception: [surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves geometric embeddings capture nonlinear structure simple features provably cannot.
+An honest self-assessment: a 14-feature simple baseline (entropy, autocorrelation, spectral slope, permutation entropy, kurtosis) detects the same phenomena as the full framework — 9-12 significant features across all test cases. The framework metrics collapse to ~20 independent dimensions at 95% explained variance. But exotic geometries contribute 90-95% of all detections (e.g., heartbeat: simple=11, framework=182). Greedy geometry selection reaches 90% of max detections at 33 geometries. The framework is an amplifier — with one critical exception: [surrogate testing](#exotic-geometries-detect-nonlinear-structure-simple-features-cannot) proves geometric embeddings capture nonlinear structure simple features provably cannot.
 
 → `investigations/1d/ablation.py`
 
@@ -238,7 +238,7 @@ python quickstart.py
 Output:
 ```
 EXOTIC GEOMETRY FRAMEWORK - QUICKSTART
-[OK] Loaded 44 geometries
+[OK] Loaded 54 geometries
 
 Data                 |  E8 roots |  Heis. twist |    Sol aniso |   Penrose 5f
 Random               |        73 |          0.1 |         3.52 |       0.9891
@@ -263,7 +263,7 @@ import numpy as np
 
 data = np.random.randint(0, 256, 2000, dtype=np.uint8)
 
-# All 44 geometries
+# All 54 geometries
 analyzer = GeometryAnalyzer().add_all_geometries()
 results = analyzer.analyze(data)
 
@@ -350,9 +350,9 @@ encoded = encode_float_to_unit(float_array)
 | **Fractal (Mandelbrot)** | `interior_fraction` | Escape dynamics, set membership | Bearing inner race d=5.5 |
 | **Fractal (Julia)** | `connectedness` | Julia set structure, stability | Bearing inner race d=4.2 |
 
-Full catalog of all 52 geometries (44 1D + 8 2D): [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATALOG.md)
+Full catalog of all 62 geometries (54 1D + 8 2D): [docs/GEOMETRY_CATALOG.md](docs/GEOMETRY_CATALOG.md)
 
-## Investigations (51 1D + 19 2D = 70 scripts)
+## Investigations (54 1D + 19 2D = 73 scripts)
 
 ### 1D (byte stream analysis)
 
@@ -382,7 +382,7 @@ Full catalog of all 52 geometries (44 1D + 8 2D): [docs/GEOMETRY_CATALOG.md](doc
 | [bearing_fault.py](investigations/1d/bearing_fault.py) | Bearing faults (CWRU) | 4 conditions distinguished, fractals = inner race specialists |
 | [bearing_fault_baseline.py](investigations/1d/bearing_fault_baseline.py) | Bearing baseline | Exotic geometries vs standard features comparison |
 | [bearing_fault_ml.py](investigations/1d/bearing_fault_ml.py) | Bearing ML | SVM classifier on geometric features |
-| [structure_atlas.py](investigations/1d/structure_atlas.py) | Structure Atlas | 179 sources, 16 domains, 8.9D structure space |
+| [structure_atlas.py](investigations/1d/structure_atlas.py) | Structure Atlas | 211 sources, 16 domains, 9.1D structure space |
 | [math_constants.py](investigations/1d/math_constants.py) | Math constants | CF taxonomy, Pi CF ≈ Gauss-Kuzmin, representation fingerprints |
 | [binary_anatomy.py](investigations/1d/binary_anatomy.py) | ISA taxonomy | x86/ARM/WASM/JVM distinguishable (85-101 sig) |
 | [quantum_geometry.py](investigations/1d/quantum_geometry.py) | Quantum wavefunctions | Coherence d≈4000, energy levels fingerprinted |
@@ -436,7 +436,7 @@ Full catalog of all 52 geometries (44 1D + 8 2D): [docs/GEOMETRY_CATALOG.md](doc
 
 Every comparison uses:
 - **Shuffled baselines** to separate ordering effects from distribution effects
-- **Bonferroni correction** for multiple testing (typically alpha = 0.05/233)
+- **Bonferroni correction** for multiple testing (typically alpha = 0.05/200)
 - **Cohen's d** effect sizes (not just p-values)
 - **20-30 trials** per condition
 
@@ -446,18 +446,25 @@ The framework produces zero false positives on validated random sources and corr
 
 Equally important: the framework's known limits.
 
-- **AES-CTR vs random**: Indistinguishable across all 44 geometries, preprocessings, and combination strategies. This is the fundamental limit.
+- **AES-CTR vs random**: Indistinguishable across all 54 geometries, preprocessings, and combination strategies. This is the fundamental limit.
 - **XorShift128**: Undetected raw (0 sig), but delay embedding reveals 2 sig metrics via Thurston height_drift — borderline
 - **MT19937**: 1 borderline detection (S² × ℝ sphere_concentration). Essentially passes at byte level
-- **Standard map, Arnold cat map**: Uniformly mixing → look random
 - **Matrix embedding (Hamming syndrome coding)**: Invisible to all geometries at all rates — too few pixel changes
 - **LSB replacement/matching at sub-100% rates**: Detectable only at 100% embedding via raw bytes; bitplane extraction does not help
 
 See [docs/NEGATIVE_RESULTS.md](docs/NEGATIVE_RESULTS.md).
 
+### Ordinal data and encoding dependence
+
+The framework operates on uint8 byte sequences where values 0–255 carry ordinal meaning — the geometric embeddings use the ordering, not just the identity, of byte values. This has two consequences:
+
+1. **Encoding is a modeling choice.** How real-valued data is mapped to bytes affects results. Linear quantization, log scaling, and percentile encoding produce different geometric fingerprints of the same underlying signal. Some geometries are encoding-invariant (they depend only on ordinal rank, not value spacing) — these are marked in the [geometry guide](https://nullphase.net/sa/guide/).
+
+2. **Nominal/categorical data needs care.** For data with no natural ordering (e.g., protocol type IDs, categorical labels), the byte value assignment is arbitrary and results will be encoding-dependent. Ordinal data (sensor readings, signal amplitudes, pixel values) is the natural domain.
+
 ## Complete Results
 
-All validated findings and negative results across 70 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
+All validated findings and negative results across 73 investigations: [docs/FINDINGS.md](docs/FINDINGS.md)
 
 ## Dependencies
 
