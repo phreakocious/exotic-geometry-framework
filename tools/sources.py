@@ -1088,6 +1088,97 @@ def gen_circle_critical(rng, size):
 
 
 @source(
+    "Circle Map Quasiperiodic",
+    domain="chaos",
+    description="Sine circle map at K=0 with golden-mean rotation --- pure quasiperiodic motion on a torus, "
+    "deterministic but never periodic, flat spectrum with dense peaks at golden-mean harmonics",
+)
+def gen_circle_quasiperiodic(rng, size):
+    omega = (np.sqrt(5) - 1) / 2
+    K = 0.0  # no nonlinearity → pure rotation
+    theta = rng.random()
+    for _ in range(500):
+        theta = (theta + omega) % 1.0
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        theta = (theta + omega) % 1.0
+        vals[i] = int(theta * 255)
+    return vals
+
+
+@source(
+    "Standard Map K=0.5 (Mixed)",
+    domain="chaos",
+    description="Chirikov standard map at K=0.5 --- mixed phase space where large KAM islands coexist "
+    "with thin chaotic layers, the transitional regime between integrable and fully chaotic",
+)
+def gen_standard_map_mixed(rng, size):
+    K = 0.5
+    theta = rng.random() * 2 * np.pi
+    p = rng.random() * 2 * np.pi
+    for _ in range(500):
+        p = (p + K * np.sin(theta)) % (2 * np.pi)
+        theta = (theta + p) % (2 * np.pi)
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        p = (p + K * np.sin(theta)) % (2 * np.pi)
+        theta = (theta + p) % (2 * np.pi)
+        vals[i] = int(theta / (2 * np.pi) * 255) % 256
+    return vals
+
+
+@source(
+    "Noisy Sine (SNR 3 dB)",
+    domain="waveform",
+    description="Sine wave buried in equal-power Gaussian noise (SNR=3 dB) --- the perceptual boundary where "
+    "periodicity is barely detectable, transitional between C1 waveform and C5 noise regimes",
+)
+def gen_noisy_sine_3db(rng, size):
+    t = np.linspace(0, 20 * np.pi, size)
+    signal = np.sin(t)
+    noise_power = 10 ** (-3 / 10)  # SNR = 3 dB
+    mixed = signal + np.sqrt(noise_power) * rng.standard_normal(size)
+    lo, hi = np.percentile(mixed, [0.5, 99.5])
+    return np.clip(255 * (mixed - lo) / (hi - lo), 0, 255).astype(np.uint8)
+
+
+@source(
+    "Logistic r=3.74 (Period-5 Window)",
+    domain="chaos",
+    description="Logistic map inside the period-5 stability window at r=3.74 --- an island of order "
+    "embedded in the chaotic regime, intermittent near its boundary",
+)
+def gen_logistic_p5(rng, size):
+    x = 0.1 + 0.8 * rng.random()
+    r = 3.74
+    for _ in range(1000):
+        x = r * x * (1.0 - x)
+    vals = np.zeros(size, dtype=np.uint8)
+    for i in range(size):
+        x = r * x * (1.0 - x)
+        vals[i] = int(x * 255)
+    return vals
+
+
+@source(
+    "Henon Near-Crisis (a=1.2)",
+    domain="chaos",
+    description="Henon map at a=1.2, b=0.3 --- near the boundary crisis where the attractor collides with "
+    "its basin boundary, producing intermittent bursts of transient chaos",
+)
+def gen_henon_crisis(rng, size):
+    a, b = 1.2, 0.3
+    x, y = 0.1 * rng.random(), 0.1 * rng.random()
+    for _ in range(1000):
+        x, y = 1 - a * x * x + y, b * x
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        x, y = 1 - a * x * x + y, b * x
+        vals[i] = np.clip(int((x + 1.5) / 3.0 * 255), 0, 255)
+    return vals
+
+
+@source(
     "Perlin Noise",
     domain="noise",
     description="Spectral Perlin-like noise --- coherent smooth fluctuations with 1/f amplitude falloff, "
@@ -2415,6 +2506,58 @@ def gen_vlf_eclipse(rng, size):
 )
 def gen_vlf_baseline(rng, size):
     data = _get_vlf_baseline()
+    return _real_data_gen(data, rng, size)
+
+
+_SEISMIC_PWAVE = None
+_SEISMIC_NOISE = None
+
+
+def _get_seismic_pwave():
+    global _SEISMIC_PWAVE
+    if _SEISMIC_PWAVE is not None:
+        return _SEISMIC_PWAVE
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "data" / "seismic" / "pwave_concat.npy"
+    if not p.exists():
+        _SEISMIC_PWAVE = np.array([])
+        return _SEISMIC_PWAVE
+    _SEISMIC_PWAVE = np.load(p).astype(np.float64)
+    return _SEISMIC_PWAVE
+
+
+def _get_seismic_noise():
+    global _SEISMIC_NOISE
+    if _SEISMIC_NOISE is not None:
+        return _SEISMIC_NOISE
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[1] / "data" / "seismic" / "noise_concat.npy"
+    if not p.exists():
+        _SEISMIC_NOISE = np.array([])
+        return _SEISMIC_NOISE
+    _SEISMIC_NOISE = np.load(p).astype(np.float64)
+    return _SEISMIC_NOISE
+
+
+@source(
+    "Earthquake P-wave",
+    domain="geophysics",
+    description="P-wave arrivals from 80 earthquakes (M3.0-5.4, 111-498 km) at IU.ANMO "
+    "--- 40 sps broadband vertical --- impulsive, anti-persistent (low Hurst)",
+)
+def gen_seismic_pwave(rng, size):
+    data = _get_seismic_pwave()
+    return _real_data_gen(data, rng, size)
+
+
+@source(
+    "Seismic Noise (ANMO)",
+    domain="geophysics",
+    description="Verified-quiet ambient seismic noise at IU.ANMO (no earthquakes) "
+    "--- 40 sps broadband vertical --- persistent microseismic hum (high Hurst)",
+)
+def gen_seismic_noise(rng, size):
+    data = _get_seismic_noise()
     return _real_data_gen(data, rng, size)
 
 

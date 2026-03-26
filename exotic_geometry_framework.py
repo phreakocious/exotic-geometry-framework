@@ -204,6 +204,11 @@ class ExoticGeometry(ABC):
         """Short phrase: what phenomena this geometry reveals."""
         return ""
 
+    @property
+    def encoding_invariant(self) -> bool:
+        """True if this geometry's metrics depend only on rank order, not byte values."""
+        return False
+
     @abstractmethod
     def embed(self, data: np.ndarray) -> np.ndarray:
         """Embed data into this geometry's space."""
@@ -230,6 +235,7 @@ class ExoticGeometry(ABC):
             "description": self.description,
             "view": self.view,
             "detects": self.detects,
+            "encoding_invariant": self.encoding_invariant,
             "metrics": metrics,
         }
 
@@ -627,6 +633,10 @@ class D4Geometry(ExoticGeometry):
     @property
     def detects(self) -> str:
         return "Triality symmetry, 4-byte structural constraint"
+
+    @property
+    def encoding_invariant(self) -> bool:
+        return True
 
     @property
     def dimension(self) -> int:
@@ -1543,6 +1553,10 @@ class HeisenbergGeometry(ExoticGeometry):
     def detects(self) -> str:
 
         return "Correlation twist, phase coupling, area accumulation"
+
+    @property
+    def encoding_invariant(self) -> bool:
+        return self.center_data
 
     @property
     def dimension(self) -> int:
@@ -3509,6 +3523,10 @@ class BoltzmannGeometry(ExoticGeometry):
     def detects(self) -> str:
         return "Interaction strength, spin-glass frustration, criticality"
 
+    @property
+    def encoding_invariant(self) -> bool:
+        return True
+
     def embed(self, data: np.ndarray) -> np.ndarray:
         """Binary-quantize and create sliding windows in {-1, +1}^d."""
         data = self.validate_data(data)
@@ -3901,6 +3919,10 @@ class OrdinalPartitionGeometry(ExoticGeometry):
     @property
     def detects(self) -> str:
         return "Transition predictability, time irreversibility, edge-of-chaos complexity"
+
+    @property
+    def encoding_invariant(self) -> bool:
+        return True
 
     def embed(self, data: np.ndarray) -> np.ndarray:
         data = self.validate_data(data)
@@ -6388,6 +6410,10 @@ class HolderRegularityGeometry(ExoticGeometry):
         return "Local roughness, regularity spectrum, singularity strength"
 
     @property
+    def encoding_invariant(self) -> bool:
+        return True
+
+    @property
     def dimension(self) -> str:
         return "function space"
 
@@ -6871,6 +6897,10 @@ class SpectralGeometry(ExoticGeometry):
         return "Dominant frequency, spectral slope, bandwidth, periodicity"
 
     @property
+    def encoding_invariant(self) -> bool:
+        return True
+
+    @property
     def dimension(self) -> str:
         return "frequency"
 
@@ -7204,6 +7234,10 @@ class RecurrenceGeometry(ExoticGeometry):
     def detects(self) -> str:
 
         return "Recurrence rate, determinism, laminarity, trapping time"
+
+    @property
+    def encoding_invariant(self) -> bool:
+        return True
 
     @property
     def dimension(self) -> str:
@@ -9982,6 +10016,10 @@ class InflationGeometry(ExoticGeometry):
         return "Substitution inflation symmetry, linear complexity, bounded discrepancy"
 
     @property
+    def encoding_invariant(self) -> bool:
+        return True
+
+    @property
     def dimension(self) -> str:
         return "1D multi-scale"
 
@@ -11012,6 +11050,14 @@ class GeometryAnalyzer:
                 "question": q,
                 "detects": d,
                 "geometries": geo_names,
+            }
+        # Cross-cutting ordinal view: geometries whose metrics survive re-encoding
+        ordinal_geos = [g.name for g in self.geometries if g.encoding_invariant]
+        if ordinal_geos:
+            result["Ordinal"] = {
+                "question": "What structure survives re-encoding?",
+                "detects": "Rank-order patterns, symbolic dynamics, local roughness",
+                "geometries": ordinal_geos,
             }
         return result
 
