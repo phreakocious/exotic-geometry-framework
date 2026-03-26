@@ -26,6 +26,9 @@ OUT_DIR = Path("atlas/guide")
 ATLAS_BASE = ".."  # relative path from guide/ to atlas/
 
 
+
+
+
 # ---------------------------------------------------------------------------
 # Markdown parsing
 # ---------------------------------------------------------------------------
@@ -214,7 +217,13 @@ def get_geometry_catalog_entry(data: dict, geo_name: str) -> dict:
 
 def slugify(name: str) -> str:
     """Convert geometry name to URL-friendly slug."""
-    s = name.lower()
+    import unicodedata
+    # Decompose unicode, strip combining marks (ö → o, etc.)
+    s = unicodedata.normalize('NFKD', name)
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = s.lower()
+    # Replace special math chars
+    s = s.replace('²', '2').replace('ℝ', 'r').replace('ℙ', 'p')
     s = re.sub(r'[^a-z0-9]+', '-', s)
     s = s.strip('-')
     return s

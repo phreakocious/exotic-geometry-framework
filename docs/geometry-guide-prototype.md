@@ -24,7 +24,7 @@ Boltzmann frustration is the framework's most specific quasicrystal detector. In
 
 ---
 
-## Holder Regularity
+## Hölder Regularity
 
 **What it measures:** How rough or smooth the signal is at each point — and how much that roughness varies.
 
@@ -92,7 +92,7 @@ Ordinal Partition's forbidden_transitions is the primary separator between deter
 
 ---
 
-## Heisenberg (centered)
+## Heisenberg (Nil) (centered)
 
 **What it measures:** How much consecutive values twist around each other.
 
