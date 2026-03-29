@@ -55,3 +55,6 @@ NEW_TECHNIQUES.md
 
 # Logs
 *.log
+
+# Git worktrees
+.worktrees/
