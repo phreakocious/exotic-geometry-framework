@@ -268,6 +268,53 @@ class ExoticGeometry(ABC):
         return data / input_scale
 
 
+def _effective_root_directions(roots: np.ndarray) -> Tuple[np.ndarray, int]:
+    """Compute the effective root→direction map after per-window centering.
+
+    Per-window centering projects data onto the hyperplane sum=0.  On this
+    hyperplane, some roots become indistinguishable (they project to the
+    same direction, or to antiparallel directions which abs-dot equates).
+
+    Returns
+    -------
+    root_to_dir : ndarray of int, shape (n_roots,)
+        Maps each root index to its effective direction index.
+    n_dirs : int
+        Number of unique effective directions (the honest codebook size).
+    """
+    dim = roots.shape[1]
+    ones = np.ones(dim) / np.sqrt(dim)
+    projected = roots - np.outer(roots @ ones, ones)
+    norms = np.linalg.norm(projected, axis=1)
+
+    root_to_dir = np.full(len(roots), -1, dtype=int)
+    dir_reps = []  # representative normalized vectors
+
+    for i in range(len(roots)):
+        if norms[i] < 1e-10:
+            # Degenerate (e.g. (½,…,½) with sum=±dim/2) — assign to dir 0
+            # if no other match found below
+            continue
+        v = projected[i] / norms[i]
+        matched = False
+        for d, rep in enumerate(dir_reps):
+            if abs(v @ rep) > 0.9999:
+                root_to_dir[i] = d
+                matched = True
+                break
+        if not matched:
+            root_to_dir[i] = len(dir_reps)
+            dir_reps.append(v)
+
+    # Assign degenerate roots to a catch-all direction
+    if np.any(root_to_dir == -1):
+        catch_all = len(dir_reps)
+        dir_reps.append(np.zeros(dim))
+        root_to_dir[root_to_dir == -1] = catch_all
+
+    return root_to_dir, len(dir_reps)
+
+
 # =============================================================================
 # E8 LATTICE GEOMETRY
 # =============================================================================
@@ -289,6 +336,8 @@ class E8Geometry(ExoticGeometry):
         self.normalize = normalize
         self._roots = None
         self._roots_normalized = None
+        self._root_to_dir = None
+        self._n_effective_dirs = None
 
     @property
     def name(self) -> str:
@@ -326,6 +375,7 @@ class E8Geometry(ExoticGeometry):
             self._roots = self._compute_e8_roots()
             norms = np.linalg.norm(self._roots, axis=1, keepdims=True)
             self._roots_normalized = self._roots / norms
+            self._root_to_dir, self._n_effective_dirs = _effective_root_directions(self._roots)
         return self._roots
 
     @property
@@ -424,53 +474,142 @@ class E8Geometry(ExoticGeometry):
         return distances, coset
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute E8 metrics: diversity, alignment stats, entropy, coset balance, lattice distance."""
+        """Compute E8 metrics: evolved headline + decomposed components + generic workhorses."""
         embedded = self.embed(data)
         root_indices, alignments = self.find_closest_roots(embedded)
 
-        # Core metrics
-        unique_roots = len(set(root_indices))
-        diversity_ratio = unique_roots / 240  # Fraction of roots used
+        # Evolved components (ShinkaEvolve v3 gen 21).
+        components = self._evolved_structural_components(embedded)
 
-        # Alignment statistics
-        align_mean = np.mean(alignments)
-        align_std = np.std(alignments)
-
-        # Root usage entropy
-        counts = Counter(root_indices)
-        probs = np.array(list(counts.values())) / len(root_indices)
-        entropy = -np.sum(probs * np.log2(probs + 1e-10))
-        max_entropy = np.log2(min(len(root_indices), 240))
-        normalized_entropy = entropy / max_entropy if max_entropy > 0 else 0
-
-        # E8-specific: coset balance from root alignment
-        # Roots 0-111 are Type 1 (±eᵢ ± eⱼ, integer coords)
-        # Roots 112-239 are Type 2 (±½...±½, half-integer coords)
-        half_int_fraction = np.mean(root_indices >= 112)
-
-        # E8-specific: lattice snap coset via parity-snap
-        # Which coset (integer vs half-integer) the actual nearest lattice
-        # point belongs to — distinct from root-direction coset above
-        snap_distances, snap_cosets = self._nearest_e8_lattice_points(embedded)
-        snap_coset_fraction = float(np.mean(snap_cosets))
-        lattice_distance = float(np.mean(snap_distances))
+        # Generic root-counting metrics (workhorses for atlas discrimination)
+        n_eff = self._n_effective_dirs or len(self.roots_normalized)
+        dir_idx = np.array([self._root_to_dir[i] for i in root_indices]) if self._root_to_dir is not None else root_indices
+        unique = len(set(dir_idx))
+        counts = Counter(dir_idx)
+        probs = np.array(list(counts.values())) / len(dir_idx)
+        ent = -np.sum(probs * np.log2(probs + 1e-10))
+        max_ent = np.log2(min(len(dir_idx), n_eff))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "unique_roots": unique_roots,
-                "alignment_std": align_std,
-                "entropy": entropy,
-                "coset_balance": float(half_int_fraction),
-                "snap_coset_fraction": snap_coset_fraction,
-                "lattice_distance": lattice_distance,
+                "e8_structure_score": components['e8_structure_score'],
+                "closure_score": components['closure_score'],
+                "edge_flow": components['edge_flow'],
+                "vel_corr": components['vel_corr'],
+                "std_profile": components['std_profile'],
+                "diversity_ratio": unique / n_eff,
+                "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
             },
             raw_data={
                 "root_indices": root_indices,
                 "alignments": alignments,
-                "root_counts": dict(counts),
+                "root_counts": dict(Counter(root_indices)),
             }
         )
+
+    def _evolved_structural_components(self, embedded: np.ndarray):
+        """E8 structure score (ShinkaEvolve v3 gen 21, cleaned).
+
+        Exploits rotation-invariant algebraic properties of E8: discrete Gram
+        values {0, ±0.5, ±1}, lattice closure under root differences, and
+        nearest-neighbor graph connectivity.
+
+        Returns dict of individual components AND the combined headline product.
+        """
+        roots_n = self.roots_normalized
+        n_roots = len(roots_n)
+
+        dots = embedded @ roots_n.T
+
+        k_local = min(8, n_roots)
+        top_k_idx = np.argpartition(-dots, k_local, axis=1)[:, :k_local]
+        rows = np.arange(len(embedded))[:, None]
+        top_k_align = dots[rows, top_k_idx]
+        order = np.argsort(-top_k_align, axis=1)
+        top_k_idx = np.take_along_axis(top_k_idx, order, axis=1)
+        top_k_align = np.take_along_axis(top_k_align, order, axis=1)
+
+        std_profile = float(np.sum(np.std(top_k_align, axis=0)))
+        U_all = roots_n[top_k_idx]  # (N, k_local, 8)
+
+        # --- Discrete grammar: distance of local Gram entries to E8's {0, 0.5, 1}
+        intra_gram = np.matmul(U_all, U_all.transpose(0, 2, 1))
+        abs_gram = np.abs(intra_gram)
+        intra_dp = float(np.mean(np.minimum(
+            np.minimum(np.abs(abs_gram - 0.0), np.abs(abs_gram - 0.5)),
+            np.abs(abs_gram - 1.0))))
+        discrete_grammar = float(1.0 / (1.0 + 10.0 * intra_dp))
+
+        # Local eigenvalue variance
+        eigvals = np.linalg.eigvalsh(intra_gram)
+        eig_var = float(np.mean(np.var(eigvals, axis=0)))
+
+        # --- Lattice closure + edge flow
+        k_trans = min(4, k_local)
+        U = U_all[:-1, :k_trans]
+        V = U_all[1:, :k_trans]
+        diffs = (V[:, None, :, :] - U[:, :, None, :]).reshape(-1, 8)
+        cross_dots = np.sum(
+            U[:, :, None, :] * V[:, None, :, :], axis=-1).reshape(-1)
+        changes = cross_dots < 0.999
+
+        if not np.any(changes):
+            closure_score = 1.0
+            edge_flow = 0.0
+            inter_dp = 0.0
+        else:
+            diffs_c = diffs[changes]
+            cross_abs = np.abs(cross_dots[changes])
+
+            norms = np.linalg.norm(diffs_c, axis=1, keepdims=True) + 1e-15
+            diff_dirs = diffs_c / norms
+            max_align = np.max(np.abs(diff_dirs @ roots_n.T), axis=1)
+            closure_score = float(max(0.0, np.mean(max_align) - np.std(max_align)))
+
+            c_dist_0 = np.abs(cross_abs - 0.0)
+            c_dist_05 = np.abs(cross_abs - 0.5)
+            c_dist_1 = np.abs(cross_abs - 1.0)
+            inter_dp = float(np.mean(np.minimum(
+                np.minimum(c_dist_0, c_dist_05), c_dist_1)))
+
+            # Softened edge flow: Gaussian kernel (sigma=0.03) instead of 1e-3
+            _sigma2 = 2 * 0.03**2
+            edge_w = np.exp(-(cross_abs - 0.5)**2 / _sigma2)
+            ortho_w = np.exp(-cross_abs**2 / _sigma2)
+            edge_flow = float(np.sum(edge_w)) / (float(np.sum(ortho_w)) + 1.0)
+
+        # --- Velocity correlation
+        d_diffs = embedded[1:] - embedded[:-1]
+        d_norms = np.linalg.norm(d_diffs, axis=1, keepdims=True) + 1e-15
+        d_dirs = d_diffs / d_norms
+        r_diffs = U_all[1:, 0, :] - U_all[:-1, 0, :]
+        r_norms = np.linalg.norm(r_diffs, axis=1, keepdims=True) + 1e-15
+        valid_vel = (r_norms.flatten() > 1e-5) & (d_norms.flatten() > 1e-5)
+        if np.any(valid_vel):
+            vel_corr = np.sum(
+                d_dirs[valid_vel] * (r_diffs[valid_vel] / r_norms[valid_vel]),
+                axis=1)
+            mean_vel_corr = float(np.mean(np.abs(vel_corr)))
+        else:
+            mean_vel_corr = 0.0
+
+        # --- Combined structure score ---
+        structure_factor = 1.0 / (1.0 + 5.0 * eig_var
+                                  + 15.0 * intra_dp + 15.0 * inter_dp)
+        lattice_boost = 1.0 + 2.0 * edge_flow
+        e8_structure_score = float(
+            std_profile * closure_score * structure_factor
+            * lattice_boost * (1.0 + mean_vel_corr))
+
+        return {
+            'e8_structure_score': e8_structure_score,
+            'closure_score': closure_score,
+            'discrete_grammar': discrete_grammar,
+            'edge_flow': edge_flow,
+            'vel_corr': mean_vel_corr,
+            'std_profile': std_profile,
+        }
 
 
 # =============================================================================
@@ -598,17 +737,18 @@ class G2Geometry(ExoticGeometry):
 
 
 # =============================================================================
-# D4 TRIALITY GEOMETRY
+# D4 COXETER GEOMETRY (TRIALITY)
 # =============================================================================
 
 class D4Geometry(ExoticGeometry):
     """
-    D4 Root System with Triality — 4-byte structural symmetry.
+    D4 Root System — 4-byte structural symmetry.
 
     24 roots (±eᵢ ± eⱼ) in 4D. D4 is the only Lie algebra with triality:
     an order-3 outer automorphism permuting vector, spinor+, and spinor−
-    representations of Spin(8). The triality_invariance metric measures how
-    symmetric the data's root usage is under this automorphism.
+    representations of Spin(8). Six rotation-invariant structural probes
+    (ShinkaEvolve v5b) detect D4's edge graph, spectral eigenspaces, and
+    lattice closure properties.
     """
 
     def __init__(self, window_size: int = 4, normalize: bool = True):
@@ -616,7 +756,11 @@ class D4Geometry(ExoticGeometry):
         self.normalize = normalize
         self._roots = None
         self._roots_normalized = None
-        self._triality_perm = None
+        self._root_to_dir = None
+        self._n_effective_dirs = None
+        self._is_edge = None
+        self._is_ortho = None
+        self._edge_degree = None
 
     @property
     def name(self) -> str:
@@ -624,7 +768,7 @@ class D4Geometry(ExoticGeometry):
 
     @property
     def description(self) -> str:
-        return "Projects 4-byte windows onto the 24 roots of D4 and measures triality invariance — the unique order-3 symmetry of Spin(8)."
+        return "Projects 4-byte windows onto the 24 roots of D4 and measures structural probes — edge graph, spectral coherence, lattice closure."
 
     @property
     def view(self) -> str:
@@ -632,11 +776,7 @@ class D4Geometry(ExoticGeometry):
 
     @property
     def detects(self) -> str:
-        return "Triality symmetry, 4-byte structural constraint"
-
-    @property
-    def encoding_invariant(self) -> bool:
-        return True
+        return "D4 lattice structure, 4-byte symmetry constraints"
 
     @property
     def dimension(self) -> int:
@@ -648,7 +788,11 @@ class D4Geometry(ExoticGeometry):
             self._roots = self._compute_roots()
             norms = np.linalg.norm(self._roots, axis=1, keepdims=True)
             self._roots_normalized = self._roots / norms
-            self._triality_perm = self._compute_triality_permutation()
+            self._root_to_dir, self._n_effective_dirs = _effective_root_directions(self._roots)
+            gram = self._roots_normalized @ self._roots_normalized.T
+            self._is_edge = np.abs(np.abs(gram) - 0.5) < 1e-4
+            self._is_ortho = np.abs(gram) < 1e-4
+            self._edge_degree = np.sum(self._is_edge, axis=1)
         return self._roots
 
     @property
@@ -667,28 +811,6 @@ class D4Geometry(ExoticGeometry):
                 r[j] = sj
                 roots.append(r)
         return np.array(roots)
-
-    def _compute_triality_permutation(self) -> np.ndarray:
-        """Permutation of roots under the order-3 triality automorphism.
-
-        Derived from the D4 Dynkin diagram: simple roots α₁=e₁−e₂ (leg),
-        α₂=e₂−e₃ (center), α₃=e₃−e₄ (leg), α₄=e₃+e₄ (leg).
-        Triality cycles α₁→α₃→α₄→α₁, fixing α₂.
-        """
-        T = 0.5 * np.array([
-            [ 1,  1,  1,  1],
-            [ 1,  1, -1, -1],
-            [ 1, -1,  1, -1],
-            [-1,  1,  1, -1],
-        ], dtype=float)
-        roots = self._roots
-        n = len(roots)
-        perm = np.zeros(n, dtype=int)
-        for i in range(n):
-            rotated = T @ roots[i]
-            dists = np.sum((roots - rotated) ** 2, axis=1)
-            perm[i] = np.argmin(dists)
-        return perm
 
     def embed(self, data: np.ndarray) -> np.ndarray:
         data = self.validate_data(data)
@@ -709,54 +831,139 @@ class D4Geometry(ExoticGeometry):
         return np.argmax(abs_dots, axis=1), np.max(abs_dots, axis=1)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """D4 metrics: 6 evolved structural probes + headline + generic workhorses."""
         embedded = self.embed(data)
         idx, aligns = self.find_closest_roots(embedded)
-        _ = self.roots  # ensure triality perm computed
-        n_roots = 24
-        unique = len(set(idx))
-        counts = Counter(idx)
-        probs_arr = np.zeros(n_roots)
-        for k, v in counts.items():
-            probs_arr[k] = v
-        probs_arr = probs_arr / (len(idx) + 1e-10)
+        _ = self.roots  # ensure edge/ortho computed
 
-        nonzero = probs_arr[probs_arr > 0]
-        ent = -np.sum(nonzero * np.log2(nonzero))
-        max_ent = np.log2(min(len(idx), n_roots))
+        components = self._structural_probes(embedded, idx, aligns)
 
-        # Triality invariance: TV distance between distribution and its triality-rotations.
-        # Exclude degenerate windows (constant bytes → zero vector → arbitrary root
-        # assignment). These inflate triality when they land on fixed-point roots.
-        good = aligns > 0.01
-        if good.sum() >= 20:
-            good_counts = Counter(idx[good])
-            p0 = np.zeros(n_roots)
-            for k, v in good_counts.items():
-                p0[k] = v
-            p0 /= p0.sum()
-        else:
-            # Too few non-degenerate windows — triality is undefined
-            p0 = None
-        if p0 is not None:
-            p1 = p0[self._triality_perm]
-            p2 = p1[self._triality_perm]
-            tv01 = 0.5 * np.sum(np.abs(p0 - p1))
-            tv02 = 0.5 * np.sum(np.abs(p0 - p2))
-            tv12 = 0.5 * np.sum(np.abs(p1 - p2))
-            triality_invariance = float(1.0 - (tv01 + tv02 + tv12) / 3.0)
-        else:
-            triality_invariance = 0.0
+        # Generic workhorses
+        n_eff = self._n_effective_dirs or len(self.roots_normalized)
+        dir_idx = np.array([self._root_to_dir[i] for i in idx]) if self._root_to_dir is not None else idx
+        unique = len(set(dir_idx))
+        counts = Counter(dir_idx)
+        probs = np.array(list(counts.values())) / len(dir_idx)
+        ent = -np.sum(probs * np.log2(probs + 1e-10))
+        max_ent = np.log2(min(len(dir_idx), n_eff))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "diversity_ratio": unique / n_roots,
-                "alignment_mean": float(np.mean(aligns)),
+                "d4_structure_score": components['d4_structure_score'],
+                "triplet_temporal": components['triplet_temporal'],
+                "neighborhood_asymmetry": components['neighborhood_asymmetry'],
+                "peakedness": components['peakedness'],
+                "structural_coherence": components['structural_coherence'],
+                "diversity_ratio": unique / n_eff,
                 "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
-                "triality_invariance": triality_invariance,
             },
             raw_data={"root_indices": idx, "alignments": aligns}
         )
+
+    def _structural_probes(self, embedded, best_idx, best_align) -> dict:
+        """Six rotation-invariant structural probes (ShinkaEvolve v5b).
+
+        Returns individual components AND the additive headline.
+        """
+        n_windows = len(embedded)
+        n_roots = len(self.roots_normalized)
+        zero = {'d4_structure_score': 0.0, 'triplet_temporal': 0.0,
+                'neighborhood_asymmetry': 0.0, 'peakedness': 0.0,
+                'structural_coherence': 0.0, 'spectral_coherence': 0.0}
+
+        # Recompute edge/ortho structure from current roots (may differ from
+        # __init__ if roots were swapped by ablation variant factory)
+        gram = self.roots_normalized @ self.roots_normalized.T
+        is_edge = np.abs(np.abs(gram) - 0.5) < 1e-4
+        is_ortho = np.abs(gram) < 1e-4
+        edge_degree = np.sum(is_edge, axis=1)
+
+        if n_windows < 10 or np.mean(edge_degree) < 1.0:
+            return zero
+
+        dots = np.abs(embedded @ self.roots_normalized.T)
+
+        # --- TEMPORAL: triplet graph traversal ---
+        temporal = 0.0
+        if n_windows >= 3:
+            idx_A, idx_B, idx_C = best_idx[:-2], best_idx[1:-1], best_idx[2:]
+            is_step1 = is_edge[idx_A, idx_B]
+            is_step2 = is_edge[idx_B, idx_C]
+            is_walk = is_step1 & is_step2
+            scores = np.zeros(len(idx_A))
+            scores[is_walk & is_edge[idx_A, idx_C]] = 2.0
+            scores[is_walk & is_ortho[idx_A, idx_C]] = 1.0
+            scores[is_walk & (idx_A == idx_C)] = -2.0
+            weights = np.minimum.reduce([best_align[:-2], best_align[1:-1], best_align[2:]])
+            temporal = float(np.sum(scores * weights) / (np.sum(weights) + 1e-9))
+
+        # --- STATIC: top-k fuzzy neighborhood asymmetry ---
+        k = min(3, n_roots)
+        top_k_idx = np.argpartition(-dots, k, axis=1)[:, :k]
+        rows = np.arange(n_windows)[:, None]
+        top_k_align = dots[rows, top_k_idx]
+        order = np.argsort(-top_k_align, axis=1)
+        top_k_idx = np.take_along_axis(top_k_idx, order, axis=1)
+        top_k_align = np.take_along_axis(top_k_align, order, axis=1)
+
+        coh_energy = dots @ is_edge.astype(float).T
+        incoh_energy = dots @ is_ortho.astype(float).T
+        tk_coh = coh_energy[rows, top_k_idx]
+        tk_incoh = incoh_energy[rows, top_k_idx]
+        asym = (tk_coh - tk_incoh) / (tk_coh + tk_incoh + 1e-9)
+        fuzzy = np.sum(top_k_align * asym, axis=1) / (np.sum(top_k_align, axis=1) + 1e-9)
+        static = float(np.mean(fuzzy))
+
+        # --- PEAKEDNESS: alignment vector kurtosis ---
+        l2_sq = np.sum(dots**2, axis=1)
+        l4 = np.sum(dots**4, axis=1)
+        pr = l4 / (l2_sq**2 + 1e-9)
+        pk_scores = pr * n_roots - 1.0
+        peakedness = float(np.sum(np.maximum(0, pk_scores) * l2_sq) / (np.sum(l2_sq) + 1e-9))
+
+        # --- ALIGNMENT VARIANCE ---
+        align_var = float(np.std(best_align) * np.sqrt(n_roots))
+
+        # --- STRUCTURAL COHERENCE: covariance vs Gram structure ---
+        signed_dots = embedded @ self.roots_normalized.T
+        centered = signed_dots - np.mean(signed_dots, axis=0, keepdims=True)
+        cov = (centered.T @ centered) / n_windows
+        gram = self.roots_normalized @ self.roots_normalized.T
+        is_anti = np.isclose(gram, -1.0)
+        is_struct = is_edge | is_anti
+        struct_num = np.sum(gram * cov * is_struct)
+        struct_den = np.sum(is_struct) + 1e-9
+        ortho_incoh = np.sum(np.abs(cov * is_ortho)) / (np.sum(is_ortho) + 1e-9)
+        struct_coh = float((struct_num / struct_den) / (ortho_incoh + 1e-9))
+
+        # --- SPECTRAL COHERENCE: eigenspace energy ratio ---
+        spectral = 0.0
+        adj = is_edge.astype(float)
+        if n_roots > 20 and np.all(edge_degree == 16):
+            try:
+                eigvals, eigvecs = np.linalg.eigh(adj)
+                coeffs = centered @ eigvecs
+                energy = np.mean(coeffs**2, axis=0)
+                neg_space = np.isclose(eigvals, -8.0, atol=1e-3)
+                pos_space = np.isclose(eigvals, 16.0, atol=1e-3)
+                zero_space = np.isclose(eigvals, 0.0, atol=1e-3)
+                e_struct = np.sum(energy[neg_space]) + np.sum(energy[pos_space])
+                e_unstruct = np.sum(energy[zero_space])
+                spectral = float(e_struct / (e_unstruct + 1e-9))
+            except np.linalg.LinAlgError:
+                pass
+
+        headline = temporal + static + peakedness + align_var + struct_coh + spectral
+
+        return {
+            'd4_structure_score': float(headline),
+            'triplet_temporal': temporal,
+            'neighborhood_asymmetry': static,
+            'peakedness': peakedness,
+            'structural_coherence': struct_coh,
+            'spectral_coherence': spectral,
+        }
 
 
 # =============================================================================
@@ -777,6 +984,8 @@ class H3CoxeterGeometry(ExoticGeometry):
         self.normalize = normalize
         self._roots = None
         self._roots_normalized = None
+        self._root_to_dir = None
+        self._n_effective_dirs = None
 
     @property
     def name(self) -> str:
@@ -803,6 +1012,7 @@ class H3CoxeterGeometry(ExoticGeometry):
         if self._roots is None:
             self._roots = self._compute_roots()
             self._roots_normalized = self._roots.copy()  # already unit length
+            self._root_to_dir, self._n_effective_dirs = _effective_root_directions(self._roots)
         return self._roots
 
     @property
@@ -851,23 +1061,102 @@ class H3CoxeterGeometry(ExoticGeometry):
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         embedded = self.embed(data)
         idx, aligns = self.find_closest_roots(embedded)
-        n_roots = 30
-        unique = len(set(idx))
-        counts = Counter(idx)
-        probs = np.array(list(counts.values())) / len(idx)
+
+        # Decomposed components + headline product
+        components = self._nn_enrichment_components(embedded, idx)
+
+        # Generic root-counting metrics (workhorses for atlas discrimination)
+        n_eff = self._n_effective_dirs or len(self.roots_normalized)
+        dir_idx = np.array([self._root_to_dir[i] for i in idx]) if self._root_to_dir is not None else idx
+        unique = len(set(dir_idx))
+        counts = Counter(dir_idx)
+        probs = np.array(list(counts.values())) / len(dir_idx)
         ent = -np.sum(probs * np.log2(probs + 1e-10))
-        max_ent = np.log2(min(len(idx), n_roots))
-        # Axis-aligned (0-5) vs golden (6-29) preference
-        axis_frac = sum(counts.get(i, 0) for i in range(6)) / (len(idx) + 1e-10)
+        max_ent = np.log2(min(len(dir_idx), n_eff))
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "diversity_ratio": unique / n_roots,
-                "alignment_std": float(np.std(aligns)),
+                "nn_enrichment": components['nn_enrichment'],
+                "temporal_coherence": components['temporal_coherence'],
+                "path_closure": components['path_closure'],
+                "diversity_ratio": unique / n_eff,
                 "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
             },
             raw_data={"root_indices": idx, "alignments": aligns}
         )
+
+    def _nn_enrichment_components(self, embedded, best_idx) -> dict:
+        """Icosahedral coherence: anisotropic graph dynamics.
+
+        Rotation-invariant metric (ShinkaEvolve v3 gen 44, D1=0.918).
+        Returns individual components AND the combined headline product.
+        """
+        n_roots = len(self.roots_normalized)
+        zero = {'nn_enrichment': 0.0, 'gram_fingerprint': 0.0,
+                'temporal_coherence': 0.0, 'path_closure': 0.0,
+                'alignment_anisotropy': 0.0}
+        if len(best_idx) < 10:
+            return zero
+
+        phi = (1 + np.sqrt(5)) / 2.0
+        gram = self.roots_normalized @ self.roots_normalized.T
+
+        # Multi-lag gram fingerprint (geometric mean of lag-1 and lag-2).
+        h3_canonical = np.array([0.0, 1.0 / (2 * phi), 0.5, phi / 2.0, 1.0])
+        grams_l1 = np.abs(gram[best_idx[:-1], best_idx[1:]])
+        err_l1 = np.mean(np.min(np.abs(grams_l1[:, None] - h3_canonical), axis=1))
+        score_l1 = np.exp(-50.0 * err_l1)
+        if len(best_idx) >= 3:
+            grams_l2 = np.abs(gram[best_idx[:-2], best_idx[2:]])
+            err_l2 = np.mean(np.min(np.abs(grams_l2[:, None] - h3_canonical), axis=1))
+            score_l2 = np.exp(-50.0 * err_l2)
+            gram_score = np.sqrt(score_l1 * score_l2)
+        else:
+            gram_score = score_l1
+
+        # Adaptive adjacency + temporal coherence + path closure.
+        if gram_score > 0.5:
+            adj = np.isclose(np.abs(gram), 0.5, atol=1e-4)
+        else:
+            k_nn = min(4, n_roots - 1)
+            adj = np.zeros_like(gram, dtype=bool)
+            gram_abs = np.abs(gram.copy())
+            np.fill_diagonal(gram_abs, -np.inf)
+            top_idx = np.argpartition(-gram_abs, k_nn, axis=1)[:, :k_nn]
+            rows_arr = np.arange(n_roots)[:, None]
+            adj[rows_arr, top_idx] = True
+        np.fill_diagonal(adj, False)
+
+        k_avg = np.mean(np.sum(adj, axis=1))
+        baseline = k_avg / (n_roots - 1.0) if n_roots > 1 else 0
+        temporal = max(0.0, np.mean(adj[best_idx[:-1], best_idx[1:]]) - baseline)
+        closure = max(0.0, np.mean(adj[best_idx[:-2], best_idx[2:]]) - baseline)
+
+        # Alignment anisotropy: variance of a2/a1 ratios.
+        dots = np.abs(embedded @ self.roots_normalized.T)
+        k = min(2, dots.shape[1])
+        if k < 2:
+            anisotropy = 0.0
+        else:
+            top2_idx = np.argpartition(-dots, k, axis=1)[:, :k]
+            rows_arr = np.arange(len(embedded))[:, None]
+            top2_align = dots[rows_arr, top2_idx]
+            a1 = np.max(top2_align, axis=1)
+            a2 = np.min(top2_align, axis=1)
+            valid = a1 > 1e-7
+            anisotropy = float(np.var(a2[valid] / a1[valid])) if np.any(valid) else 0.0
+
+        base_signal = temporal + 0.5 * closure + 2.5 * anisotropy
+        headline = float(base_signal * (1.0 + 6.0 * gram_score))
+
+        return {
+            'nn_enrichment': headline,
+            'gram_fingerprint': float(gram_score),
+            'temporal_coherence': float(temporal),
+            'path_closure': float(closure),
+            'alignment_anisotropy': float(anisotropy),
+        }
 
 
 # =============================================================================
@@ -888,6 +1177,9 @@ class H4CoxeterGeometry(ExoticGeometry):
         self.normalize = normalize
         self._roots = None
         self._roots_normalized = None
+        self._root_to_dir = None
+        self._n_effective_dirs = None
+        self._is_edge = None
 
     @property
     def name(self) -> str:
@@ -914,6 +1206,7 @@ class H4CoxeterGeometry(ExoticGeometry):
         if self._roots is None:
             self._roots = self._compute_roots()
             self._roots_normalized = self._roots.copy()  # already unit length
+            self._root_to_dir, self._n_effective_dirs = _effective_root_directions(self._roots)
         return self._roots
 
     @property
@@ -921,6 +1214,15 @@ class H4CoxeterGeometry(ExoticGeometry):
         if self._roots_normalized is None:
             _ = self.roots
         return self._roots_normalized
+
+    @property
+    def is_edge(self) -> np.ndarray:
+        """600-cell edge adjacency: |gram| ≈ φ/2 ≈ 0.809."""
+        if self._is_edge is None:
+            phi = (1 + np.sqrt(5)) / 2
+            gram = self.roots_normalized @ self.roots_normalized.T
+            self._is_edge = np.abs(np.abs(gram) - phi / 2) < 1e-4
+        return self._is_edge
 
     def _compute_roots(self) -> np.ndarray:
         """120 roots of H4: vertices of the 600-cell (all unit length)."""
@@ -971,20 +1273,103 @@ class H4CoxeterGeometry(ExoticGeometry):
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         embedded = self.embed(data)
         idx, aligns = self.find_closest_roots(embedded)
-        n_roots = 120
-        unique = len(set(idx))
-        counts = Counter(idx)
-        probs = np.array(list(counts.values())) / len(idx)
+
+        # Decomposed components + headline product
+        components = self._lattice_closure_components(embedded, idx)
+
+        # Generic root-counting metrics (workhorses for atlas discrimination)
+        n_eff = self._n_effective_dirs or len(self.roots_normalized)
+        dir_idx = np.array([self._root_to_dir[i] for i in idx]) if self._root_to_dir is not None else idx
+        unique = len(set(dir_idx))
+        counts = Counter(dir_idx)
+        probs = np.array(list(counts.values())) / len(dir_idx)
         ent = -np.sum(probs * np.log2(probs + 1e-10))
-        max_ent = np.log2(min(len(idx), n_roots))
+        max_ent = np.log2(min(len(dir_idx), n_eff))
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "diversity_ratio": unique / n_roots,
+                "lattice_closure": components['lattice_closure'],
+                "edge_walk_fraction": components['edge_walk_fraction'],
+                "mean_walk_length": components['mean_walk_length'],
+                "closure_fidelity": components['closure_fidelity'],
+                "diversity_ratio": unique / n_eff,
                 "normalized_entropy": ent / max_ent if max_ent > 0 else 0,
             },
             raw_data={"root_indices": idx, "alignments": aligns}
         )
+
+    def _lattice_closure_components(self, embedded, best_idx) -> dict:
+        """Walk-length-weighted closure fidelity (ShinkaEvolve v3 gen 40).
+
+        Combines 600-cell edge walks with lattice closure (2I group property),
+        power-weighted by walk length². Rotation-invariant.
+        Returns individual components AND the combined headline.
+        """
+        zero = {'lattice_closure': 0.0, 'edge_walk_fraction': 0.0,
+                'mean_walk_length': 0.0, 'closure_fidelity': 0.0}
+        if len(best_idx) < 10:
+            return zero
+
+        # Quantize to signed roots
+        dots = embedded @ self.roots_normalized.T
+        rows = np.arange(len(embedded))
+        signs = np.sign(dots[rows, best_idx])
+        signed_roots = self.roots_normalized[best_idx] * signs[:, None]
+
+        # Identify edge transitions and contiguous walks
+        edge_transitions = self.is_edge[best_idx[:-1], best_idx[1:]]
+        edge_frac = float(np.mean(edge_transitions)) if len(edge_transitions) > 0 else 0.0
+        if not np.any(edge_transitions):
+            return {**zero, 'edge_walk_fraction': edge_frac}
+
+        padded_edges = np.concatenate(([False], edge_transitions, [False]))
+        diffs = np.diff(padded_edges.astype(np.int8))
+        starts = np.where(diffs == 1)[0]
+        ends = np.where(diffs == -1)[0]
+
+        if len(starts) == 0:
+            return {**zero, 'edge_walk_fraction': edge_frac}
+
+        walk_lengths = []
+        walk_closures = []
+
+        # Closure fidelity per walk
+        for s, e in zip(starts, ends):
+            v1_walk = signed_roots[s:e]
+            v2_walk = signed_roots[s + 1:e + 1]
+
+            diff_vecs = v1_walk - v2_walk
+            norms = np.linalg.norm(diff_vecs, axis=1, keepdims=True)
+
+            valid_mask = (norms > 1e-9).flatten()
+            if not np.any(valid_mask):
+                continue
+
+            diff_vecs_norm = diff_vecs[valid_mask] / norms[valid_mask]
+            closure_dots = np.abs(diff_vecs_norm @ self.roots_normalized.T)
+            avg_walk_closure = np.mean(np.max(closure_dots, axis=1))
+
+            walk_lengths.append(e - s)
+            walk_closures.append(avg_walk_closure)
+
+        if not walk_lengths:
+            return {**zero, 'edge_walk_fraction': edge_frac}
+
+        walk_lengths = np.array(walk_lengths, dtype=np.float64)
+        walk_closures = np.array(walk_closures, dtype=np.float64)
+
+        weights = np.power(walk_lengths, 2.0)
+        headline = float(np.sum(weights * walk_closures) / (np.sum(weights) + 1e-9))
+        mean_wl = float(np.mean(walk_lengths))
+        mean_cf = float(np.mean(walk_closures))
+
+        return {
+            'lattice_closure': headline,
+            'edge_walk_fraction': edge_frac,
+            'mean_walk_length': mean_wl,
+            'closure_fidelity': mean_cf,
+        }
 
 
 # =============================================================================
@@ -1191,62 +1576,90 @@ class HyperbolicGeometry(ExoticGeometry):
         return np.array([result.real, result.imag])
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute hyperbolic metrics using proper Poincare disk geometry."""
+        """Compute hyperbolic curvature metrics: headline + decomposed components.
+
+        Three-component evolved metric (ShinkaEvolve v5b gen 24, D1=0.839):
+        1. Temporal variance: 1 + var(consecutive distances).
+        2. Spatio-temporal correlation: exp(corr(|z_i|, d(z_i, z_{i+1}))).
+        3. Spatial kNN ratio: global/local distance scale ratio.
+
+        Plus: mean_hyperbolic_radius (pre-evolution metric, known workhorse).
+        """
         embedded = self.embed(data)
 
-        if len(embedded) == 0:
+        zero_metrics = {
+            "curvature_structure": 0.0,
+            "temporal_variance": 0.0,
+            "spatio_temporal_corr": 0.0,
+            "knn_scale_ratio": 0.0,
+            "mean_hyperbolic_radius": 0.0,
+        }
+        if len(embedded) < 30:
             return GeometryResult(
                 geometry_name=self.name,
-                metrics={
-                    "centroid_offset": 0.0,
-                    "mean_pairwise_distance": 0.0,
-                    "mean_hyperbolic_radius": 0.0,
-                },
-                raw_data={"embedded_points": embedded, "centroid": np.zeros(2)}
+                metrics=zero_metrics,
+                raw_data={"embedded_points": embedded}
             )
 
-        # Hyperbolic distances from origin
-        radii = np.linalg.norm(embedded, axis=1)
-        hyp_radii = 2 * np.arctanh(np.clip(radii, 0, 0.9999))
-        mean_hyp_radius = np.mean(hyp_radii)
+        # Vectorized hyperbolic distance for complex arrays
+        def _hyp_dist(z1, z2):
+            diff = np.abs(z1 - z2)
+            denom = np.abs(1.0 - np.conj(z1) * z2)
+            ratio = np.clip(diff / (denom + 1e-15), 0, 0.9999)
+            return 2.0 * np.arctanh(ratio)
 
-        # Einstein midpoint (proper hyperbolic centroid in Poincare ball)
-        # gamma_i = 1/sqrt(1 - |z_i|^2) is the Lorentz factor
-        r_sq = np.sum(embedded**2, axis=1)
-        gamma = 1.0 / np.sqrt(np.clip(1 - r_sq, 1e-10, None))
-        centroid = np.sum(gamma[:, np.newaxis] * embedded, axis=0) / np.sum(gamma)
-        # Clamp inside disk
-        centroid_r = np.linalg.norm(centroid)
-        if centroid_r >= 1.0:
-            centroid = centroid / (centroid_r + 0.01) * 0.99
-            centroid_r = 0.99
-        centroid_offset = 2 * np.arctanh(min(centroid_r, 0.9999))
+        z_all = embedded[:, 0] + 1j * embedded[:, 1]
 
-        # Mean pairwise hyperbolic distance (sampled for efficiency)
-        rng = np.random.default_rng(0)
-        n_sample = min(len(embedded), 200)
-        sample_idx = rng.choice(len(embedded), n_sample, replace=False)
-        sample = embedded[sample_idx]
-        pairwise_dists = []
-        for i in range(len(sample)):
-            for j in range(i + 1, min(i + 20, len(sample))):
-                pairwise_dists.append(self.hyperbolic_distance(sample[i], sample[j]))
-        mean_pairwise_distance = float(np.mean(pairwise_dists)) if pairwise_dists else 0.0
+        # Mean hyperbolic radius (generic workhorse — pre-evolution metric)
+        radii_all = np.abs(z_all)
+        hyp_radii = 2.0 * np.arctanh(np.clip(radii_all, 0, 0.9999))
+        mean_hyp_radius = float(np.mean(hyp_radii))
 
-        # Boundary proximity (how close to edge)
-        boundary_proximity = np.mean(radii > 0.8)
+        # --- Component 1: Temporal variance ---
+        dists_seq = _hyp_dist(z_all[:-1], z_all[1:])
+        temporal_var = float(np.var(dists_seq)) if len(dists_seq) >= 2 else 0.0
+        temporal_score = 1.0 + temporal_var
+
+        # --- Component 2: Spatio-temporal correlation ---
+        spatio_temporal_corr = 0.0
+        spatio_temporal_score = 1.0
+        if len(dists_seq) > 10:
+            radii = np.abs(z_all[:-1])
+            if np.std(radii) > 1e-9 and np.std(dists_seq) > 1e-9:
+                spatio_temporal_corr = float(np.corrcoef(radii, dists_seq)[0, 1])
+                spatio_temporal_score = float(np.exp(spatio_temporal_corr))
+
+        # --- Component 3: Spatial kNN ratio ---
+        z_unique = np.unique(z_all)
+        n_u = len(z_unique)
+        knn_ratio = 1.0
+        if n_u >= 30:
+            if n_u > 300:
+                u_rng = np.random.default_rng(42)
+                z_unique = z_unique[u_rng.choice(n_u, 300, replace=False)]
+                n_u = 300
+            dist_matrix = _hyp_dist(z_unique[:, np.newaxis], z_unique[np.newaxis, :])
+            k = min(5, n_u - 2)
+            if k > 0:
+                sorted_dists = np.sort(dist_matrix, axis=1)
+                local_scale = np.median(sorted_dists[:, k])
+                i_idx, j_idx = np.triu_indices(n_u, k=1)
+                global_scale = np.median(dist_matrix[i_idx, j_idx])
+                if local_scale > 1e-9:
+                    knn_ratio = float(global_scale / local_scale)
+
+        curvature_structure = float(temporal_score * spatio_temporal_score * knn_ratio)
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "centroid_offset": centroid_offset,
-                "mean_pairwise_distance": mean_pairwise_distance,
+                "curvature_structure": curvature_structure,
+                "temporal_variance": temporal_var,
+                "spatio_temporal_corr": spatio_temporal_corr,
+                "knn_scale_ratio": knn_ratio,
                 "mean_hyperbolic_radius": mean_hyp_radius,
             },
-            raw_data={
-                "embedded_points": embedded,
-                "centroid": centroid,
-            }
+            raw_data={"embedded_points": embedded}
         )
 
 
@@ -1428,7 +1841,7 @@ class MostowRigidityGeometry(ExoticGeometry):
         d_orig_flat = D_orig[triu]
         d_pert_flat = D_pert[triu]
         finite = np.isfinite(d_orig_flat) & np.isfinite(d_pert_flat)
-        if finite.sum() > 10:
+        if finite.sum() > 10 and d_orig_flat[finite].std() > 0:
             distance_rigidity = float(np.corrcoef(
                 d_orig_flat[finite], d_pert_flat[finite])[0, 1])
         else:
@@ -2505,9 +2918,6 @@ class LorentzianGeometry(ExoticGeometry):
                 raw_data={"events": events})
 
         # --- Sample intervals at log-spaced separations ---
-        # Uniform sampling is dominated by large time gaps (trivially
-        # timelike).  Log-spaced separations probe causal structure across
-        # scales: short-range (local smoothness) to long-range (global drift).
         rng = np.random.default_rng(0)
         n_samples = min(500, n * (n - 1) // 2)
         log_seps = rng.uniform(0, np.log(max(n // 2, 2)), n_samples)
@@ -4391,51 +4801,61 @@ class SymplecticGeometry(ExoticGeometry):
         return abs(area) / 2
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute symplectic metrics."""
-        points = self.embed(data)
+        """Compute symplectic metrics: area form, phase flux, recurrence."""
+        pts = self.embed(data)
+        n = len(pts)
 
-        if len(points) < 3:
+        if n < 3:
             return GeometryResult(
                 geometry_name=self.name,
-                metrics={"n_points": len(points)},
-                raw_data={"points": points}
-            )
+                metrics={k: 0.0 for k in [
+                    "total_area", "phase_space_flux",
+                    "area_histogram_entropy", "recurrence_rate"]},
+                raw_data={"points": pts})
 
-        # Phase space area
-        total_area = self.symplectic_area(points)
+        # q = pts[:, 0], p = pts[:, 1]
+        q, p = pts[:, 0], pts[:, 1]
 
-        # Windowed phase-space area: coefficient of variation of shoelace areas
-        # across trajectory windows. Low CV suggests stationary dynamics;
-        # high CV suggests transient or multi-regime behavior.
-        # Note: this is NOT a test of Liouville measure preservation (which
-        # concerns volume of phase-space *regions*, not trajectory segments).
-        window_size = min(50, len(points) // 4)
-        areas = []
-        for i in range(0, len(points) - window_size, window_size):
-            window = points[i:i + window_size]
-            areas.append(self.symplectic_area(window))
+        # Metric 1: Total symplectic area (shoelace)
+        # sum(q_i * p_{i+1} - q_{i+1} * p_i) / 2
+        total_area = abs(np.sum(q[:-1] * p[1:] - q[1:] * p[:-1])) / 2.0
 
-        windowed_area_cv = np.std(areas) / (np.mean(areas) + 1e-10) if areas else 0
+        # Metric 2: Phase space flux (Wedge product average)
+        # Φ = mean(q_i * p_{i+1} - q_{i+1} * p_i)
+        # This captures the circulation in phase space.
+        fluxes = q[:-1] * p[1:] - q[1:] * p[:-1]
+        phase_space_flux = float(np.mean(fluxes))
 
-        # Poincaré recurrence: does the trajectory return near starting point?
-        start = points[0]
-        distances_from_start = np.linalg.norm(points - start, axis=1)
-        min_return_dist = np.min(distances_from_start[len(points)//4:]) if len(points) > 4 else 1
+        # Metric 3: Area histogram entropy (empirical signal from C2ST)
+        # Uses local area forms ω_i = q_i * p_i
+        local_areas = q * p
+        a_hist, _ = np.histogram(local_areas, bins=10, range=(-1, 1))
+        a_p = a_hist / (a_hist.sum() + 1e-10)
+        a_p = a_p[a_p > 0]
+        area_histogram_entropy = float(-np.sum(a_p * np.log2(a_p)) / np.log2(10))
 
-        # Phase space spread
-        q_spread = np.std(points[:, 0])
-        p_spread = np.std(points[:, 1])
+        # Metric 4: Recurrence rate (phase space proximity)
+        # Sample points and check for returns to ε-neighborhood
+        rng = np.random.default_rng(0)
+        n_sample = min(200, n)
+        idx = rng.choice(n, n_sample, replace=False)
+        sub = pts[idx]
+        dists = np.linalg.norm(sub[:, None, :] - sub[None, :, :], axis=2)
+        np.fill_diagonal(dists, np.inf)
+        recurrence_rate = float(np.mean(dists < 0.1))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "total_area": total_area,
-                "windowed_area_cv": windowed_area_cv,
-                "q_spread": q_spread,
+                "phase_space_flux": phase_space_flux,
+                "area_histogram_entropy": area_histogram_entropy,
+                "recurrence_rate": recurrence_rate,
             },
             raw_data={
-                "points": points,
-                "window_areas": areas if areas else [],
+                "points": pts,
+                "fluxes": fluxes,
+                "local_areas": local_areas
             }
         )
 
@@ -5463,16 +5883,144 @@ class PenroseGeometry(ExoticGeometry):
         data = self.validate_data(data)
         m = _quasicrystal_spectral_1d(data, self.PHI)
 
+        # Evolved metrics (ShinkaEvolve v2 gen 43 + v1 gen 37)
+        tower = self._algebraic_tower(data)
+        alg_coh = self._algebraic_coherence(data)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "fivefold_symmetry": m["ratio_symmetry"],
                 "peak_sharpness": m["peak_sharpness"],
-                "index_diversity": m["subword_complexity"],
                 "long_range_order": m["acf_self_similarity"],
+                "algebraic_coherence": alg_coh,
+                "algebraic_tower": tower,
             },
             raw_data={}
         )
+
+    def _detrended_residual(self, data: np.ndarray):
+        """Shared spectral preprocessing for evolved phi metrics."""
+        x = data.astype(np.float64)
+        N = len(x)
+        x = x - x.mean()
+        s = x.std()
+        if s < 1e-10 or N < 256:
+            return None, None, N
+        x = x / s
+        ps = np.abs(np.fft.rfft(x))**2
+        ps = ps[1:]
+        n_freq = len(ps)
+        if n_freq < 100:
+            return None, None, N
+        log_ps = np.log(ps + 1e-30)
+        win = min(max(n_freq // 10, 20), n_freq)
+        kernel = np.ones(win) / win
+        smooth = np.convolve(log_ps, kernel, mode='same')
+        return log_ps - smooth, np.arange(n_freq, dtype=np.float64), N
+
+    def _algebraic_coherence(self, data: np.ndarray) -> float:
+        """Peak-focused algebraic coherence (ShinkaEvolve v1 gen 37, 88.4% D1 drop).
+
+        Correlates S(f) with S(f/φ)+S(f/φ²) on positive residuals only.
+        Exploits the identity φ²=φ+1.
+        """
+        residual, idx, _ = self._detrended_residual(data)
+        if residual is None:
+            return 0.0
+
+        ratio = self.PHI
+        peak_res = np.maximum(0, residual)
+
+        def _coh(r, signal):
+            n = len(signal)
+            if n < 50 or r < 1.01:
+                return 0.0
+            ix = np.arange(n, dtype=np.float64)
+            s1 = np.interp(ix / r, ix, signal)
+            s2 = np.interp(ix / r**2, ix, signal)
+            combined = s1 + s2
+            a = signal - signal.mean()
+            b = combined - combined.mean()
+            va, vb = np.sum(a**2), np.sum(b**2)
+            if va < 1e-10 or vb < 1e-10:
+                return 0.0
+            return float(np.sum(a * b) / np.sqrt(va * vb))
+
+        target = _coh(ratio, peak_res)
+        null_ratios = [1.22, 1.38, 1.51, 1.75, 1.90, 2.18, 2.45, 2.82]
+        null_ratios = [r for r in null_ratios if abs(r - ratio) > 0.08]
+        nulls = [_coh(r, peak_res) for r in null_ratios]
+        std = np.std(nulls)
+        if std > 1e-9:
+            z = (target - np.mean(nulls)) / std
+        else:
+            z = 10.0 if target > np.mean(nulls) + 1e-4 else 0.0
+        return float(np.clip(z / 5.0, 0, 1))
+
+    def _algebraic_tower(self, data: np.ndarray) -> float:
+        """Multi-scale algebraic tower (ShinkaEvolve v2 gen 43, 4/7 structural sources).
+
+        Tests S(f) ~ β₁·S(f/rⁿ⁻¹) + β₂·S(f/rⁿ) via linear regression R²
+        for n=2,3,4,5. Exploits the full recursive tower: φⁿ = Fₙ·φ + Fₙ₋₁.
+        Regression is more forgiving than exact correlation, giving broader
+        source coverage (Van der Pol, English Literature, Symbolic Henon).
+        """
+        residual, idx, _ = self._detrended_residual(data)
+        if residual is None:
+            return 0.0
+
+        ratio = self.PHI
+        n_freq = len(residual)
+        freqs = np.arange(n_freq, dtype=np.float64)
+
+        def _single_coherence(r, n):
+            if n < 2:
+                return None
+            r_p1, r_p2 = r**(n - 1), r**n
+            start_idx = int(np.ceil(10 * r_p2))
+            if start_idx >= n_freq - 50:
+                return None
+            y = residual[start_idx:]
+            if y.std() < 1e-9:
+                return 0.0
+            target_freqs = freqs[start_idx:]
+            x1 = np.interp(target_freqs / r_p1, freqs, residual)
+            x2 = np.interp(target_freqs / r_p2, freqs, residual)
+            X = np.vstack([x1, x2, np.ones(len(x1))]).T
+            try:
+                _, res_ss, _, _ = np.linalg.lstsq(X, y, rcond=None)
+                if len(res_ss) == 0:
+                    return 0.0
+                ss_tot = np.sum((y - y.mean())**2)
+                if ss_tot < 1e-12:
+                    return 0.0
+                return float(np.clip(1.0 - res_ss[0] / ss_tot, 0.0, 1.0))
+            except np.linalg.LinAlgError:
+                return 0.0
+
+        def _ratio_metric(r):
+            cohs = []
+            for n in range(2, 6):
+                c = _single_coherence(r, n)
+                if c is None:
+                    break
+                cohs.append(c)
+            return np.mean(cohs) if cohs else 0.0
+
+        target = _ratio_metric(ratio)
+        null_ratios = [1.21, 1.38, 1.55, 1.85, 2.15, 2.45, 2.8, 3.2]
+        null_ratios = [r for r in null_ratios if abs(r - ratio) > 0.08]
+        nulls = [_ratio_metric(r) for r in null_ratios]
+        nulls = [c for c in nulls if c != 0.0]
+        if not nulls:
+            return float(np.clip(target * 5.0, -10, 10))
+        std = np.std(nulls)
+        if std > 1e-9:
+            z = (target - np.mean(nulls)) / std
+        else:
+            z = 10.0 if target > np.mean(nulls) + 0.01 else 0.0
+        return float(np.clip(z, -10, 10))
 
 
 # =============================================================================
@@ -5544,25 +6092,97 @@ class AmmannBeenkerGeometry(ExoticGeometry):
         return np.array(embedded)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute octagonal quasicrystal metrics via 1D spectral analysis.
+        """Compute octagonal quasicrystal metrics: headline + decomposed + workhorses.
 
-        Detects silver-ratio (δ = 1+√2) self-similarity in the signal's
-        spectrum and autocorrelation.  Also checks √2 self-similarity
-        (the cardinal-diagonal half-step of octagonal symmetry).
+        Headline: pell_conformance (Pell gate × convergent resonance, D1=59%).
+        Decomposed: pell_gate, convergent_resonance (the two stages).
+        Workhorses: eightfold_symmetry, peak_sharpness (generic QC spectral).
         """
         data = self.validate_data(data)
+        components = self._evolved_delta_components(data)
+
+        # Generic QC spectral metrics (workhorses for atlas discrimination)
         m = _quasicrystal_spectral_1d(data, self.SILVER)
-        # √2 spectral self-similarity (cardinal ↔ diagonal relationship)
-        m_sqrt2 = _quasicrystal_spectral_1d(data, np.sqrt(2))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
+                "pell_conformance": components['pell_conformance'],
+                "convergent_resonance": components['convergent_resonance'],
                 "eightfold_symmetry": m["ratio_symmetry"],
-                "long_range_order": m["acf_self_similarity"],
+                "peak_sharpness": m["peak_sharpness"],
             },
             raw_data={}
         )
+
+    def _evolved_delta_components(self, data: np.ndarray) -> dict:
+        """Pell gate × convergent resonance (ShinkaEvolve v2 gen 45).
+
+        Returns individual components AND the combined headline.
+        """
+        zero = {'pell_conformance': 0.0, 'pell_gate': 0.0, 'convergent_resonance': 0.0}
+
+        x = data.astype(np.float64)
+        N = len(x)
+        x = x - x.mean()
+        s = x.std()
+        if s < 1e-10 or N < 512:
+            return zero
+        x = x / s
+
+        ps = np.abs(np.fft.rfft(x))**2
+        ps = ps[1:]
+        n_freq = len(ps)
+        if n_freq < 100:
+            return zero
+
+        log_ps = np.log(ps + 1e-30)
+        win = min(max(n_freq // 10, 20), n_freq)
+        kernel = np.ones(win) / win
+        smooth = np.convolve(log_ps, kernel, mode='same')
+        residual = log_ps - smooth
+
+        freq_idx = np.arange(n_freq, dtype=np.float64)
+
+        def _coherence(r):
+            """Positive-part spectral self-coherence at scale r."""
+            if r <= 1.0 or r > n_freq / 20.0:
+                return 0.0
+            mask = residual > 0.0
+            if mask.sum() < 50:
+                return 0.0
+            vec_orig = residual[mask]
+            scaled = freq_idx[mask] / r
+            vec_interp = np.interp(scaled, freq_idx, residual,
+                                   left=0.0, right=0.0)
+            if vec_orig.std() < 1e-9 or vec_interp.std() < 1e-9:
+                return 0.0
+            with np.errstate(invalid='ignore', divide='ignore'):
+                corr = np.corrcoef(vec_orig, vec_interp)[0, 1]
+            return 0.0 if np.isnan(corr) else corr
+
+        ratio = self.SILVER
+
+        # Stage 1: Pell gate (δ² = 2δ+1 identity check)
+        pell_error = abs(_coherence(ratio**2) - _coherence(2 * ratio + 1))
+        pell_gate = np.exp(-15.0 * pell_error)
+
+        # Stage 2: Convergent resonance (Pell number ratios)
+        # CF convergents of δ = 1+√2 = [2; 2,2,2,...]: 2/1, 5/2, 12/5, 29/12
+        convergents = [2.0, 2.5, 2.4, 29.0 / 12.0]
+        coherences = [np.clip(_coherence(c), 0, 1) for c in convergents]
+
+        prod = np.prod(coherences)
+        if prod < 1e-30:
+            conv_res = 0.0
+        else:
+            conv_res = float(prod ** (1.0 / len(coherences)))
+
+        return {
+            'pell_conformance': float(pell_gate * conv_res),
+            'pell_gate': float(pell_gate),
+            'convergent_resonance': conv_res,
+        }
 
 
 # =============================================================================
@@ -5666,29 +6286,32 @@ class EinsteinHatGeometry(ExoticGeometry):
         kernel = self.hat_kernel.astype(np.float64)
         klen = len(kernel)
         if len(turns) >= klen:
-            # Normalized cross-correlation
-            k_norm = kernel - kernel.mean()
-            k_std = np.std(k_norm)
+            # Hanning-windowed cross-correlation (ShinkaEvolve Gen 6 winner)
+            # Weighting the center of each window more heavily makes the
+            # correlation sensitive to the kernel SHAPE, not just its
+            # statistics — boosting D1 drop from 0.845 to 0.932.
+            hanning = np.hanning(klen)
+            k_centered = kernel - kernel.mean()
+            k_weighted = k_centered * hanning
+            k_std = np.std(k_weighted)
             if k_std < 1e-10:
                 hat_boundary_match = 0.0
             else:
-                k_norm = k_norm / k_std
+                k_norm = k_weighted / k_std
                 n_windows = len(turns) - klen + 1
-                # Compute in chunks for efficiency
                 scores = np.empty(n_windows)
                 for i in range(n_windows):
                     window = turns[i:i + klen].astype(np.float64)
-                    w_norm = window - window.mean()
-                    w_std = np.std(w_norm)
+                    w_centered = window - window.mean()
+                    w_weighted = w_centered * hanning
+                    w_std = np.std(w_weighted)
                     if w_std < 1e-10:
                         scores[i] = 0.0
                     else:
-                        scores[i] = np.dot(k_norm, w_norm / w_std) / klen
-                # Fraction of windows with high correlation (> 0.9).
-                # A signal containing Hat boundary repeats will have ~1/klen
-                # perfect matches; random data will have essentially none.
+                        scores[i] = np.dot(k_norm, w_weighted / w_std) / klen
                 match_frac = (scores > 0.9).mean()
                 hat_boundary_match = float(np.clip(match_frac * klen, 0, 1))
+
         else:
             hat_boundary_match = 0.0
 
@@ -5710,7 +6333,6 @@ class EinsteinHatGeometry(ExoticGeometry):
             geometry_name=self.name,
             metrics={
                 "hat_boundary_match": hat_boundary_match,
-                "chirality": chirality,
             },
             raw_data={}
         )
@@ -5778,25 +6400,136 @@ class DodecagonalGeometry(ExoticGeometry):
         return np.array(embedded)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute dodecagonal quasicrystal metrics via 1D spectral analysis.
+        """Compute dodecagonal QC metrics: headline + decomposed + workhorses.
 
-        Detects (2+√3) self-similarity in the signal's spectrum and
-        autocorrelation. Also checks √3 self-similarity (related to
-        the triangle height in square-triangle tilings).
+        Headline: dodec_algebraic_coherence (conjugate symmetry × algebraic identity × √3).
+        Decomposed: base_correlation, conjugate_correlation, algebraic_identity, sqrt3_resonance.
+        Workhorses: ratio_symmetry, peak_sharpness (generic QC spectral).
         """
         data = self.validate_data(data)
+        components = self._evolved_dodec_components(data)
+
+        # Generic QC spectral metrics (workhorses)
         m = _quasicrystal_spectral_1d(data, self.RATIO)
-        # √3 spectral self-similarity (triangle height relationship)
-        m_sqrt3 = _quasicrystal_spectral_1d(data, np.sqrt(3))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "triangle_height_ratio": m_sqrt3["ratio_symmetry"],
-                "long_range_order": m["acf_self_similarity"],
+                "dodec_algebraic_coherence": components['dodec_algebraic_coherence'],
+                "base_correlation": components['base_correlation'],
+                "conjugate_correlation": components['conjugate_correlation'],
+                "algebraic_identity": components['algebraic_identity'],
+                "sqrt3_resonance": components['sqrt3_resonance'],
+                "ratio_symmetry": m["ratio_symmetry"],
+                "peak_sharpness": m["peak_sharpness"],
             },
             raw_data={}
         )
+
+    def _detrended_residual(self, data: np.ndarray):
+        """Shared spectral preprocessing for evolved dodecagonal metrics."""
+        x = data.astype(np.float64)
+        N = len(x)
+        x = x - x.mean()
+        s = x.std()
+        if s < 1e-10 or N < 200:
+            return None, None, N
+        x = x / s
+        ps = np.abs(np.fft.rfft(x))**2
+        ps = ps[1:]
+        n_freq = len(ps)
+        if n_freq < 100:
+            return None, None, N
+        log_ps = np.log(ps + 1e-30)
+        win = min(max(n_freq // 10, 20), n_freq)
+        kernel = np.ones(win) / win
+        smooth = np.convolve(log_ps, kernel, mode='same')
+        return log_ps - smooth, np.arange(n_freq, dtype=np.float64), N
+
+    def _evolved_dodec_components(self, data: np.ndarray) -> dict:
+        """Conjugate symmetry × algebraic identity × √3 bonus.
+        Returns individual components AND the combined headline.
+        """
+        zero = {'dodec_algebraic_coherence': 0.0, 'base_correlation': 0.0,
+                'conjugate_correlation': 0.0, 'algebraic_identity': 0.0,
+                'sqrt3_resonance': 0.0}
+        residual, idx, _ = self._detrended_residual(data)
+        if residual is None:
+            return zero
+
+        n_freq = len(residual)
+        _corr_cache = {}
+
+        def corr_at_ratio(r):
+            r = float(r)
+            if r in _corr_cache:
+                return _corr_cache[r]
+            if r < 1e-6:
+                return 0.0
+            scaled = idx / r
+            valid = (scaled >= 0) & (scaled < n_freq - 1)
+            if valid.sum() < 50:
+                _corr_cache[r] = 0.0
+                return 0.0
+            interp = np.interp(scaled[valid], idx, residual)
+            a = residual[valid] - residual[valid].mean()
+            b = interp - interp.mean()
+            va, vb = np.sum(a**2), np.sum(b**2)
+            corr = 0.0 if va < 1e-10 or vb < 1e-10 else float(
+                np.sum(a * b) / np.sqrt(va * vb))
+            _corr_cache[r] = corr
+            return corr
+
+        def algebraic_consistency(r):
+            r_sq = r**2
+            if n_freq / r_sq < 2:
+                return 0.0
+            valid_mask = (idx / r_sq) < (n_freq - 1)
+            if valid_mask.sum() < 50:
+                return 0.0
+            interp1 = np.interp(idx / r, idx, residual)
+            interp2 = np.interp(idx / r_sq, idx, residual)
+            predicted = 4.0 * interp1 - interp2
+            error = residual[valid_mask] - predicted[valid_mask]
+            mse = np.mean(error**2)
+            signal_var = np.var(residual[valid_mask])
+            if signal_var < 1e-10:
+                return 0.0
+            return 1.0 / (1.0 + mse / signal_var)
+
+        def get_combined_score(r):
+            base_corr = corr_at_ratio(r)
+            if base_corr <= 0.05:
+                return 0.0, 0.0, 0.0, 0.0, 0.0
+            inflation_corr = max(0, corr_at_ratio(1.0 / r))
+            alg_consistency = algebraic_consistency(r)
+            sqrt3_error = abs((r - 2.0)**2 - 3.0)
+            sqrt3_gate = np.exp(-5.0 * sqrt3_error)
+            sqrt3_corr = max(0, corr_at_ratio(np.sqrt(3))) * sqrt3_gate
+            score = base_corr * (1.0 + inflation_corr) * (1.0 + 1.5 * alg_consistency)
+            score += 1.5 * sqrt3_corr
+            return score, base_corr, inflation_corr, alg_consistency, sqrt3_corr
+
+        target_score, t_base, t_conj, t_alg, t_sqrt3 = get_combined_score(self.RATIO)
+        null_ratios = [1.12, 1.31, 1.55, 1.78, 2.05, 2.33, 2.73, 3.17, 4.2, 4.8]
+        null_ratios = [r for r in null_ratios
+                       if abs(r - self.RATIO) > 0.15]
+        null_scores = np.array([get_combined_score(r)[0] for r in null_ratios])
+        null_mean = np.mean(null_scores)
+        null_std = np.std(null_scores)
+        if null_std > 1e-10:
+            z_score = (target_score - null_mean) / null_std
+        else:
+            z_score = 10.0 if target_score > null_mean + 0.01 else 0.0
+        headline = float(np.clip(z_score / 5.0, 0, 1))
+
+        return {
+            'dodec_algebraic_coherence': headline,
+            'base_correlation': float(t_base),
+            'conjugate_correlation': float(t_conj),
+            'algebraic_identity': float(t_alg),
+            'sqrt3_resonance': float(t_sqrt3),
+        }
 
 
 # =============================================================================
@@ -5859,22 +6592,143 @@ class DecagonalGeometry(ExoticGeometry):
         return np.array(embedded)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute decagonal metrics."""
+        """Compute decagonal metrics via evolved φ-specific analysis.
+
+        Transplants Penrose evolved metrics (same golden ratio φ):
+        algebraic_coherence (φ²=φ+1 identity) and algebraic_tower
+        (Fibonacci recurrence φⁿ=Fₙφ+Fₙ₋₁).
+        """
         data = self.validate_data(data)
-        # Primary ratio is Phi (same as Penrose)
-        m = _quasicrystal_spectral_1d(data, self.PHI)
-        
-        # Check secondary ratio: Phi^2? Or maybe sqrt(5)?
-        # Phi^2 = Phi + 1 ~ 2.618
-        m_phi2 = _quasicrystal_spectral_1d(data, self.PHI**2)
+        alg_coh = self._algebraic_coherence(data)
+        tower = self._algebraic_tower(data)
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "phi_squared_ratio": m_phi2["ratio_symmetry"],
+                "algebraic_coherence": alg_coh,
+                "algebraic_tower": tower,
             },
             raw_data={}
         )
+
+    def _detrended_residual(self, data: np.ndarray):
+        """Shared spectral preprocessing for evolved φ metrics."""
+        x = data.astype(np.float64)
+        N = len(x)
+        x = x - x.mean()
+        s = x.std()
+        if s < 1e-10 or N < 256:
+            return None, None, N
+        x = x / s
+        ps = np.abs(np.fft.rfft(x))**2
+        ps = ps[1:]
+        n_freq = len(ps)
+        if n_freq < 100:
+            return None, None, N
+        log_ps = np.log(ps + 1e-30)
+        win = min(max(n_freq // 10, 20), n_freq)
+        kernel = np.ones(win) / win
+        smooth = np.convolve(log_ps, kernel, mode='same')
+        return log_ps - smooth, np.arange(n_freq, dtype=np.float64), N
+
+    def _algebraic_coherence(self, data: np.ndarray) -> float:
+        """Peak-focused algebraic coherence (transplanted from Penrose ShinkaEvolve v1 gen 37).
+
+        Correlates S(f) with S(f/φ)+S(f/φ²) on positive residuals.
+        Exploits the identity φ²=φ+1.
+        """
+        residual, idx, _ = self._detrended_residual(data)
+        if residual is None:
+            return 0.0
+        ratio = self.PHI
+        peak_res = np.maximum(0, residual)
+
+        def _coh(r, signal):
+            n = len(signal)
+            if n < 50 or r < 1.01:
+                return 0.0
+            ix = np.arange(n, dtype=np.float64)
+            s1 = np.interp(ix / r, ix, signal)
+            s2 = np.interp(ix / r**2, ix, signal)
+            combined = s1 + s2
+            a = signal - signal.mean()
+            b = combined - combined.mean()
+            va, vb = np.sum(a**2), np.sum(b**2)
+            if va < 1e-10 or vb < 1e-10:
+                return 0.0
+            return float(np.sum(a * b) / np.sqrt(va * vb))
+
+        target = _coh(ratio, peak_res)
+        null_ratios = [1.22, 1.38, 1.51, 1.75, 1.90, 2.18, 2.45, 2.82]
+        null_ratios = [r for r in null_ratios if abs(r - ratio) > 0.08]
+        nulls = [_coh(r, peak_res) for r in null_ratios]
+        std = np.std(nulls)
+        if std > 1e-9:
+            z = (target - np.mean(nulls)) / std
+        else:
+            z = 10.0 if target > np.mean(nulls) + 1e-4 else 0.0
+        return float(np.clip(z / 5.0, 0, 1))
+
+    def _algebraic_tower(self, data: np.ndarray) -> float:
+        """Multi-scale algebraic tower (transplanted from Penrose ShinkaEvolve v2 gen 43).
+
+        Tests S(f) ~ β₁·S(f/rⁿ⁻¹) + β₂·S(f/rⁿ) via linear regression R²
+        for n=2,3,4,5. Exploits the Fibonacci recurrence φⁿ = Fₙ·φ + Fₙ₋₁.
+        """
+        residual, idx, _ = self._detrended_residual(data)
+        if residual is None:
+            return 0.0
+        ratio = self.PHI
+        n_freq = len(residual)
+        freqs = np.arange(n_freq, dtype=np.float64)
+
+        def _single_coherence(r, n):
+            if n < 2:
+                return None
+            r_p1, r_p2 = r**(n - 1), r**n
+            start_idx = int(np.ceil(10 * r_p2))
+            if start_idx >= n_freq - 50:
+                return None
+            y = residual[start_idx:]
+            if y.std() < 1e-9:
+                return 0.0
+            target_freqs = freqs[start_idx:]
+            x1 = np.interp(target_freqs / r_p1, freqs, residual)
+            x2 = np.interp(target_freqs / r_p2, freqs, residual)
+            X = np.vstack([x1, x2, np.ones(len(x1))]).T
+            try:
+                _, res_ss, _, _ = np.linalg.lstsq(X, y, rcond=None)
+                if len(res_ss) == 0:
+                    return 0.0
+                ss_tot = np.sum((y - y.mean())**2)
+                if ss_tot < 1e-12:
+                    return 0.0
+                return float(np.clip(1.0 - res_ss[0] / ss_tot, 0.0, 1.0))
+            except np.linalg.LinAlgError:
+                return 0.0
+
+        def _ratio_metric(r):
+            cohs = []
+            for n in range(2, 6):
+                c = _single_coherence(r, n)
+                if c is None:
+                    break
+                cohs.append(c)
+            return np.mean(cohs) if cohs else 0.0
+
+        target = _ratio_metric(ratio)
+        null_ratios = [1.21, 1.38, 1.55, 1.85, 2.15, 2.45, 2.8, 3.2]
+        null_ratios = [r for r in null_ratios if abs(r - ratio) > 0.08]
+        nulls = [_ratio_metric(r) for r in null_ratios]
+        nulls = [c for c in nulls if c != 0.0]
+        if not nulls:
+            return float(np.clip(target * 5.0, -10, 10))
+        std = np.std(nulls)
+        if std > 1e-9:
+            z = (target - np.mean(nulls)) / std
+        else:
+            z = 10.0 if target > np.mean(nulls) + 0.01 else 0.0
+        return float(np.clip(z, -10, 10))
 
 
 # =============================================================================
@@ -5937,18 +6791,97 @@ class SeptagonalGeometry(ExoticGeometry):
         return np.array(embedded)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute septagonal metrics."""
+        """Compute septagonal metrics: headline + workhorses.
+
+        Headline: cubic_coherence (cubic identity gate ρ³=ρ²+2ρ−1, D1=83.6%).
+        Workhorses: ratio_symmetry, peak_sharpness (generic QC spectral).
+        """
         data = self.validate_data(data)
+        score = self._evolved_sept_metric(data)
+
+        # Generic QC spectral metrics (workhorses)
         m = _quasicrystal_spectral_1d(data, self.RATIO)
-        
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "sevenfold_symmetry": m["ratio_symmetry"],
-                "long_range_order": m["acf_self_similarity"],
+                "cubic_coherence": score,
+                "ratio_symmetry": m["ratio_symmetry"],
+                "peak_sharpness": m["peak_sharpness"],
             },
             raw_data={}
         )
+
+    def _detrended_residual(self, data: np.ndarray):
+        """Shared spectral preprocessing for evolved septagonal metrics."""
+        x = data.astype(np.float64)
+        N = len(x)
+        x = x - x.mean()
+        s = x.std()
+        if s < 1e-10 or N < 400:
+            return None, None, N
+        x = x / s
+        ps = np.abs(np.fft.rfft(x))**2
+        ps = ps[1:]
+        n_freq = len(ps)
+        if n_freq < 100:
+            return None, None, N
+        log_ps = np.log(ps + 1e-30)
+        win = min(max(n_freq // 10, 20), n_freq)
+        kernel = np.ones(win) / win
+        smooth = np.convolve(log_ps, kernel, mode='same')
+        return log_ps - smooth, np.arange(n_freq, dtype=np.float64), N
+
+    def _evolved_sept_metric(self, data: np.ndarray) -> float:
+        """Cubic coherence gate (ShinkaEvolve v1 gen 38, D1 drop=83.6%).
+
+        Tests the cubic identity ρ³ = ρ² + 2ρ − 1 in the power spectrum.
+        Error vector: S(f/ρ³) − S(f/ρ²) − 2·S(f/ρ) + S(f).
+        For the true septagonal ratio, this error is small relative to the
+        component norms. Z-scored against null ratios for specificity.
+        """
+        residual, idx, _ = self._detrended_residual(data)
+        if residual is None:
+            return 0.0
+
+        n_freq = len(residual)
+
+        def get_cubic_coherence(r):
+            if not np.isfinite(r) or r <= 1.0:
+                return 0.0
+            r2, r3 = r * r, r * r * r
+            if n_freq / r3 < 20:
+                return 0.0
+            s0 = residual
+            s1 = np.interp(idx / r, idx, residual)
+            s2 = np.interp(idx / r2, idx, residual)
+            s3 = np.interp(idx / r3, idx, residual)
+            # ρ³ − ρ² − 2ρ + 1 = 0  →  S(f/ρ³) − S(f/ρ²) − 2·S(f/ρ) + S(f) ≈ 0
+            error_vec = s3 - s2 - 2 * s1 + s0
+            denominator = (np.linalg.norm(s3) + np.linalg.norm(s2) +
+                           2 * np.linalg.norm(s1) + np.linalg.norm(s0))
+            if denominator < 1e-9:
+                return 0.0
+            relative_error = np.linalg.norm(error_vec) / denominator
+            return 1.0 - np.clip(relative_error, 0.0, 1.0)
+
+        target_coherence = get_cubic_coherence(self.RATIO)
+
+        null_ratios = [1.5, 1.8, 2.0, 2.5, 2.8, np.sqrt(2), np.sqrt(3), np.sqrt(5)]
+        null_ratios = [r for r in null_ratios if abs(r - self.RATIO) > 0.05]
+        null_coherences = [get_cubic_coherence(r) for r in null_ratios]
+
+        if len(null_coherences) > 1:
+            null_mean = np.mean(null_coherences)
+            null_std = np.std(null_coherences)
+            if null_std > 1e-9:
+                z_score = (target_coherence - null_mean) / null_std
+            else:
+                z_score = 10.0 if target_coherence > null_mean + 1e-3 else 0.0
+        else:
+            z_score = 0.0
+
+        return float(np.clip(z_score / 4.0, -1.0, 1.0))
 
 
 # =============================================================================
@@ -6235,6 +7168,13 @@ class HigherOrderGeometry(ExoticGeometry):
 
         data = self.validate_data(data)
         fdata = data.astype(float)
+
+        # Zero-variance data: higher moments are undefined
+        if np.ptp(fdata) == 0:
+            return GeometryResult(self.name, {k: float('nan') for k in [
+                'skew_mean', 'kurt_max', 'perm_entropy', 'perm_forbidden',
+                'bicoherence_max']}, {})
+
         metrics = {}
 
         # --- Projection kurtosis & skewness (3rd/4th order directional) ---
@@ -6426,11 +7366,16 @@ class HolderRegularityGeometry(ExoticGeometry):
         """Compute Hölder regularity and multifractal metrics."""
         x = self.embed(data)
         n = len(x)
+        _nan_result = lambda: GeometryResult(self.name, {k: float('nan') for k in [
+            "hurst_exponent", "holder_mean", "holder_std",
+            "holder_min", "holder_max"]}, {})
 
         if n < 32:
-            return GeometryResult(self.name, {k: 0.0 for k in [
-                "hurst_exponent", "holder_mean", "holder_std",
-                "holder_min", "holder_max"]}, {})
+            return _nan_result()
+
+        # Constant data has zero increments → structure functions degenerate
+        if np.ptp(x) == 0:
+            return _nan_result()
 
         # Scales: powers of 2 up to n/4
         max_scale = min(n // 4, 2 ** self.n_scales)
@@ -7286,20 +8231,20 @@ class RecurrenceGeometry(ExoticGeometry):
         x = self.embed(data)
         n = len(x)
 
-        zero = {k: 0.0 for k in [
+        _nan = {k: float('nan') for k in [
             "recurrence_rate", "determinism", "avg_diagonal",
             "max_diagonal", "laminarity", "trapping_time",
             "entropy_diagonal"]}
 
         if n < 30:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
 
         # Find delay and build embedding
         lag = self._find_lag(x)
         dim = self.embed_dim
         N = n - (dim - 1) * lag
         if N < 20:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
 
         # Delay embedding matrix: (N, dim)
         embedded = np.zeros((N, dim))
@@ -7321,7 +8266,7 @@ class RecurrenceGeometry(ExoticGeometry):
         # Threshold: 10th percentile of distances (excluding self-pairs)
         upper_tri = dist[np.triu_indices(N, k=1)]
         if len(upper_tri) == 0:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
         epsilon = np.percentile(upper_tri, 10)
         if epsilon < 1e-15:
             epsilon = np.percentile(upper_tri, 20)
@@ -9030,16 +9975,23 @@ class VisibilityGraphGeometry(ExoticGeometry):
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         y = self.validate_data(data).astype(float)
+
+        # Constant data: equal heights block all NVG visibility → empty graph
+        if np.ptp(y) == 0:
+            return GeometryResult(self.name, {k: float('nan') for k in [
+                'max_degree', 'degree_exponent_gamma', 'degree_r_squared',
+                'graph_density', 'avg_clustering_coeff', 'assortativity']}, {})
+
         if len(y) > self.max_points:
             # Take a contiguous block from the center.
             # np.linspace subsampling would destroy temporal adjacency,
             # creating spurious visibility edges between non-adjacent points.
             start = (len(y) - self.max_points) // 2
             y = y[start:start + self.max_points]
-        
+
         N = len(y)
         t = np.arange(N, dtype=float)
-        
+
         # O(N^2) visibility graph construction
         # Optimization: points only see neighbors that aren't blocked
         adj = [[] for _ in range(N)]
@@ -9224,23 +10176,24 @@ class ZipfMandelbrotGeometry(ExoticGeometry):
             metrics['mandelbrot_q'] = float(best_q)
             metrics['zipf_r_squared'] = float(max_r2)
         else:
-            metrics['zipf_alpha'] = 0.0
-            metrics['mandelbrot_q'] = 0.0
-            metrics['zipf_r_squared'] = 0.0
+            # Too few unique values to fit a rank-frequency distribution
+            metrics['zipf_alpha'] = float('nan')
+            metrics['mandelbrot_q'] = float('nan')
+            metrics['zipf_r_squared'] = float('nan')
 
         # Hapax Legomena Ratio (words appearing exactly once)
         hapax = sum(1 for f in frequencies if f == 1)
-        metrics['hapax_ratio'] = float(hapax / N_unique) if N_unique > 0 else 0.0
-        
+        metrics['hapax_ratio'] = float(hapax / N_unique) if N_unique > 0 else float('nan')
+
         # Gini Coefficient of frequencies (concentration of vocabulary)
         # G = (2 * Σ i*f_i) / (n * Σ f_i) - (n + 1) / n
-        if N_unique > 0:
+        if N_unique > 1:
             f_arr = np.array(frequencies[::-1]) # Sort ascending for standard Gini formula
             index = np.arange(1, N_unique + 1)
             gini = (np.sum((2 * index - N_unique - 1) * f_arr)) / (N_unique * np.sum(f_arr))
             metrics['gini_coefficient'] = float(gini)
         else:
-            metrics['gini_coefficient'] = 0.0
+            metrics['gini_coefficient'] = float('nan')
 
         return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
 
@@ -9315,19 +10268,21 @@ class MultifractalGeometry(ExoticGeometry):
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         x = self.embed(data)
         n = len(x)
-        zero = {k: 0.0 for k in [
-            "spectrum_width",
-            "hurst_estimate"]}
+        _nan = {k: float('nan') for k in ["spectrum_width", "hurst_estimate"]}
 
         if n < 64:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
+
+        # Constant data: zero increments → structure functions degenerate
+        if np.ptp(x) == 0:
+            return GeometryResult(self.name, _nan, {})
 
         # Structure function approach: for scale ε, compute moments of |Δx|
         # Use dyadic scales
         qs = np.array([-3, -2, -1, -0.5, 0.5, 1, 2, 3, 4, 5])
         max_scale_exp = min(self.n_scales, int(np.log2(n // 4)))
         if max_scale_exp < 3:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
         scales = 2 ** np.arange(1, max_scale_exp + 1)
 
         # Compute τ(q) via linear regression of log(Z(q,ε)) vs log(ε)
@@ -9359,7 +10314,7 @@ class MultifractalGeometry(ExoticGeometry):
 
         valid_tau = np.isfinite(tau_q)
         if valid_tau.sum() < 5:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
 
         # Hurst exponent from τ(2)
         q2_idx = np.argmin(np.abs(qs - 2))
@@ -9376,7 +10331,7 @@ class MultifractalGeometry(ExoticGeometry):
         pos_taus = tau_q[pos_mask]
 
         if len(pos_qs) < 3:
-            return GeometryResult(self.name, zero | {"hurst_estimate": float(np.clip(hurst, 0, 1.5))}, {})
+            return GeometryResult(self.name, _nan | {"hurst_estimate": float(np.clip(hurst, 0, 1.5))}, {})
 
         # Quadratic: τ(q) = a*q² + b*q + c
         # α(q) = 2aq + b, spectrum_width = |2a| * Δq
@@ -9593,14 +10548,14 @@ class PredictabilityGeometry(ExoticGeometry):
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         x = self.embed(data)
         n = len(x)
-        zero = {k: 0.0 for k in [
+        _nan = {k: float('nan') for k in [
             "cond_entropy_k1",
             "cond_entropy_k8",
             "entropy_decay_rate", "sample_entropy",
             "excess_predictability"]}
 
         if n < 200:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
 
         symbols = self._symbolize(x)
 
@@ -9907,12 +10862,12 @@ class AttractorGeometry(ExoticGeometry):
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         x = self.embed(data)
         n = len(x)
-        zero = {k: 0.0 for k in [
+        _nan = {k: float('nan') for k in [
             "correlation_dimension", "d2_saturation",
             "lyapunov_max", "filling_ratio"]}
 
         if n < 200:
-            return GeometryResult(self.name, zero, {})
+            return GeometryResult(self.name, _nan, {})
 
         lag = self._find_lag(x)
 
@@ -10549,9 +11504,11 @@ class NonstationarityGeometry(ExoticGeometry):
         # 3. Variance (normalized by 255^2)
         variance = float(np.var(x) / (255.0 ** 2))
 
-        # 4. Excess kurtosis
+        # 4. Excess kurtosis (0.0 for constant data — undefined moment)
         from scipy.stats import kurtosis as _kurt
         kurt = float(_kurt(x, fisher=True))
+        if not np.isfinite(kurt):
+            kurt = 0.0
 
         # 5. Permutation entropy (order 4)
         pe = self._perm_entropy(window, order=4)
@@ -11108,31 +12065,12 @@ class GeometryAnalyzer:
             "dtype": str(data.dtype) if hasattr(data, 'dtype') else type(data).__name__,
         }
 
-        # Degeneracy guard: constant data has no geometric structure.
-        # Return NaN for all metrics rather than computing vacuous extremes.
-        is_degenerate = np.ptp(data if data.ndim == 1 else data.ravel()) == 0
-
         # Pre-compute data hash once if caching is enabled
         if self.cache_dir is not None:
             data_hash = hashlib.sha256(np.ascontiguousarray(data).tobytes()).hexdigest()
 
         for geom in self.geometries:
             try:
-                if is_degenerate:
-                    metric_keys = self._metric_keys.get(geom.name)
-                    if metric_keys is None:
-                        try:
-                            dummy = geom.compute_metrics(np.arange(256, dtype=np.uint8))
-                            metric_keys = list(dummy.metrics.keys())
-                        except Exception:
-                            metric_keys = []
-                        self._metric_keys[geom.name] = metric_keys
-                    result.results.append(GeometryResult(
-                        geometry_name=geom.name,
-                        metrics={k: float('nan') for k in metric_keys},
-                    ))
-                    continue
-
                 # Check cache — key includes module-level hash so that
                 # changes to helper functions (not just class methods)
                 # automatically invalidate entries.
