@@ -6511,17 +6511,18 @@ class DodecagonalGeometry(ExoticGeometry):
             return score, base_corr, inflation_corr, alg_consistency, sqrt3_corr
 
         target_score, t_base, t_conj, t_alg, t_sqrt3 = get_combined_score(self.RATIO)
-        null_ratios = [1.12, 1.31, 1.55, 1.78, 2.05, 2.33, 2.73, 3.17, 4.2, 4.8]
-        null_ratios = [r for r in null_ratios
-                       if abs(r - self.RATIO) > 0.15]
-        null_scores = np.array([get_combined_score(r)[0] for r in null_ratios])
-        null_mean = np.mean(null_scores)
-        null_std = np.std(null_scores)
-        if null_std > 1e-10:
-            z_score = (target_score - null_mean) / null_std
-        else:
-            z_score = 10.0 if target_score > null_mean + 0.01 else 0.0
-        headline = float(np.clip(z_score / 5.0, 0, 1))
+
+        # Null comparison: ratio-matched control using nearby non-algebraic ratios.
+        # The z-score against distant nulls saturated at 1.0 even on noise because
+        # δ=2+√3 has inherent algebraic advantages (conjugate symmetry, √3 resonance).
+        # Instead, compare against the best nearby null — the headline is the DROP
+        # from target to best-null, not a z-score.
+        null_ratios = [3.45, 3.55, 3.65, 3.85, 3.95, 4.05]
+        null_ratios = [r for r in null_ratios if abs(r - self.RATIO) > 0.05]
+        null_scores = [get_combined_score(r)[0] for r in null_ratios]
+        best_null = max(null_scores) if null_scores else 0.0
+        # Headline = how much better δ is than the best nearby alternative
+        headline = float(max(0, target_score - best_null))
 
         return {
             'dodec_algebraic_coherence': headline,
