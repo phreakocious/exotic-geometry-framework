@@ -1,6 +1,6 @@
-# Geometry Guide — Prototype
+# Geometry Guide
 
-Content for all 8 encoding-invariant geometries (Tier 1) and 8 high-discrimination geometries (Tier 2). Each entry explains what the geometry detects through contrast and atlas examples, not mathematical definitions.
+Each entry explains what the geometry detects through contrast and atlas examples, not mathematical definitions.
 
 ---
 
@@ -959,6 +959,28 @@ Computes a 5D descriptor (entropy, lag-1 autocorrelation, variance, kurtosis, pe
 ### When it lights up
 
 Nonstationarity detects regime switching and concatenation that static metrics miss entirely. A signal made by splicing together two different sources will score high on vol_of_vol (bursty regime changes) and trajectory_dim (multiple descriptors change) while possibly looking unremarkable to any single static geometry. In the atlas, regime_persistence separates the dynamical view's "coherent chaos" cluster (Rossler Hyperchaos, Lotka-Volterra: chaotic but geometrically stable) from "incoherent chaos" (Rossler Attractor: chaotic and geometrically unstable).
+
+---
+
+## Navier-Stokes
+
+**What it measures:** Whether the signal's multiscale statistics are specifically consistent with turbulence — not just "has a power law" but "matches the physics of energy cascades."
+
+Computes structure functions S_q(r) = mean(|u(x+r) - u(x)|^q) at dyadic scales and tests them against two turbulence theories: Kolmogorov 1941 (K41, which predicts simple linear scaling exponents) and She-Leveque (SL, which predicts specific nonlinear corrections from intermittency). Also measures the direction of energy transfer through scales and the growth of extreme events at small scales.
+
+### Metrics
+
+**sl_fit_quality** — Does She-Leveque fit the observed scaling exponents better than K41? Uses Extended Self-Similarity (ESS) to normalize by the third-order exponent, removing dependence on whether a clean inertial range exists. +1 means SL fits perfectly and K41 doesn't (strong intermittency). -1 means K41 fits better (simple self-similar scaling). Temperature Drift (+0.996), Seismic b-value (+0.952), and Rössler Attractor (+0.925) score highest — all have turbulence-like intermittent bursts. Sine Wave (-1.0) and Brownian Walk (-0.997) score lowest — their scaling is too smooth for SL corrections to help.
+
+**cascade_asymmetry** — Which direction does energy flow through scales? Computed from the skewness of velocity increments: S_3(r)/S_2(r)^{3/2}. Negative means forward cascade (large structures break into smaller ones, as in 3D turbulence). Positive means inverse cascade (small structures merge into larger ones, as in 2D turbulence). Near zero means no preferred direction. SIR Epidemic, Hodgkin-Huxley, and financial time series saturate at ±1 (strong asymmetric dynamics). White noise sits at 0.001 (symmetric by construction).
+
+**flatness_slope** — How fast do extreme events grow at small scales? The flatness F(r) = S_4(r)/S_2(r)^2 equals 3 for Gaussian data at all scales. For turbulent data, F grows as r shrinks — small-scale fluctuations have heavier tails than large-scale ones. The log-log slope of F(r) vs r quantifies this intermittency growth rate. L-System Dragon Curve (+0.996) scores highest (extreme small-scale variability). Regime Switching (-0.326) and Rössler (-0.322) have negative slopes (flatness grows at small r, consistent with intermittent dynamics). This is the strongest NS metric by F-ratio (6.2).
+
+**ess_quality** — How much does Extended Self-Similarity improve the structure function fits? ESS replaces log S_q vs log r with log S_q vs log S_3, which dramatically linearizes the scaling for turbulent cascades. The metric is the mean R² improvement across moment orders. Fibonacci Word (+1.0), Rule 30 (+0.999), and Morse Code (+0.992) score highest — their structure functions have clean power-law scaling in ESS form that raw log-log fits miss. Devil's Staircase (-0.07) scores lowest (ESS can't help when structure functions are degenerate). Tied with flatness_slope for strongest F-ratio (6.2).
+
+### When it lights up
+
+Navier-Stokes separates "turbulence-like" signals from "merely complex" ones. MultifractalGeometry already measures generic spectrum width; SpectralGeometry already fits generic power-law slopes. What NS adds is model-specific: does the observed nonlinearity match the *specific* She-Leveque prediction for intermittent turbulence? And does energy flow through scales with a preferred direction? In the atlas, sources that score high on sl_fit_quality (seismic, temperature drift, Rössler) have turbulence-compatible intermittency, while sources with high ess_quality (Fibonacci, Rule 30) have cascade-compatible multiscale structure that ESS reveals. No existing metric measures cascade direction or ESS improvement.
 
 ---
 

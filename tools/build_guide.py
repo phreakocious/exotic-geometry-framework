@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build static geometry guide pages from markdown content + atlas JSON.
 
-Reads hand-written geometry descriptions from docs/geometry-guide-prototype.md
+Reads hand-written geometry descriptions from docs/geometry-guide.md
 and merges them with auto-generated metric data from the atlas JSON. Outputs
 static HTML pages matching the atlas aesthetic.
 
@@ -21,7 +21,7 @@ from html import escape
 from pathlib import Path
 
 ATLAS_JSON = Path("atlas/structure_atlas_data.json")
-GUIDE_MD = Path("docs/geometry-guide-prototype.md")
+GUIDE_MD = Path("docs/geometry-guide.md")
 OUT_DIR = Path("atlas/guide")
 ATLAS_BASE = ".."  # relative path from guide/ to atlas/
 SITE_BASE = "https://nullphase.net/sa/guide"

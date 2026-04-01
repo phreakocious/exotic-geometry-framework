@@ -1,8 +1,8 @@
 # Proposal: Structure Atlas Geometry Guide & Encyclopedia
 
 **Date:** 2026-03-25
-**Status:** Tier 1+2 complete (16/54 geometries drafted)
-**Prototype:** `docs/geometry-guide-prototype.md`
+**Status:** All 55 geometries drafted
+**Guide:** `docs/geometry-guide.md`
 
 ## The Opportunity
 
@@ -100,7 +100,7 @@ Match the atlas aesthetic (dark theme, Exo 2 + JetBrains Mono, glass cards, neon
 - [x] SEO injection script (`tools/inject_seo.py`) — crawlable content block in atlas HTML
 - [x] Meta tags updated with current counts and compelling descriptions
 - [x] JSON-LD structured data added
-- [x] Prototype content for 16 geometries (`docs/geometry-guide-prototype.md`)
+- [x] Content for all 55 geometries (`docs/geometry-guide.md`)
 - [x] Metric extremes data extracted for all target geometries
 
 ## What's Next

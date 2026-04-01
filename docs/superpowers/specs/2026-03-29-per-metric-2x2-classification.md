@@ -1,7 +1,7 @@
 # Per-Metric 2×2 Classification: Replacing Flat-Average D1 Drop
 
 **Date**: 2026-03-29
-**Status**: Implemented and validated on 11 geometries. Atlas rebuild pending.
+**Status**: Implemented and validated on 11 geometries. Atlas rebuilt, D4 restored, NavierStokesGeometry added (2026-03-31).
 
 ## The Problem
 
@@ -58,7 +58,7 @@ Classify each metric independently on two axes:
 ### Pruned dead metrics
 - `alignment_anisotropy` (H3), `gram_fingerprint` (H3), `discrete_grammar` (E8), `spectral_coherence` (D4), `pell_gate` (AB), `chirality` (Hat), `peak_sharpness` (Septagonal), `base_correlation`/`conjugate_correlation`/`algebraic_identity`/`sqrt3_resonance`/`ratio_symmetry`/`peak_sharpness` (Dodecagonal)
 
-### Net effect: 53→54 geometries (+D4), ~199→214 metrics
+### Net effect: 53→55 geometries (+D4, +Navier-Stokes), ~199→218 metrics
 
 ## Key Insights
 
@@ -79,9 +79,9 @@ Classify each metric independently on two axes:
 ## What's Next
 
 ### Immediate
-- **Rebuild atlas** with D4 restored and decomposed metrics (~6 hours)
+- ~~**Rebuild atlas**~~ — DONE (2026-03-31): D4 restored, NavierStokesGeometry added, void-filling sources added
 - **Update geometry_ablation.py** to use per-metric classification in its reporting (currently still flat-averages for the classification table)
-- **Investigate Septagonal discrepancy**: ShinkaEvolve says D1=83.6%, our ablation says 2.4%. Different variant construction?
+- ~~**Investigate Septagonal discrepancy**~~ — RESOLVED: wrong minimal polynomial (x³−x²−2x+1 → x³−2x²−x+1), ShinkaEvolve v2 triple-conjugate ensemble found
 
 ### Evolution targets (weakest geometries)
 - ~~**E8** (48.8%)~~ — RESOLVED: v5 found coset-conditioned transition quantization (100% D1 headline). Now 67.2% headline D1 with 3 headlines.
