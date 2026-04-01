@@ -124,8 +124,13 @@ class Runner:
 
         self.metric_names = []
         for r in dummy.results:
+            # Respect atlas_exclude from geometry class
+            geom = next((g for g in self.analyzer.geometries
+                         if g.name == r.geometry_name), None)
+            exclude = geom.atlas_exclude if geom is not None else set()
             for mn in sorted(r.metrics.keys()):
-                self.metric_names.append(f"{r.geometry_name}:{mn}")
+                if mn not in exclude:
+                    self.metric_names.append(f"{r.geometry_name}:{mn}")
         self.n_metrics = len(self.metric_names)
         self.bonf_alpha = alpha / self.n_metrics
 

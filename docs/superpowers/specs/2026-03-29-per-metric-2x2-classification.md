@@ -30,15 +30,15 @@ Classify each metric independently on two axes:
 | D4 Triality | 41.7% (KILLED) | **100.0%** | 5 | 2 | 0 | 1 |
 | H4 600-Cell | 65.2% | **86.3%** | 5 | 1 | 0 | 0 |
 | Lorentzian | 100.0% | **100.0%** | 2 | 0 | 1 | 0 |
-| Dodecagonal | -15.4% (HARMFUL) | **90.6%** | 1 | 4 | 1 | 1 |
+| Dodecagonal | -15.4% (HARMFUL) | **85.6%** | 2 | 0 | 0 | 0 |
 | Penrose | 71.9% | **71.9%** | 5 | 0 | 0 | 0 |
 | H3 Icosahedral | 22.3% (GENERIC) | **69.7%** | 4 | 1 | 0 | 2 |
 | AB | 59.0% | **59.0%** | 1 | 1 | 2 | 1 |
 | Hyperbolic | 39.2% | **53.1%** | 4 | 1 | 0 | 0 |
-| E8 Lattice | 10.1% (GENERIC) | **47.7%** | 2 | 5 | 0 | 1 |
+| E8 Lattice | 10.1% (GENERIC) | **67.2%** | 3 | 6 | 0 | 0 |
 | Einstein Hat | 17.7% | **35.3%** | 1 | 0 | 0 | 1 |
-| Septagonal | 16.8% | **—** | 0 | 1 | 0 | 2 |
-| Symplectic | -21.4% (HARMFUL) | **—** | 0 | 4 | 0 | 0 |
+| Septagonal | 16.8% | **100.0%** | 1 | 2 | 2 | 0 |
+| ~~Symplectic~~ | ~~-21.4%~~ | **N/A** | — | — | — | — | *No swappable object; workhorse-only* |
 
 **Worst affected by old formula**: E8 (10→48%), H3 (22→70%), D4 (42→100%), Dodecagonal (-15→91%)
 
@@ -46,17 +46,17 @@ Classify each metric independently on two axes:
 
 ### Decomposed geometries (evolved products → components + workhorses)
 
-- **E8**: `e8_structure_score` → +`closure_score`, `edge_flow`, `vel_corr`, `std_profile` + `diversity_ratio`, `normalized_entropy`
+- **E8**: `e8_structure_score` → +`closure_score`, `edge_flow`, `vel_corr`, `std_profile`, `coset_transition` (v5, HEADLINE 100%), `trajectory_curvature` (v5) + `diversity_ratio`, `normalized_entropy`
 - **D4**: Restored from removal. 6 evolved probes from ShinkaEvolve v5b: `d4_structure_score`, `triplet_temporal`, `neighborhood_asymmetry`, `peakedness`, `structural_coherence` + `diversity_ratio`, `normalized_entropy`
 - **H3**: `nn_enrichment` → +`temporal_coherence`, `path_closure` + `diversity_ratio`, `normalized_entropy`
 - **H4**: `lattice_closure` → +`edge_walk_fraction`, `mean_walk_length`, `closure_fidelity` + `diversity_ratio`, `normalized_entropy`
 - **Hyperbolic**: `curvature_structure` → +`temporal_variance`, `spatio_temporal_corr`, `knn_scale_ratio`, `mean_hyperbolic_radius`
 - **AB**: `pell_conformance` → +`convergent_resonance` + `eightfold_symmetry`, `peak_sharpness`
-- **Dodecagonal**: `dodec_algebraic_coherence` → +`base_correlation`, `conjugate_correlation`, `algebraic_identity`, `sqrt3_resonance` + `ratio_symmetry`, `peak_sharpness`
-- **Septagonal**: +`ratio_symmetry`, `peak_sharpness`
+- **Dodecagonal**: v1 `dodec_algebraic_coherence` → v2 complex FFT phase-coherence ensemble: `dodec_phase_coherence` (combined, HEADLINE 71.3%), `z_sqrt3_coherence` (HEADLINE 100%). Removed `base_correlation`, `conjugate_correlation`, `algebraic_identity`, `sqrt3_resonance`, `ratio_symmetry`, `peak_sharpness` (all DEAD).
+- **Septagonal**: v1 `cubic_coherence` (wrong polynomial) → v2 triple-conjugate ensemble: `cubic_coherence` (combined), `z_primary`, `z_conjugate` (HEADLINE, 100%), `z_reciprocal` + `ratio_symmetry`. Removed `peak_sharpness` (DEAD).
 
 ### Pruned dead metrics
-- `alignment_anisotropy` (H3), `gram_fingerprint` (H3), `discrete_grammar` (E8), `spectral_coherence` (D4), `pell_gate` (AB), `chirality` (Hat)
+- `alignment_anisotropy` (H3), `gram_fingerprint` (H3), `discrete_grammar` (E8), `spectral_coherence` (D4), `pell_gate` (AB), `chirality` (Hat), `peak_sharpness` (Septagonal), `base_correlation`/`conjugate_correlation`/`algebraic_identity`/`sqrt3_resonance`/`ratio_symmetry`/`peak_sharpness` (Dodecagonal)
 
 ### Net effect: 53→54 geometries (+D4), ~199→214 metrics
 
@@ -84,11 +84,11 @@ Classify each metric independently on two axes:
 - **Investigate Septagonal discrepancy**: ShinkaEvolve says D1=83.6%, our ablation says 2.4%. Different variant construction?
 
 ### Evolution targets (weakest geometries)
-- **E8** (47.7%) — only 2 headlines. Target `vel_corr` for focused evolution
+- ~~**E8** (48.8%)~~ — RESOLVED: v5 found coset-conditioned transition quantization (100% D1 headline). Now 67.2% headline D1 with 3 headlines.
 - **Hat** (35.3%) — borderline single headline. Evolution or metric redesign
-- **Symplectic** (0 headlines) — α-perturbation may be wrong ablation design for area forms
-- **Dodecagonal headline** — Brownian beats it on spectral smoothness. Needs redesign to use algebraic identity more directly
-- **Septagonal** (0 headlines) — blocked on discrepancy investigation
+- ~~**Symplectic**~~ — RESOLVED: no swappable object per ablation spec. 2D symplectic form is unique (no Thomson analog). Removed from ablation; workhorse-only geometry with 5 atlas metrics.
+- ~~**Dodecagonal headline**~~ — RESOLVED: ShinkaEvolve v2 found complex FFT phase-coherence ensemble, 2 headlines (85.6%)
+- ~~**Septagonal** (0 headlines)~~ — RESOLVED: wrong polynomial (x³−x²−2x+1 → x³−2x²−x+1), ShinkaEvolve v2 found triple-conjugate ensemble, 100% headline D1
 
 ### Architectural
 - Add `source_variance` to ShinkaEvolve fitness: `fitness = D1_drop × source_spread` prevents evolving metrics that are structure-dependent but source-uniform
@@ -96,4 +96,4 @@ Classify each metric independently on two axes:
 
 ## Falsification Update
 
-The original ablation spec's falsification condition "Names are branding: if ALL non-null geometries classify as Generic" is now better stated as: "if ALL non-null geometries have 0 HEADLINE metrics." Under the 2×2 framework, only Symplectic and Septagonal have 0 headlines — the vast majority of geometries have genuine structure-dependent signal. The README claim stands for 9 of 11 tested geometries.
+The original ablation spec's falsification condition "Names are branding: if ALL non-null geometries classify as Generic" is now better stated as: "if ALL non-null geometries have 0 HEADLINE metrics." Under the 2×2 framework, all 11 tested geometries (those with swappable objects) have at least 1 headline metric. Symplectic was removed from the ablation as it has no swappable object (the 2D symplectic form is unique up to scaling — no Thomson analog exists). The README claim stands for all 11 tested geometries.

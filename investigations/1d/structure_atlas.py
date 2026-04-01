@@ -797,25 +797,41 @@ _SOURCE_DESCRIPTIONS = {s.name: (s.description or "") for s in _atlas_sources}
 # COLLECTION
 # ==============================================================
 
-def _cache_key(metric_names, data_size, n_trials):
-    """Hash of configuration and geometry code for cache invalidation.
+def _geo_hashes(runner):
+    """Per-geometry class source hashes for fine-grained invalidation.
 
-    Hashes the framework (geometry implementations) and the metric/size
-    config.  Does NOT hash the atlas script or sources.py — edits to
-    collection logic, figures, or unrelated generators should not bust
-    every cached profile.  Per-source files are keyed by source name,
-    so a renamed/new source simply won't have a cache hit.
+    Hashes each geometry class independently so that editing one geometry
+    only invalidates that geometry's cached columns — not all 226 sources.
     """
-    base = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        '..', '..')
-    h = hashlib.sha256()
-    for rel in ['exotic_geometry_framework.py']:
-        try:
-            with open(os.path.join(base, rel), 'rb') as f:
-                h.update(f.read())
-        except OSError:
-            h.update(rel.encode())
-    code_hash = h.hexdigest()[:16]
+    import inspect
+    hashes = {}
+    for geo in runner.analyzer.geometries:
+        src = inspect.getsource(type(geo))
+        hashes[geo.name] = hashlib.sha256(src.encode()).hexdigest()[:16]
+    return hashes
+
+
+def _cache_key(metric_names, data_size, n_trials, _geo_hashes_dict=None):
+    """Combined hash for all-or-nothing caches (surrogates, scales).
+
+    When _geo_hashes_dict is provided, derives the code hash from per-geometry
+    hashes instead of reading the framework file.
+    """
+    if _geo_hashes_dict is not None:
+        code_hash = hashlib.sha256(
+            _json.dumps(_geo_hashes_dict, sort_keys=True).encode()
+        ).hexdigest()[:16]
+    else:
+        base = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            '..', '..')
+        h = hashlib.sha256()
+        for rel in ['exotic_geometry_framework.py']:
+            try:
+                with open(os.path.join(base, rel), 'rb') as f:
+                    h.update(f.read())
+            except OSError:
+                h.update(rel.encode())
+        code_hash = h.hexdigest()[:16]
     content = _json.dumps({
         "metrics": sorted(metric_names),
         "size": data_size,
@@ -825,8 +841,90 @@ def _cache_key(metric_names, data_size, n_trials):
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
+def _adaptive_collect(gen_fn, data_size, rngs, metric_names, analyze_fn,
+                      source_label):
+    """Adaptive trial loop: batch until L2 convergence or MAX_TRIALS.
+
+    Parameters
+    ----------
+    gen_fn : callable  — (rng, size) → data
+    data_size : int
+    rngs : list of np.random.Generator
+    metric_names : list of str  — metrics to track
+    analyze_fn : callable  — (chunk) → list of (metric_key, value)
+    source_label : str  — for error messages
+
+    Returns (accumulated, n_done, converged) where accumulated is
+    {metric_name: [values]}.
+    """
+    accumulated = {m: [] for m in metric_names}
+    prev_means = None
+    n_done = 0
+    converged = False
+    names_list = list(metric_names)
+
+    for batch_start in range(0, MAX_TRIALS, BATCH_SIZE):
+        batch_end = min(batch_start + BATCH_SIZE, MAX_TRIALS)
+        batch_rngs = rngs[batch_start:batch_end]
+        try:
+            batch_chunks = [gen_fn(rng, data_size) for rng in batch_rngs]
+        except Exception as exc:
+            if batch_start == 0:
+                print(f"  {source_label}  SKIPPED: {exc}")
+            break
+        for chunk in batch_chunks:
+            for key, val in analyze_fn(chunk):
+                if key in accumulated:
+                    accumulated[key].append(val)
+        n_done = batch_end
+
+        if n_done >= MIN_TRIALS and prev_means is not None:
+            curr = np.array([np.mean(accumulated[m]) if accumulated[m]
+                             else 0.0 for m in names_list])
+            rel = (np.linalg.norm(curr - prev_means)
+                   / (np.linalg.norm(prev_means) + 1e-15))
+            if rel < CONV_THRESH:
+                converged = True
+                break
+        prev_means = np.array([np.mean(accumulated[m]) if accumulated[m]
+                               else 0.0 for m in names_list])
+
+    return accumulated, n_done, converged
+
+
+def _profile_from_accumulated(accumulated, metric_names):
+    """Convert accumulated trial values to mean/std profile + arrays."""
+    mean_profile, std_profile = {}, {}
+    for m in metric_names:
+        vals = accumulated[m]
+        if len(vals) > 0:
+            mean_profile[m] = np.mean(vals)
+            std_profile[m] = np.std(vals)
+        else:
+            mean_profile[m] = float('nan')
+            std_profile[m] = float('nan')
+    return mean_profile, std_profile
+
+
+def _save_cache(cache_path, mean_profile, std_profile, accumulated,
+                metric_names):
+    """Write means/stds/raw to an .npz cache file."""
+    means = np.array([mean_profile[m] for m in metric_names])
+    stds = np.array([std_profile[m] for m in metric_names])
+    max_t = max((len(accumulated[m]) for m in metric_names), default=0)
+    raw = np.full((len(metric_names), max(max_t, 1)), np.nan)
+    for i, m in enumerate(metric_names):
+        vals = accumulated[m]
+        raw[i, :len(vals)] = vals
+    np.savez(cache_path, means=means, stds=stds, raw=raw)
+
+
 def collect_profiles(runner):
-    """Collect mean metric profiles for all sources, with per-source caching."""
+    """Collect mean metric profiles for all sources, with per-geometry caching.
+
+    Only recomputes metrics for geometries whose class source changed.
+    Cached metrics for unchanged geometries are preserved across edits.
+    """
     print("\n" + "=" * 60)
     print("COLLECTING STRUCTURE PROFILES")
     print("=" * 60)
@@ -834,119 +932,245 @@ def collect_profiles(runner):
     cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              '..', '..', 'figures', '.atlas_cache', 'profiles')
     os.makedirs(cache_dir, exist_ok=True)
-
-    key = _cache_key(runner.metric_names, runner.data_size, runner.n_trials)
     meta_path = os.path.join(cache_dir, 'meta.json')
 
-    cache_valid = False
+    # Current state
+    geo_hashes = _geo_hashes(runner)
+    config = _json.dumps({"size": runner.data_size, "trials": runner.n_trials})
+    config_hash = hashlib.sha256(config.encode()).hexdigest()[:16]
+    new_names = list(runner.metric_names)
+
+    # Load old meta
+    old_meta = None
     if os.path.exists(meta_path):
-        with open(meta_path) as f:
-            meta = _json.load(f)
-        cache_valid = meta.get('key') == key
+        try:
+            with open(meta_path) as f:
+                old_meta = _json.load(f)
+        except (ValueError, KeyError):
+            pass
 
-    if not cache_valid:
-        # Write meta now so Ctrl+C mid-run doesn't orphan .npz files
-        with open(meta_path, 'w') as f:
-            _json.dump({'key': key}, f)
-        # Purge stale .npz files from previous key
-        for old in glob.glob(os.path.join(cache_dir, '*.npz')):
-            os.remove(old)
-        cache_valid = True
+    # --- Determine which geometries are stale ---
+    stale_geos = set()
+    if old_meta is None or old_meta.get('config_hash') != config_hash:
+        # Config changed or first run → everything stale
+        stale_geos = set(geo_hashes.keys())
+    else:
+        old_hashes = old_meta.get('geo_hashes', {})
+        for gname, ghash in geo_hashes.items():
+            if old_hashes.get(gname) != ghash:
+                stale_geos.add(gname)
 
-    profiles = {}  # name -> {metric: mean_value}
+    # Metric layout may have changed (added/removed metrics or geometries)
+    old_names = old_meta.get('metric_names', []) if old_meta else []
+    reindex = (old_names != new_names)
+
+    # Map: new_idx → old_idx for metrics we can reuse from cache
+    reuse_map = {}
+    if reindex and old_names:
+        old_idx = {name: i for i, name in enumerate(old_names)}
+        for ni, name in enumerate(new_names):
+            geo = name.split(':')[0]
+            if geo not in stale_geos and name in old_idx:
+                reuse_map[ni] = old_idx[name]
+
+    full_rebuild = (len(stale_geos) == len(geo_hashes)
+                    or (reindex and not reuse_map and not old_names))
+    partial = bool(stale_geos) and not full_rebuild
+
+    # Write meta now (Ctrl+C safety)
+    with open(meta_path, 'w') as f:
+        _json.dump({
+            'config_hash': config_hash,
+            'geo_hashes': geo_hashes,
+            'metric_names': new_names,
+        }, f)
+
+    if full_rebuild:
+        for old_f in glob.glob(os.path.join(cache_dir, '*.npz')):
+            os.remove(old_f)
+        print(f"  Cache: full rebuild")
+    elif partial:
+        print(f"  Cache: {len(stale_geos)} stale geometry(s): "
+              f"{', '.join(sorted(stale_geos))}")
+    else:
+        print(f"  Cache: all up to date")
+
+    # Build stale-only analyzer for partial rebuilds
+    stale_analyzer = None
+    stale_metric_set = set()
+    stale_metric_names = []
+    if partial:
+        from exotic_geometry_framework import GeometryAnalyzer
+        stale_analyzer = GeometryAnalyzer()
+        for geo in runner.analyzer.geometries:
+            if geo.name in stale_geos:
+                stale_analyzer.add_geometry(geo)
+        for name in new_names:
+            if name.split(':')[0] in stale_geos:
+                stale_metric_set.add(name)
+                stale_metric_names.append(name)
+
+    stale_indices = {i for i, n in enumerate(new_names) if n in stale_metric_set}
+
+    # Analyze function for the full runner (used for full rebuilds)
+    def _analyze_full(chunk):
+        res = runner.analyzer.analyze(chunk)
+        out = []
+        for r in res.results:
+            geom = next((g for g in runner.analyzer.geometries
+                         if g.name == r.geometry_name), None)
+            exclude = geom.atlas_exclude if geom else set()
+            for mn, mv in r.metrics.items():
+                if mn not in exclude and np.isfinite(mv):
+                    out.append((f"{r.geometry_name}:{mn}", float(mv)))
+        return out
+
+    # Analyze function for stale geometries only
+    def _analyze_stale(chunk):
+        res = stale_analyzer.analyze(chunk)
+        out = []
+        for r in res.results:
+            geom = next((g for g in stale_analyzer.geometries
+                         if g.name == r.geometry_name), None)
+            exclude = geom.atlas_exclude if geom else set()
+            for mn, mv in r.metrics.items():
+                if mn not in exclude and np.isfinite(mv):
+                    out.append((f"{r.geometry_name}:{mn}", float(mv)))
+        return out
+
+    profiles = {}
     profiles_std = {}
     domains = {}
     descriptions = {}
     n_cached = 0
+    n_partial = 0
 
-    for name, gen_fn, domain in SOURCES:
-        safe_name = name.replace(' ', '_').replace('"', '').replace("'", '').replace('/', '_')
-        cache_path = os.path.join(cache_dir, f'{safe_name}.npz')
-        descriptions[name] = _SOURCE_DESCRIPTIONS.get(name, "")
+    for src_name, gen_fn, domain in SOURCES:
+        safe = src_name.replace(' ', '_').replace('"', '').replace("'", '').replace('/', '_')
+        cache_path = os.path.join(cache_dir, f'{safe}.npz')
+        descriptions[src_name] = _SOURCE_DESCRIPTIONS.get(src_name, "")
+        label = f"{src_name:20s} [{domain:13s}]"
 
-        if cache_valid and os.path.exists(cache_path):
-            cached = np.load(cache_path)
-            mean_profile = dict(zip(runner.metric_names, cached['means']))
-            std_profile = dict(zip(runner.metric_names, cached['stds']))
-            profiles[name] = mean_profile
-            profiles_std[name] = std_profile
-            domains[name] = domain
-            n_nonzero = sum(1 for v in mean_profile.values() if abs(v) > 1e-15)
-            print(f"  {name:20s} [{domain:13s}]  {n_nonzero}/{len(runner.metric_names)} active metrics [cached]")
+        # Try loading cached data
+        cached = None
+        if os.path.exists(cache_path):
+            try:
+                cached = np.load(cache_path)
+            except Exception:
+                cached = None
+
+        # --- FULL HIT: nothing stale, layout unchanged, file exists ---
+        if not stale_geos and not reindex and cached is not None:
+            mp = dict(zip(new_names, cached['means']))
+            sp = dict(zip(new_names, cached['stds']))
+            profiles[src_name] = mp
+            profiles_std[src_name] = sp
+            domains[src_name] = domain
+            nz = sum(1 for v in mp.values() if abs(v) > 1e-15)
+            print(f"  {label}  {nz}/{len(new_names)} active metrics [cached]")
             n_cached += 1
             continue
 
-        # Adaptive trial loop: collect batches until means stabilize
-        all_rngs = runner.trial_rngs()
-        accumulated = {m: [] for m in runner.metric_names}
-        prev_means = None
-        n_done = 0
-        converged = False
+        # --- PARTIAL HIT: recompute only stale geometry metrics ---
+        if partial and cached is not None:
+            n_new = len(new_names)
+            means = np.full(n_new, np.nan)
+            stds = np.full(n_new, np.nan)
+            old_means = cached['means']
+            old_stds = cached['stds']
+            old_raw = cached.get('raw', None)
 
-        for batch_start in range(0, MAX_TRIALS, BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, MAX_TRIALS)
-            batch_rngs = all_rngs[batch_start:batch_end]
-            try:
-                batch_chunks = [gen_fn(rng, runner.data_size) for rng in batch_rngs]
-            except Exception as exc:
-                if batch_start == 0:
-                    print(f"  {name:20s} [{domain:13s}]  SKIPPED: {exc}")
-                break
-            batch_metrics = runner.collect(batch_chunks)
-            for m in runner.metric_names:
-                accumulated[m].extend(batch_metrics.get(m, []))
-            n_done = batch_end
+            # Copy valid (non-stale) columns from cache
+            if reindex:
+                for ni, oi in reuse_map.items():
+                    if oi < len(old_means):
+                        means[ni] = old_means[oi]
+                        stds[ni] = old_stds[oi]
+            else:
+                n_copy = min(len(old_means), n_new)
+                means[:n_copy] = old_means[:n_copy]
+                stds[:n_copy] = old_stds[:n_copy]
 
-            # Check convergence after MIN_TRIALS
-            if n_done >= MIN_TRIALS and prev_means is not None:
-                curr_means = np.array([np.mean(accumulated[m]) if accumulated[m]
-                                       else 0.0 for m in runner.metric_names])
-                # L2 relative change of full profile vector
-                l2_change = np.linalg.norm(curr_means - prev_means)
-                l2_norm = np.linalg.norm(prev_means) + 1e-15
-                l2_rel = l2_change / l2_norm
-                if l2_rel < CONV_THRESH:
-                    converged = True
-                    break
+            # Recompute stale metrics
+            rngs = runner.trial_rngs()
+            acc, n_done, conv = _adaptive_collect(
+                gen_fn, runner.data_size, rngs, stale_metric_names,
+                _analyze_stale, label)
 
-            prev_means = np.array([np.mean(accumulated[m]) if accumulated[m]
-                                   else 0.0 for m in runner.metric_names])
+            if n_done > 0:
+                for m in stale_metric_names:
+                    idx = new_names.index(m)
+                    vals = acc[m]
+                    if vals:
+                        means[idx] = np.mean(vals)
+                        stds[idx] = np.std(vals)
+
+                # Rebuild raw matrix: merge cached + new
+                max_t_stale = max((len(acc[m]) for m in stale_metric_names),
+                                  default=0)
+                old_t = old_raw.shape[1] if old_raw is not None else 0
+                raw_cols = max(old_t, max_t_stale, 1)
+                raw = np.full((n_new, raw_cols), np.nan)
+                # Copy cached raw for valid metrics
+                if old_raw is not None:
+                    if reindex:
+                        for ni, oi in reuse_map.items():
+                            if oi < old_raw.shape[0]:
+                                nc = min(old_raw.shape[1], raw_cols)
+                                raw[ni, :nc] = old_raw[oi, :nc]
+                    else:
+                        nr = min(old_raw.shape[0], n_new)
+                        nc = min(old_raw.shape[1], raw_cols)
+                        for i in range(nr):
+                            if i not in stale_indices:
+                                raw[i, :nc] = old_raw[i, :nc]
+                # Fill stale raw
+                for m in stale_metric_names:
+                    idx = new_names.index(m)
+                    vals = acc[m]
+                    raw[idx, :len(vals)] = vals
+                np.savez(cache_path, means=means, stds=stds, raw=raw)
+
+            mp = dict(zip(new_names, means))
+            sp = dict(zip(new_names, stds))
+            profiles[src_name] = mp
+            profiles_std[src_name] = sp
+            domains[src_name] = domain
+            nz = sum(1 for v in mp.values() if abs(v) > 1e-15)
+            tag = (f"{n_done}t" + (" conv" if conv else " max")
+                   + f", {len(stale_geos)} geo recomputed")
+            print(f"  {label}  {nz}/{len(new_names)} active metrics  [{tag}]")
+            n_partial += 1
+            continue
+
+        # --- FULL MISS: compute everything ---
+        rngs = runner.trial_rngs()
+        acc, n_done, conv = _adaptive_collect(
+            gen_fn, runner.data_size, rngs, new_names, _analyze_full, label)
 
         if n_done == 0:
             continue
 
-        # Compute mean/std profile from accumulated trials
-        mean_profile = {}
-        std_profile = {}
-        for m in runner.metric_names:
-            vals = accumulated[m]
-            if len(vals) > 0:
-                mean_profile[m] = np.mean(vals)
-                std_profile[m] = np.std(vals)
-            else:
-                mean_profile[m] = 0.0
-                std_profile[m] = 0.0
+        mp, sp = _profile_from_accumulated(acc, new_names)
+        _save_cache(cache_path, mp, sp, acc, new_names)
 
-        # Save to cache — include raw trial values so D6 can reuse them
-        means_arr = np.array([mean_profile[m] for m in runner.metric_names])
-        stds_arr = np.array([std_profile[m] for m in runner.metric_names])
-        # Raw trial matrix: n_metrics × actual_trials (ragged → pad with nan)
-        max_trials = max((len(accumulated[m]) for m in runner.metric_names), default=0)
-        raw_arr = np.full((len(runner.metric_names), max_trials), np.nan)
-        for i, m in enumerate(runner.metric_names):
-            vals = accumulated[m]
-            raw_arr[i, :len(vals)] = vals
-        np.savez(cache_path, means=means_arr, stds=stds_arr, raw=raw_arr)
+        profiles[src_name] = mp
+        profiles_std[src_name] = sp
+        domains[src_name] = domain
+        nz = sum(1 for v in mp.values() if abs(v) > 1e-15)
+        tag = f"{n_done}t" + (" converged" if conv else " max")
+        print(f"  {label}  {nz}/{len(new_names)} active metrics  [{tag}]")
 
-        profiles[name] = mean_profile
-        profiles_std[name] = std_profile
-        domains[name] = domain
-        n_nonzero = sum(1 for v in mean_profile.values() if abs(v) > 1e-15)
-        tag = f"{n_done}t" + (" converged" if converged else " max")
-        print(f"  {name:20s} [{domain:13s}]  {n_nonzero}/{len(runner.metric_names)} active metrics  [{tag}]")
-
-    if n_cached > 0:
-        print(f"  ({n_cached}/{len(SOURCES)} loaded from cache)")
+    parts = []
+    if n_cached:
+        parts.append(f"{n_cached} cached")
+    if n_partial:
+        parts.append(f"{n_partial} partial")
+    n_fresh = len(SOURCES) - n_cached - n_partial
+    if n_fresh > 0 and (n_cached or n_partial):
+        parts.append(f"{n_fresh} fresh")
+    if parts:
+        print(f"  ({' + '.join(parts)} of {len(SOURCES)} sources)")
 
     return profiles, profiles_std, domains, descriptions
 
@@ -1016,15 +1240,23 @@ def tsne_projection(Z):
 
 
 def _rank_normalize(X):
-    """Convert each column to percentile ranks.  Robust to extreme values."""
+    """Convert each column to percentile ranks.  Robust to extreme values.
+
+    NaN entries (metrics inapplicable to a source) receive the median
+    rank 0.5 so they contribute nothing after centering — neutral in PCA.
+    """
     from scipy.stats import rankdata  # noqa: F811
     R = np.zeros_like(X)
     for j in range(X.shape[1]):
-        col = np.nan_to_num(X[:, j], nan=0.0)
-        if np.std(col) < 1e-15:
+        col = X[:, j]
+        nan_mask = np.isnan(col)
+        if np.std(np.nan_to_num(col, nan=0.0)) < 1e-15:
             R[:, j] = 0.5
         else:
-            R[:, j] = rankdata(col) / len(col)
+            clean = col.copy()
+            clean[nan_mask] = np.nanmedian(col)
+            R[:, j] = rankdata(clean) / len(col)
+            R[nan_mask, j] = 0.5
     return R
 
 
@@ -1149,7 +1381,9 @@ def direction_6(runner, domains):
     cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                              '..', '..', 'figures', '.atlas_cache', 'surrogates')
     os.makedirs(cache_dir, exist_ok=True)
-    key = _cache_key(runner.metric_names, runner.data_size, runner.n_trials)
+    gh = _geo_hashes(runner)
+    key = _cache_key(runner.metric_names, runner.data_size, runner.n_trials,
+                     _geo_hashes_dict=gh)
     meta_path = os.path.join(cache_dir, 'meta.json')
 
     cache_valid = False
@@ -1497,6 +1731,9 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
             dist_m = np.clip(1.0 - rho, 0, None)
             np.fill_diagonal(dist_m, 0)
             dist_m = (dist_m + dist_m.T) / 2.0
+            # NaN from constant-variance columns (spearmanr → NaN).
+            # Treat undefined correlation as maximum distance.
+            dist_m = np.nan_to_num(dist_m, nan=1.0)
             Z_corr = linkage(squareform(dist_m, checks=False), method='average')
             clust_labels = fcluster(Z_corr, t=0.05, criterion='distance')
             col_var = np.var(X_view, axis=0)
@@ -1642,6 +1879,7 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
         dist_opt = np.clip(1.0 - rho_opt, 0, None)
         np.fill_diagonal(dist_opt, 0)
         dist_opt = (dist_opt + dist_opt.T) / 2.0
+        dist_opt = np.nan_to_num(dist_opt, nan=1.0)
         Z_opt_corr = linkage(squareform(dist_opt, checks=False), method='average')
         clust_opt = fcluster(Z_opt_corr, t=0.05, criterion='distance')
         col_var_opt = np.var(X_opt, axis=0)
@@ -2336,6 +2574,7 @@ def direction_8_views(names, X, metric_names, domains, view_lenses,
                 dist_sc = np.clip(1.0 - rho_sc, 0, None)
                 np.fill_diagonal(dist_sc, 0)
                 dist_sc = (dist_sc + dist_sc.T) / 2.0
+                dist_sc = np.nan_to_num(dist_sc, nan=1.0)
                 Z_sc_corr = linkage(squareform(dist_sc, checks=False),
                                     method='average')
                 clust_sc = fcluster(Z_sc_corr, t=0.05, criterion='distance')
@@ -3223,8 +3462,25 @@ def main(tier='complete'):
     }
     atlas_json_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                     '..', '..', 'figures', 'structure_atlas_data.json')
+    def _sanitize(obj):
+        """Replace NaN/Inf with None for valid JSON."""
+        if isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_sanitize(v) for v in obj]
+        if isinstance(obj, np.floating):
+            v = float(obj)
+            return None if (np.isnan(v) or np.isinf(v)) else v
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.ndarray):
+            return _sanitize(obj.tolist())
+        return obj
+
     with open(atlas_json_path, 'w') as f:
-        _json.dump(atlas_data, f, indent=2)
+        _json.dump(_sanitize(atlas_data), f, indent=2)
     print(f"Atlas data exported: {atlas_json_path}")
 
     # Summary

@@ -27,7 +27,7 @@ def section(title):
 def run():
     d = load()
     names = d["metric_names"]  # 257
-    P = np.array(d["profiles"])  # 180 x 257
+    P = np.array([[0.0 if v is None else v for v in row] for row in d["profiles"]], dtype=np.float64)
     loadings = np.array(d["pca_loadings"])  # 180 x 257
     evr = np.array(d["explained_variance_ratio"])  # 180
     sources = d["sources"]  # 180 dicts with 'domain'

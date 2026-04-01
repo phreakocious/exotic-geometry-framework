@@ -24,6 +24,7 @@ ATLAS_JSON = Path("atlas/structure_atlas_data.json")
 GUIDE_MD = Path("docs/geometry-guide-prototype.md")
 OUT_DIR = Path("atlas/guide")
 ATLAS_BASE = ".."  # relative path from guide/ to atlas/
+SITE_BASE = "https://nullphase.net/sa/guide"
 
 
 
@@ -40,7 +41,7 @@ def parse_geometry_sections(md_text: str) -> dict:
         'intro': str,        # "What it measures" paragraph
         'metrics': str,      # Full metrics section (markdown)
         'lights_up': str,    # "When it lights up" paragraph
-        'tier': str,         # 'tier1' or 'tier2'
+        'tier': str,         # 'tier1', 'tier2', or 'tier3'
     }
     """
     geometries = {}
@@ -56,6 +57,9 @@ def parse_geometry_sections(md_text: str) -> dict:
         # Check for tier header
         if name.startswith("Tier 2") or name.startswith("# Tier 2"):
             current_tier = "tier2"
+            continue
+        if name.startswith("Tier 3") or name.startswith("# Tier 3"):
+            current_tier = "tier3"
             continue
         if name.startswith("Tier ") or name.startswith("# Tier"):
             continue
@@ -166,6 +170,33 @@ def md_paragraph_to_html(text: str) -> str:
 # Atlas data helpers
 # ---------------------------------------------------------------------------
 
+DEGENERATE_SOURCES = {'Constant 0x00', 'Constant 0xFF'}
+
+
+def _collect_ranked(ordered_indices, n, col, sources, degen_indices):
+    """Collect n ranked sources, deduplicating degenerate constants.
+
+    When two degenerate sources share the same metric value, only the first
+    encountered is kept.  Both appear only when their values differ — that
+    difference itself is informative.
+    """
+    import numpy as np
+    result = []
+    seen_degen_val = None
+    for pos in ordered_indices:
+        if len(result) >= n:
+            break
+        if np.isnan(col[pos]):
+            continue
+        if pos in degen_indices:
+            val = float(col[pos])
+            if seen_degen_val is not None and val == seen_degen_val:
+                continue  # redundant constant — skip
+            seen_degen_val = val
+        result.append((sources[pos]['name'], sources[pos]['domain'], float(col[pos])))
+    return result
+
+
 def get_metric_extremes(data: dict, geo_name: str, n: int = 5) -> list:
     """Get top/bottom sources for each metric of a geometry.
 
@@ -178,25 +209,23 @@ def get_metric_extremes(data: dict, geo_name: str, n: int = 5) -> list:
     import numpy as np
 
     metric_names = data['metric_names']
-    profiles = np.array(data['profiles'])
+    profiles = np.array(data['profiles'], dtype=float)
     sources = data['sources']
 
     prefix = f'{geo_name}:'
     indices = [(i, name.split(':')[1]) for i, name in enumerate(metric_names)
                if name.startswith(prefix)]
 
+    degen_indices = {i for i, s in enumerate(sources)
+                     if s['name'] in DEGENERATE_SOURCES}
+
     results = []
     for idx, metric in indices:
         col = profiles[:, idx]
         order = np.argsort(col)
 
-        top = []
-        for pos in order[-n:][::-1]:
-            top.append((sources[pos]['name'], sources[pos]['domain'], float(col[pos])))
-
-        bottom = []
-        for pos in order[:n]:
-            bottom.append((sources[pos]['name'], sources[pos]['domain'], float(col[pos])))
+        top = _collect_ranked(order[::-1], n, col, sources, degen_indices)
+        bottom = _collect_ranked(order, n, col, sources, degen_indices)
 
         results.append({
             'metric': metric,
@@ -348,18 +377,27 @@ def css() -> str:
 
     /* Metric blocks */
     .metric-block {
-        margin-bottom: 20px;
-        padding-left: 14px;
-        border-left: 2px solid var(--accent-math);
+        margin-bottom: 18px;
+        padding: 14px 16px;
+        background: rgba(123,143,255,0.03);
+        border: 1px solid rgba(123,143,255,0.08);
+        border-radius: 6px;
     }
     .metric-block:last-child { margin-bottom: 0; }
 
     .metric-name {
         font-family: 'JetBrains Mono', monospace;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 500;
         color: var(--accent);
         margin: 0 0 6px;
+        letter-spacing: 0.02em;
+    }
+    .metric-name::before {
+        content: '›';
+        color: var(--accent-math);
+        margin-right: 7px;
+        font-weight: 300;
     }
     .metric-desc {
         margin: 0;
@@ -378,19 +416,32 @@ def css() -> str:
         border-radius: 3px;
     }
 
-    /* Metric extreme tables */
+    /* Metric extreme tables — 2-col grid */
+    .extremes-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    .extremes-grid .extremes-table:last-child:nth-child(odd) {
+        grid-column: 1 / -1;
+        max-width: 50%;
+    }
     .extremes-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 12px;
+        table-layout: fixed;
+        font-size: 11px;
         font-family: 'JetBrains Mono', monospace;
-        margin-bottom: 16px;
+        background: rgba(123,143,255,0.02);
+        border: 1px solid rgba(123,143,255,0.06);
+        border-radius: 5px;
+        overflow: hidden;
     }
     .extremes-table caption {
         text-align: left;
         font-size: 11px;
         color: var(--accent);
-        padding-bottom: 6px;
+        padding: 8px 10px 5px;
         font-weight: 500;
     }
     .extremes-table th {
@@ -399,14 +450,17 @@ def css() -> str:
         text-transform: uppercase;
         letter-spacing: 0.08em;
         color: var(--text-dim);
-        padding: 4px 8px;
+        padding: 3px 10px;
         border-bottom: 1px solid var(--border);
         font-weight: 400;
     }
     .extremes-table td {
-        padding: 3px 8px;
+        padding: 2px 10px;
         color: #aaa;
-        border-bottom: 1px solid rgba(255,255,255,0.03);
+        border-bottom: 1px solid rgba(255,255,255,0.02);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .extremes-table td.val {
         color: var(--accent);
@@ -427,10 +481,18 @@ def css() -> str:
         text-decoration: underline;
     }
     .extremes-table .separator td {
-        padding: 2px 8px;
+        padding: 1px 10px;
         border: none;
         color: var(--text-dim);
         font-size: 9px;
+    }
+    @media (max-width: 600px) {
+        .extremes-grid {
+            grid-template-columns: 1fr;
+        }
+        .extremes-grid .extremes-table:last-child:nth-child(odd) {
+            max-width: 100%;
+        }
     }
 
     /* Properties badge row */
@@ -570,7 +632,10 @@ def css() -> str:
     """)
 
 
-def head_html(title: str) -> str:
+def head_html(title: str, slug: str = "") -> str:
+    page_url = f'{SITE_BASE}/{slug}.html' if slug else f'{SITE_BASE}/'
+    og_desc = (f'Geometry guide: {escape(title)}. '
+               f'What it measures, how it works, atlas rankings.')
     return (
         f'<!DOCTYPE html>\n'
         f'<html lang="en">\n'
@@ -581,12 +646,25 @@ def head_html(title: str) -> str:
         f'<meta name="description" content="Exotic geometry guide: {escape(title)}. '
         f'Part of the Structure Atlas \u2014 211 data sources analyzed through 200 '
         f'metrics across 54 exotic geometries.">\n'
+        f'<link rel="canonical" href="{page_url}" />\n'
+        f'<meta property="og:type" content="article" />\n'
+        f'<meta property="og:url" content="{page_url}" />\n'
+        f'<meta property="og:title" content="{escape(title)} \u2014 Structure Atlas" />\n'
+        f'<meta property="og:description" content="{og_desc}" />\n'
+        f'<meta property="og:image" content="{SITE_BASE}/og-image.png" />\n'
+        f'<meta property="og:image:width" content="1200" />\n'
+        f'<meta property="og:image:height" content="630" />\n'
+        f'<meta name="twitter:card" content="summary_large_image" />\n'
+        f'<meta name="twitter:title" content="{escape(title)} \u2014 Structure Atlas" />\n'
+        f'<meta name="twitter:description" content="{og_desc}" />\n'
+        f'<meta name="twitter:image" content="{SITE_BASE}/og-image.png" />\n'
         f'<link rel="preconnect" href="https://fonts.googleapis.com">\n'
         f'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
         f'<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;'
         f'0,400;0,600;0,700;0,800;1,300&family=JetBrains+Mono:wght@300;400;500'
         f'&display=swap" rel="stylesheet">\n'
         f'<style>\n{css()}</style>\n'
+        f'<script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>\n'
         f'</head>\n'
     )
 
@@ -639,12 +717,12 @@ def extremes_html(extremes: list) -> str:
         tables.append(
             f'<table class="extremes-table">'
             f'<caption>{escape(ext["metric"])}</caption>'
-            f'<thead><tr><th>Source</th><th>Domain</th><th>Value</th></tr></thead>'
+            f'<thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead>'
             f'<tbody>{"".join(rows)}</tbody>'
             f'</table>'
         )
 
-    return '\n'.join(tables)
+    return '<div class="extremes-grid">\n' + '\n'.join(tables) + '\n</div>'
 
 
 def footer_html(n_sources: int, n_metrics: int, n_geos: int) -> str:
@@ -652,7 +730,8 @@ def footer_html(n_sources: int, n_metrics: int, n_geos: int) -> str:
         f'<div class="footer">'
         f'<p>Structure Atlas &mdash; {n_sources} sources, {n_metrics} metrics, '
         f'{n_geos} geometries &mdash; '
-        f'<a href="{ATLAS_BASE}/index.html">Open Atlas</a></p>'
+        f'<a href="{ATLAS_BASE}/index.html">Open Atlas</a> &middot; '
+        f'<a href="https://github.com/phreakocious/exotic-geometry-framework">GitHub</a></p>'
         f'</div>'
     )
 
@@ -702,7 +781,7 @@ def build_geometry_page(geo_name: str, content: dict, catalog: dict,
             f'<span>{prev_link}</span><span>{next_link}</span></div>'
         )
 
-    html = head_html(geo_name)
+    html = head_html(geo_name, slug)
     html += '<body>\n<div class="container">\n'
 
     # Nav
@@ -791,6 +870,7 @@ def build_index_page(geometries: dict, catalog_lookup: dict,
     # then all remaining from catalog
     tier1 = [(name, c) for name, c in geometries.items() if c['tier'] == 'tier1']
     tier2 = [(name, c) for name, c in geometries.items() if c['tier'] == 'tier2']
+    tier3 = [(name, c) for name, c in geometries.items() if c['tier'] == 'tier3']
 
     # Get names of geometries we have content for
     written = set(geometries.keys())
@@ -853,8 +933,12 @@ def build_index_page(geometries: dict, catalog_lookup: dict,
         html += '<div class="tier-header">Tier 2 &mdash; High Discrimination</div>\n'
         html += f'<div class="geo-grid">\n{geo_cards(tier2)}\n</div>\n'
 
-    if remaining:
+    if tier3:
         html += '<div class="tier-header">Tier 3 &mdash; Remaining Geometries</div>\n'
+        html += f'<div class="geo-grid">\n{geo_cards(tier3)}\n</div>\n'
+
+    if remaining:
+        html += '<div class="tier-header">Uncategorized</div>\n'
         html += f'<div class="geo-grid">\n{geo_cards(remaining, from_content=False)}\n</div>\n'
 
     html += footer_html(n_sources, n_metrics, n_geos)

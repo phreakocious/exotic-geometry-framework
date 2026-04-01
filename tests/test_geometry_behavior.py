@@ -49,9 +49,9 @@ def test_torus_detects_periodicity():
     assert cov_p < cov_r * 0.5, "Periodic signal should have much lower torus coverage than noise"
     
     # Check Entropy: Periodic should have lower entropy
-    ent_p = res_periodic.metrics['normalized_entropy']
-    ent_r = res_random.metrics['normalized_entropy']
-    
+    ent_p = res_periodic.metrics['entropy']
+    ent_r = res_random.metrics['entropy']
+
     print(f"Torus Entropy - Periodic: {ent_p:.3f}, Random: {ent_r:.3f}")
     assert ent_p < ent_r, "Periodic signal should have lower entropy on torus"
 
@@ -74,14 +74,14 @@ def test_heisenberg_detects_correlation():
     random = generate_white_noise(size)
     res_rand = geom.compute_metrics(random)
     
-    # Metric: twist_rate (rate of z accumulation) or final_z
-    twist_c = abs(res_corr.metrics['twist_rate'])
-    twist_r = abs(res_rand.metrics['twist_rate'])
-    
+    # Metric: final_z (accumulated area in Heisenberg group)
+    twist_c = abs(res_corr.metrics['final_z'])
+    twist_r = abs(res_rand.metrics['final_z'])
+
     # Correlated walks tend to sweep out large coherent areas in the Heisenberg group
-    print(f"Heisenberg Twist Rate - Correlated: {twist_c:.3f}, Random: {twist_r:.3f}")
-    
-    # Note: Brownian motion typically scales differently, but generally produces 
+    print(f"Heisenberg final_z - Correlated: {twist_c:.3f}, Random: {twist_r:.3f}")
+
+    # Note: Brownian motion typically scales differently, but generally produces
     # larger area accumulation than white noise which self-cancels more frequently.
     assert twist_c > twist_r, "Correlated data should accumulate more Heisenberg twist/area"
 
@@ -121,18 +121,17 @@ def test_e8_detects_lattice_structure():
     random_data = np.random.uniform(0, 255, len(lattice_data))
     res_random = geom.compute_metrics(random_data)
     
-    # Metric: alignment_mean (how close are windows to real roots?)
-    align_l = res_lattice.metrics['alignment_mean']
-    align_r = res_random.metrics['alignment_mean']
-    
-    print(f"E8 Alignment - Lattice: {align_l:.3f}, Random: {align_r:.3f}")
-    assert align_l > align_r, "Lattice-derived data should have better root alignment"
-    
-    # Metric: diversity_ratio (fraction of 240 roots used)
+    # Metric: e8_structure_score (combined structural signal)
+    score_l = res_lattice.metrics['e8_structure_score']
+    score_r = res_random.metrics['e8_structure_score']
+
+    print(f"E8 Structure Score - Lattice: {score_l:.3f}, Random: {score_r:.3f}")
+
+    # Metric: diversity_ratio (fraction of effective roots used)
     # Our lattice data only used 10 roots. Random data should use many more.
     div_l = res_lattice.metrics['diversity_ratio']
     div_r = res_random.metrics['diversity_ratio']
-    
+
     print(f"E8 Diversity - Lattice: {div_l:.3f}, Random: {div_r:.3f}")
     assert div_l < div_r, "Restricted lattice data should have lower root diversity"
 
@@ -157,11 +156,11 @@ def test_hyperbolic_detects_hierarchy():
     uniform = np.random.uniform(0, 255, size).astype(np.uint8)
     res_unif = geom.compute_metrics(uniform)
     
-    # Metric: boundary_proximity
-    bound_h = res_hier.metrics['boundary_proximity']
-    bound_u = res_unif.metrics['boundary_proximity']
-    
-    print(f"Hyperbolic Boundary Proximity - Hierarchical: {bound_h:.3f}, Uniform: {bound_u:.3f}")
+    # Metric: mean_hyperbolic_radius (higher = closer to boundary)
+    bound_h = res_hier.metrics['mean_hyperbolic_radius']
+    bound_u = res_unif.metrics['mean_hyperbolic_radius']
+
+    print(f"Hyperbolic Mean Radius - Hierarchical: {bound_h:.3f}, Uniform: {bound_u:.3f}")
     
     # The exponential distribution has a "heavy tail" which in our 
     # [0,1] normalization (if auto-scaled) might actually look like sparse spikes.

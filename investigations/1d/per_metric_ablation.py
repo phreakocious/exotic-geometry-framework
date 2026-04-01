@@ -322,7 +322,7 @@ def main():
     parser.add_argument('--n-trials', type=int, default=N_TRIALS,
                         help=f'Number of trials (default: {N_TRIALS})')
     parser.add_argument('--geometry',
-                        choices=['e8', 'd4', 'h3', 'h4', 'hyp', 'lor', 'symp',
+                        choices=['e8', 'd4', 'h3', 'h4', 'hyp', 'lor',
                                  'pen', 'ab', 'hat', 'dodec', 'sept', 'all'],
                         default='all',
                         help='Which geometry to run (default: all)')
@@ -363,9 +363,8 @@ def main():
         lor = LorentzianGeometry()
         geos.append(('Lorentzian', lor))
 
-    if args.geometry in ('symp', 'all'):
-        symp = SymplecticGeometry()
-        geos.append(('Symplectic', symp))
+    # Symplectic excluded: no swappable object per ablation spec.
+    # It's a workhorse-only geometry (no meaningful control variant).
 
     if args.geometry in ('pen', 'all'):
         pen = PenroseGeometry()

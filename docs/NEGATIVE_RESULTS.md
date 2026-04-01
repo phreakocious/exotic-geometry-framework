@@ -6,7 +6,7 @@ What the framework cannot detect, and why. These results are as important as the
 
 **AES-CTR output is indistinguishable from true randomness across every approach we tested.**
 
-This was verified exhaustively:
+This was verified exhaustively with the original 24-geometry framework (2024):
 - All 24 individual geometries (static metrics)
 - 6 block-averaging scales (multiscale)
 - 36 temporal features (sliding window derivatives)
@@ -16,17 +16,17 @@ This was verified exhaustively:
 - 8 bit planes (bitplane decomposition)
 - FFT spectral analysis
 
-Zero significant differences survived Bonferroni correction in any of these tests. This is the correct theoretical result for a secure block cipher in CTR mode, and it validates the framework's methodology: we detect real structure but don't hallucinate structure in properly randomized data.
+Zero significant differences survived Bonferroni correction in any of these tests. The current 54-geometry framework (222 metrics as of 2026-03-29) continues to show 0 significant metrics for AES-CTR in the Structure Atlas. This is the correct theoretical result for a secure block cipher in CTR mode, and it validates the framework's methodology: we detect real structure but don't hallucinate structure in properly randomized data.
 
 ## PRNGs That Pass (or Nearly Pass)
 
-A systematic study of 10 generators (`rng.py`) confirms that modern PRNGs are geometrically indistinguishable from os.urandom, while historical weak generators are massively detectable.
+A systematic study of 10 generators (`rng.py`, using the 131-metric subset available at time of testing) confirms that modern PRNGs are geometrically indistinguishable from os.urandom, while historical weak generators are massively detectable.
 
 **Completely indistinguishable (0 sig):**
 
 | PRNG | Category | Why It Passes |
 |------|----------|--------------|
-| **PCG64** | GOOD | NumPy default, passes BigCrush; 0 sig across all 233 metrics |
+| **PCG64** | GOOD | NumPy default, passes BigCrush; 0 sig across all 131 metrics |
 | **SFC64** | GOOD | Small Fast Chaotic; 0 sig |
 | **SHA-256 CTR** | CRYPTO | Hash-based; cryptographically indistinguishable by design |
 
@@ -45,14 +45,16 @@ A systematic study of 10 generators (`rng.py`) confirms that modern PRNGs are ge
 
 Note: The earlier `prng.py` tested XorShift32 (which passes); `rng.py` tests the 128-bit variant which is borderline. Our framework operates at the byte level and cannot access the high-dimensional structure where many PRNG weaknesses live (e.g., MT19937's 623-dimensional equidistribution failures).
 
-## Chaotic Maps That Look Random
+## Chaotic Maps: From "Looks Random" to Detected
 
-| Map | Why It Passes |
-|-----|--------------|
-| **Standard map** | Uniformly mixing on the torus --- ergodic measure equals Lebesgue measure |
-| **Arnold cat map** | Same: uniformly mixing, Anosov diffeomorphism |
+| Map | Original Result | Reclassified | New Detection |
+|-----|----------------|-------------|---------------|
+| **Standard map (K=6)** | 0 sig (uniformly mixing) | **Positive #18a** | 44 sig; Predictability:sample_entropy d=−46, Cayley:spectral_gap d=−17 |
+| **Arnold cat map** | 0 sig (Anosov diffeomorphism) | **Positive #18b** | 19 sig; Predictability:sample_entropy d=−86, SpectralGraph:spectral_dim d=+42 |
 
-These maps are genuinely chaotic but produce uniform distributions in their phase space. Their Lyapunov exponents are positive (they ARE chaotic), but their invariant measure is uniform, so byte-level statistics see them as random. This is mathematically correct.
+These maps are genuinely chaotic with uniform invariant measures, so the original 24-geometry framework (2024) correctly reported them as indistinguishable from random. The addition of Predictability, Cayley, and SpectralGraph geometries (2025) revealed their deterministic skeleton: mixing erases distributional structure but not temporal predictability or graph-spectral signatures. See `investigations/1d/negative_reeval.py`.
+
+**The lesson:** "Looks random" is relative to the probe set. Uniform distributions defeat distributional metrics, but deterministic dynamics leave traces in sequential and graph-based metrics. The framework's expanding geometry set means the negative-result boundary shifts over time.
 
 ## Steganography: What Works and What Doesn't
 
@@ -202,3 +204,177 @@ Several geometry metrics produce misleading results on low-cardinality or degene
 | Fibonacci word special-cased as Sturmian | Using p(n) = n+1 (Sturmian bound) as the general quasicrystal complexity metric | Fibonacci is the ONLY binary Sturmian sequence; other QC words have higher complexity | Don't use Sturmian bound as the general QC metric |
 
 **The meta-lesson**: Low-entropy, low-cardinality, or degenerate inputs can cause metrics to hit boundary conditions that produce apparently valid but mechanistically wrong results. The Structure Atlas uses a degeneracy discount factor to downweight sources with low Cantor/Torus coverage, preventing these pathological cases from inflating the structure space.
+
+## Scope Conditions
+
+The sections above document *what* the framework cannot detect. This section documents *when* it should not be used --- the structural limitations of the methodology itself, independent of any specific data source. These are not bugs to fix; they are boundary conditions of the approach.
+
+### 1. The Framework Detects Structure, Not Meaning
+
+Each geometry acts as a probe of mathematical invariants --- symmetry, recurrence, self-similarity, curvature. The framework detects that English Literature has rich byte-level structure (it does: letter frequencies, bigram correlations, paragraph rhythms). It cannot distinguish Shakespeare from Austen, because that distinction is semantic, not structural.
+
+**When this matters:** Any task requiring abstraction over content --- sentiment analysis, topic classification, semantic similarity --- is out of scope. The framework is a structural microscope, not a semantic one. It complements rather than replaces tools that operate on meaning.
+
+### 2. Rigid Windowing Fragility
+
+Root-system geometries (E8, D4, H3, H4) embed data by slicing the byte stream into fixed-width windows of `dim` bytes and computing dot products against root vectors. This creates a hard alignment requirement: the data must have structure at a scale commensurate with the window width, starting at a compatible phase.
+
+**Evidence:** The E8 Walk+1 diagnostic in the geometry ablation (`investigations/1d/geometry_ablation.py`) generates a sequence of E8 roots encoded as bytes, then drops the first byte. This 1-byte phase shift causes every 8-byte window to straddle two adjacent roots instead of landing cleanly on one. Detection power drops substantially --- a single-byte misalignment is enough to destroy root-system-specific metrics.
+
+**Consequence:** Real-world signals that lack a natural `dim`-byte periodicity (network packets, natural language, sensor telemetry) may not trigger root-system metrics even when underlying geometric structure exists. The ablation classifies such cases as "Generic (embedding-limited)" --- the geometry's math is sound, but the pipeline can't present the data in a geometry-compatible form.
+
+**Not affected:** Spectral geometries (Penrose, Ammann-Beenker, Dodecagonal, Septagonal), topological geometries (PersistentHomology, Mandelbrot), and dynamical geometries (Recurrence, Attractor, OrdinalPartition) operate on the raw 1D byte stream or delay embeddings and are phase-invariant.
+
+### 3. Axis Dependence
+
+Some root-system metrics exploit the alignment between data axes and root vectors, not the intrinsic geometry of the root system. The ablation's `rotation_data` test rotates the data while leaving roots fixed. Metrics that degrade under this test depend on data having specific axis structure.
+
+**Evidence:** The ablation spec predicts that axis-aligned data (RANDU, which lives on hyperplanes in 3D) should degrade under rotation, while isotropic data (White Noise) should be unaffected. When a geometry scores well on RANDU but collapses under `rotation_data`, the detection is an axis-alignment artifact, not a geometric invariant.
+
+**Consequence:** Detections on axis-aligned sources should be interpreted with caution. The ablation reports axis-dependence flags per geometry per source. A detection flagged as axis-dependent is real (the framework genuinely distinguishes the source from shuffled) but is not evidence of the named geometry's specific mathematical structure.
+
+### 4. High-Entropy Collapse
+
+When the input has maximum or near-maximum entropy, all geometric probes produce indistinguishable outputs. White Noise, AES-CTR, Gaussian Noise, and Beta Noise all show 0 significant metrics out of ~200 in the Structure Atlas, with instability scores of 205--209 (the theoretical maximum entropy baseline).
+
+**Why this is fundamental:** The framework measures departures from randomness through geometric lenses. If there are no departures, every lens sees the same thing: noise. This is not a failure of sensitivity --- it is the correct theoretical result. AES-CTR *should* be indistinguishable from random, and the framework correctly reports that it is.
+
+**When this matters:** Domains where the interesting variation is small relative to the entropy floor --- high-quality compressed data, encrypted streams, well-mixed chaotic systems with uniform invariant measures. The framework cannot find structure that isn't there, and it cannot amplify structure that is below the byte-level quantization noise floor.
+
+### 5. Minimum Data Requirements
+
+Geometric metrics require sufficient data to populate the embedding space. The minimum scales with the geometry's effective cardinality and dimensionality:
+
+```
+min_bytes = max(16384, effective_directions × 100 × dimension)
+```
+
+For E8 (92 effective directions in 8D), this is 73,600 bytes. For D4 (9 effective directions in 4D), 3,600 bytes. For 1D spectral geometries, 16,384 bytes suffices.
+
+**Below the minimum:** Per-direction statistics become unstable, metric variance inflates, and the consistency score (fraction of trials showing reproducible effects) drops. The framework does not refuse small inputs --- it computes metrics that may be unreliable. The Structure Atlas enforces the minimum via `data_size` scaling; ad-hoc use of the framework on small data should be interpreted with appropriate skepticism.
+
+**Not yet characterized:** The framework's small-data behavior has not been systematically studied. The minimums above are engineering thresholds chosen for stable ablation statistics, not empirical detection floors. A sample-size sensitivity study --- varying data size on sources with known strong detections and finding the floor where detection fails --- would establish the actual limits.
+
+### 6. Single Encoding Path
+
+All results are conditional on the specific preprocessing pipeline: uint8 byte stream → geometry-specific embedding → per-window z-score normalization → metric computation. Different encoding choices (delay coordinates, sliding windows, adaptive stride, float-preserving embeddings) could change which structures are visible and which are hidden.
+
+**Evidence:** The byte quantization limits documented above (GARCH volatility clustering, cepstral features, IEEE 754 float structure) are encoding artifacts, not fundamental limits of geometric analysis. A framework that operated on float64 time series with delay-coordinate embeddings would likely detect structures that byte quantization destroys.
+
+**Consequence:** "The framework doesn't detect X" means "this specific pipeline doesn't detect X." Claims about the geometric methodology in general require testing under multiple encoding paths. The ablation's falsification conditions are explicitly scoped: "Structure-Dependent means 'for this panel under this embedding,' not a universal property of the geometry."
+
+### 7. Partial Outputs on Geometry Failure
+
+`GeometryAnalyzer.analyze()` catches exceptions from individual geometries and continues with the remaining set. If a geometry crashes on specific input data (e.g., degenerate embedding, numerical overflow), the returned `AnalysisResult` silently omits that geometry's metrics. A warning is emitted, but the caller receives a result object that *looks* complete --- same type, same interface --- with fewer entries than expected.
+
+**When this matters:** Any downstream code that assumes a fixed number of geometry results (signature comparison, atlas profiling, automated classification) will silently degrade. The Structure Atlas pipeline handles this via its own error handling, but ad-hoc users of `GeometryAnalyzer` may not notice missing geometries.
+
+**Mitigation:** Check `len(result.results)` against the expected geometry count. The warning includes the geometry name and exception message.
+
+### 8. Signature Schema Mismatch on Metric Changes
+
+`GeometricClassifier.classify()` compares an input metric vector against stored signature vectors. If the metric count changes (geometries added/removed, metrics decomposed or pruned), the vectors have different lengths. Rather than rejecting the comparison, the classifier truncates both vectors to the shorter length and emits a warning.
+
+**When this matters:** After any metric change (evolution integration, decomposition, pruning), cached signatures become stale. Truncation silently discards the newest metrics --- exactly the ones most likely to carry new structural signal. Classifications based on truncated vectors may be systematically biased toward the old metric set.
+
+**Mitigation:** Rebuild signatures after any metric change. The warning message includes both vector lengths and the signature name. Treat any mismatch warning as "results are unreliable until signatures are rebuilt."
+
+---
+
+## The Concentration--Entropy Void: A Metric-Space Saddle
+
+**Date**: 2026-03-30
+**Status**: Confirmed empirically. Resistant to source additions.
+
+### Observation
+
+The Structure Atlas PCA (PC1 vs PC2, 217 sources, 220 metrics, 53 geometries) contains a persistent oval void approximately 6 PCA units wide in the horizontal band PC2 ∈ [-1.5, 0.5], spanning from approximately PC1 = -3 to PC1 = +3. The void is bounded by real data on all sides:
+
+- **Left edge**: ECG Fusion (PC1 ≈ -3.3) — a concentrated, quasi-deterministic medical signal
+- **Right edge**: Random Telegraph (PC1 ≈ +3.2) — a balanced, entropic switching process
+- **Above**: Chaotic and symbolic sources (Logistic variants, substitution sequences)
+- **Below**: Medical, speech, and motion sources (ECG, accelerometer, voice)
+
+### Attempted Filling
+
+We added 10 new sources explicitly targeting this region (2026-03-30):
+
+| Source | Design rationale | Where it landed |
+|---|---|---|
+| Blood Pressure Waveform | Narrowband, strongly correlated, smooth | Joined existing medical cluster |
+| Respiration Waveform | Slow quasi-periodic, high Hurst | Joined existing medical cluster |
+| Ocean Swell | Long-period wave groups, high autocorrelation | Joined geophysics cluster |
+| Gut Motility (EGG) | Very slow, narrowband, high mutual info | Joined medical cluster |
+| Temperature Drift | HVAC cycling, extreme autocorrelation | Joined climate cluster |
+| PID Controller | Deterministic, smooth, damped oscillatory | Joined exotic/motion cluster |
+| Markov Chain (10-state) | Moderate entropy, smooth, diverse transitions | Joined structured cluster |
+| Gray Code Counter | Low entropy, complex bit patterns | Joined structured cluster |
+| LFSR (16-bit) | Deterministic periodic, complex structure | Joined structured cluster |
+| Network Packet Sizes | Bursty, moderate entropy | Joined binary cluster |
+
+None penetrated the void. All gravitated to existing clusters.
+
+### Root Cause
+
+The void is a **metric-space saddle** created by anti-correlated geometric properties. Crossing the void from left to right requires simultaneously:
+
+1. **Decreasing** distributional concentration (Spherical S²:concentration, Wasserstein:dist_from_uniform, E8:std_profile) — moving from peaked to uniform byte distributions
+2. **Increasing** transition entropy (Ordinal Partition:transition_entropy, perm_entropy, spectrum_width) — moving from predictable to diverse ordinal patterns
+3. **Decreasing** spectral predictability (Gottwald-Melbourne:k_variance, SL(2,ℝ):lyapunov_exponent) — moving from deterministic to stochastic dynamics
+
+The metrics on the left side (concentration, predictability) are positively correlated with each other, as are those on the right (entropy, balance). But across the void boundary, these groups are **anti-correlated**: you cannot be simultaneously moderately concentrated AND moderately balanced across all 220 metrics. Each metric individually CAN take intermediate values, but the joint constraint across hundreds of geometric measures creates a forbidden zone.
+
+This is analogous to a phase transition: signals are either "concentration-dominated" (the left regime) or "entropy-dominated" (the right regime), with a sharp crossover rather than a smooth gradient. The void is the spinodal region where neither regime is stable.
+
+### Significance
+
+This is an empirical finding about the structure of signal space as measured by exotic geometry, not about any individual metric. It suggests that the framework's 53 geometries collectively define a **two-phase landscape** for 1D byte sequences: structured/concentrated signals and entropic/balanced signals, with a narrow transition zone that real data traverses rapidly rather than occupying.
+
+The void is not a failure of source diversity — it's a structural property of how geometric measures interact. A hypothetical source in the void would need to produce byte sequences that are simultaneously "moderately structured" according to every geometric lens, a condition that natural and synthetic processes don't satisfy because structure tends to be coherent (either present across most lenses or absent across most).
+
+### The Void is Three-Dimensional
+
+The concentration--entropy saddle is not a 2D artifact of the PC1×PC2 projection. It extends through at least the first three principal components as a **saddle surface**.
+
+**PC3 axis**: PC3 separates concentrated distributions (high sphere_concentration, Wasserstein:dist_from_uniform, Zipf alpha) from balanced distributions (high hemisphere_balance, q_spread, Wasserstein:entropy). It is the distributional concentration axis.
+
+**The PC3 band void**: In the PC1×PC3 projection, a horizontal void appears at PC3 ∈ [-0.8, 0.0] across PC1 ∈ [-3, +1]. This band contains only 4 sources (Kilauea Tremor, Seismograph ANMO, Humidity, LIGO Hanford), all clustered at the left edge (PC1 ≈ -2.5). The 4-unit span from PC1 = -1 to PC1 = +1 at PC3 ≈ -0.4 is completely empty.
+
+This void was discovered after a second round of source additions (2026-03-31) that successfully filled voids in other regions:
+
+| Source | Target | Result |
+|---|---|---|
+| Poisson Counts | High PC3 (concentrated) | Landed in concentrated cluster |
+| Categorical Sensor | High PC3 (concentrated) | Landed in concentrated cluster |
+| Geometric Waiting Times | High PC3 (concentrated) | Landed in concentrated cluster |
+| Uniform Chaos (Logistic Scramble) | Low PC3 (balanced) | Landed in balanced cluster |
+| Shuffled Blocks | Low PC3 (balanced) | Landed in balanced cluster |
+
+The concentrated sources raised PC3; the balanced sources lowered PC3. None occupied the transition band. The PC3 void is the same phase transition as the PC1×PC2 void, viewed from orthogonal projection: byte distributions are either concentrated or balanced, with no stable intermediate state across the full metric suite.
+
+### Geometric Interpretation
+
+The three principal components define a coordinate system for 1D byte sequences:
+
+- **PC1** (26%): Entropy/complexity axis. Low = deterministic/structured. High = random/entropic.
+- **PC2** (14%): Spectral character axis. Low = smooth/correlated. High = rough/spiky.
+- **PC3** (13%): Distributional shape axis. High = concentrated/peaked. Low = balanced/uniform.
+
+The void structure in this 3D space traces out a **saddle surface** separating two basins:
+
+1. **The structured basin** (low PC1, variable PC2/PC3): Deterministic, predictable signals. Waveforms, attractors, physiological recordings. Structure is coherent — if a signal is structured in one geometric lens, it tends to be structured in most.
+
+2. **The entropic basin** (high PC1, variable PC2/PC3): Random, unpredictable signals. PRNGs, compressed data, encrypted streams. Entropy is also coherent — high entropy in one lens implies high entropy in most.
+
+The saddle surface between them is thin because **structure is a cooperative phenomenon**. A signal doesn't become "half-structured" by having structure in half the geometric lenses — the lenses are correlated enough that structure either coheres across most of them or collapses across most of them. The intermediate zone where some lenses see structure and others see noise occupies negligible volume in the 220-dimensional metric space.
+
+This is consistent with the framework's design: exotic geometries were selected to detect different *types* of structure (spectral, topological, dynamical, symmetry), not different *amounts*. A signal that has "50% structure" would need to fool roughly half the geometries into seeing order while the other half see noise — but the geometries share enough common signal (byte entropy, spectral shape, autocorrelation) that such selective fooling is nearly impossible for natural processes.
+
+### What Would Fill the Void?
+
+A source occupying the saddle would need to produce byte sequences where:
+- Entropy metrics disagree (e.g., high block entropy but low permutation entropy)
+- Distributional metrics disagree (e.g., uniform marginals but concentrated ordinal patterns)
+- Spectral metrics disagree (e.g., flat power spectrum but structured phase relationships)
+
+These are adversarial constructions — signals engineered to decouple metrics that are naturally correlated. Cryptographic constructions (e.g., format-preserving encryption of structured data) might partially achieve this. But the void's persistence across 15 targeted source additions suggests that natural and simple synthetic processes cannot occupy it. The edges of the atlas are the edges of what physical processes produce.

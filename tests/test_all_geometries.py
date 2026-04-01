@@ -41,9 +41,9 @@ def test_geometry_contract(GeomClass):
     assert isinstance(geom.description, str)
     assert isinstance(geom.view, str)
     
-    # Generate random data
+    # Generate random data (some geometries need more than 100 bytes)
     rng = np.random.default_rng(42)
-    data = rng.integers(0, 256, 100, dtype=np.uint8)
+    data = rng.integers(0, 256, 2000, dtype=np.uint8)
     
     # Test Embed
     try:

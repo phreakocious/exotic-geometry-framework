@@ -45,13 +45,13 @@ def test_lorentzian_causality():
     res_causal = geom.compute_metrics(causal)
     res_acausal = geom.compute_metrics(acausal)
     
-    time_c = res_causal.metrics['timelike_fraction']
-    time_a = res_acausal.metrics['timelike_fraction']
-    
-    print(f"Lorentzian Timelike Frac - Causal: {time_c:.3f}, Acausal: {time_a:.3f}")
-    
-    assert time_c > time_a, "Slow drifting signal should be more timelike than random noise"
-    assert time_c > 0.5, "Slow signal should be predominantly timelike"
+    # spacelike_fraction: high for random jumps, low for slow drift
+    space_c = res_causal.metrics['spacelike_fraction']
+    space_a = res_acausal.metrics['spacelike_fraction']
+
+    print(f"Lorentzian Spacelike Frac - Causal: {space_c:.3f}, Acausal: {space_a:.3f}")
+
+    assert space_c < space_a, "Slow drifting signal should be less spacelike than random noise"
 
 def test_projective_collinearity():
     """
@@ -158,13 +158,11 @@ def test_sol_anisotropy():
     low_z = np.array(low_z, dtype=np.uint8)
     res_low = geom.compute_metrics(low_z)
     
-    stretch_high = res_high.metrics['stretch_ratio']  # x_range / y_range
-    stretch_low = res_low.metrics['stretch_ratio']
+    drift_high = res_high.metrics['z_drift']
+    drift_low = res_low.metrics['z_drift']
 
-    print(f"Sol Stretch Ratio - High Z: {stretch_high:.3f}, Low Z: {stretch_low:.3f}")
+    print(f"Sol Z Drift - High Z: {drift_high:.3f}, Low Z: {drift_low:.3f}")
 
-    # High Z -> X expands -> stretch_ratio > 1
-    # Low Z -> Y expands -> stretch_ratio < 1
-    assert stretch_high > 1.0, "High Z should favor X expansion"
-    assert stretch_low < 1.0, "Low Z should favor Y expansion"
-    assert stretch_high > stretch_low
+    # High Z byte (255) -> positive z drift
+    # Low Z byte (0) -> negative z drift
+    assert drift_high > drift_low, "High Z bytes should produce more positive z drift than low Z bytes"

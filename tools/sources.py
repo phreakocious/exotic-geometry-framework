@@ -4672,3 +4672,390 @@ def gen_langevin_double_well(rng, size):
         x += (-(x**3) + x) * dt + sqrt_2D_dt * rng.standard_normal()
         vals[i] = x
     return _to_uint8(vals)
+
+
+# ================================================================
+# Void-filling sources (PCA atlas gap analysis, 2026-03-30)
+# ================================================================
+
+
+@source(
+    "Respiration Waveform",
+    domain="medical",
+    description="Synthetic respiration: slow sinusoidal with breath-to-breath variability — strongly correlated, narrowband, high Hurst",
+)
+def gen_respiration(rng, size):
+    """Simulated breathing waveform. Base rate ~0.25 Hz (15 breaths/min)
+    with amplitude/rate modulation. Strongly autocorrelated, narrowband
+    spectrum, high spectral R². Targets Void 2 (correlated-medical)."""
+    dt = 1.0 / 50  # 50 Hz sampling
+    t = np.arange(size) * dt
+    base_freq = rng.uniform(0.2, 0.35)  # 12-21 breaths/min
+    # Breath-to-breath variability via slow FM
+    freq_mod = base_freq + 0.03 * np.sin(2 * np.pi * 0.02 * t)
+    phase = np.cumsum(2 * np.pi * freq_mod * dt)
+    # Asymmetric waveform: inspiration faster than expiration
+    breath = 0.6 * np.sin(phase) + 0.3 * np.sin(2 * phase + 0.3)
+    # Slow amplitude envelope (respiratory sinus arrhythmia)
+    envelope = 1.0 + 0.15 * np.sin(2 * np.pi * 0.005 * t)
+    signal = breath * envelope + rng.normal(0, 0.02, size)
+    return _to_uint8(signal)
+
+
+@source(
+    "PID Controller",
+    domain="exotic",
+    description="PID controller tracking a step-changing setpoint — deterministic, narrowband, strongly correlated",
+)
+def gen_pid_controller(rng, size):
+    """PID controller output. The controlled variable tracks random
+    step changes in setpoint through a second-order plant. Produces
+    smooth, strongly correlated signals with damped oscillatory
+    transients. Targets Void 2 (correlated-medical)."""
+    # Random PID gains (underdamped to critically damped)
+    Kp = rng.uniform(1.0, 3.0)
+    Ki = rng.uniform(0.1, 0.5)
+    Kd = rng.uniform(0.05, 0.3)
+    dt = 0.01
+    # Second-order plant: d²y/dt² + 2ζωdy/dt + ω²y = ω²u
+    omega = rng.uniform(1.0, 3.0)
+    zeta = rng.uniform(0.3, 0.8)
+    y, dy = 0.0, 0.0
+    integral = 0.0
+    prev_err = 0.0
+    setpoint = 0.0
+    vals = np.empty(size, dtype=np.float64)
+    for i in range(size):
+        if rng.random() < 0.002:  # step change
+            setpoint = rng.uniform(-2, 2)
+        err = setpoint - y
+        integral += err * dt
+        integral = np.clip(integral, -5, 5)
+        deriv = (err - prev_err) / dt
+        u = Kp * err + Ki * integral + Kd * deriv
+        prev_err = err
+        # Plant dynamics
+        ddy = omega**2 * (u - y) - 2 * zeta * omega * dy
+        dy += ddy * dt
+        y += dy * dt
+        vals[i] = y
+    return _to_uint8(vals)
+
+
+@source(
+    "Markov Chain (10-state)",
+    domain="exotic",
+    description="Ergodic 10-state Markov chain — moderate entropy, smooth spectrum, diverse transitions",
+)
+def gen_markov_10state(rng, size):
+    """10-state ergodic Markov chain with random transition matrix.
+    Moderate entropy (neither binary nor uniform), smooth spectrum,
+    high diversity but weak recurrence structure.
+    Targets Void 1 (moderate-entropy smooth)."""
+    n_states = 10
+    # Random transition matrix with moderate sparsity
+    T = rng.dirichlet(np.ones(n_states) * 0.5, size=n_states)
+    # Ensure ergodicity: add small uniform component
+    T = 0.95 * T + 0.05 / n_states
+    # Map states to non-uniform byte values (spread across [0, 255])
+    state_vals = np.sort(rng.choice(256, n_states, replace=False)).astype(np.uint8)
+    state = rng.integers(n_states)
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        vals[i] = state_vals[state]
+        state = rng.choice(n_states, p=T[state])
+    return vals
+
+
+@source(
+    "Gray Code Counter",
+    domain="exotic",
+    description="8-bit Gray code counter with variable step — low entropy, high structure, complex transitions",
+)
+def gen_gray_code(rng, size):
+    """8-bit Gray code counting sequence. Gray codes change exactly one
+    bit per step, creating highly structured transitions with low entropy
+    but complex ordinal patterns. Variable step size adds variety.
+    Targets Void 3 (structured-center)."""
+    step = rng.integers(1, 5)  # count by 1-4
+    start = rng.integers(256)
+    counter = start
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        # Gray code: XOR n with n>>1
+        gray = counter ^ (counter >> 1)
+        vals[i] = gray & 0xFF
+        counter = (counter + step) & 0xFFFF  # 16-bit counter, output 8-bit Gray
+    return vals
+
+
+@source(
+    "LFSR (16-bit)",
+    domain="exotic",
+    description="16-bit linear feedback shift register — low entropy, deterministic, complex bit transitions",
+)
+def gen_lfsr_16(rng, size):
+    """16-bit Fibonacci LFSR with random tap polynomial. Produces a
+    deterministic periodic sequence (period up to 65535) with low
+    byte entropy but complex transition structure.
+    Targets Void 3 (structured-center)."""
+    # Maximal-length tap sets for 16-bit LFSR
+    tap_sets = [
+        (16, 15, 13, 4),
+        (16, 14, 13, 11),
+        (16, 15, 10, 3),
+        (16, 12, 3, 1),
+    ]
+    taps = list(tap_sets[rng.integers(len(tap_sets))])
+    state = rng.integers(1, 0xFFFF + 1)  # nonzero seed
+    vals = np.empty(size, dtype=np.uint8)
+    for i in range(size):
+        vals[i] = state & 0xFF  # output low byte
+        # Fibonacci LFSR: new bit = XOR of tap positions
+        bit = 0
+        for t in taps:
+            bit ^= (state >> (t - 1)) & 1
+        state = ((state >> 1) | (bit << 15)) & 0xFFFF
+    return vals
+
+
+@source(
+    "Blood Pressure Waveform",
+    domain="medical",
+    description="Synthetic arterial blood pressure — smooth quasi-periodic with dicrotic notch, strongly correlated, narrowband",
+)
+def gen_blood_pressure(rng, size):
+    """Simulated arterial blood pressure (ABP). Base cardiac cycle at ~1 Hz
+    with dicrotic notch (reflected wave), respiratory modulation at ~0.25 Hz,
+    and slow Mayer waves at ~0.1 Hz. Smoother than ECG, high spectral R²,
+    high Hurst, low bandwidth. Targets mid-lower-left void."""
+    dt = 1.0 / 100  # 100 Hz
+    t = np.arange(size) * dt
+    hr = rng.uniform(0.9, 1.2)  # heart rate Hz
+    # Cardiac waveform: systolic peak + dicrotic notch
+    phase = 2 * np.pi * hr * t
+    systolic = 0.6 * np.exp(-2.0 * ((np.mod(phase, 2*np.pi) - 0.8)**2))
+    dicrotic = 0.15 * np.exp(-3.0 * ((np.mod(phase, 2*np.pi) - 2.5)**2))
+    cardiac = systolic + dicrotic
+    # Respiratory modulation
+    resp_mod = 0.08 * np.sin(2 * np.pi * 0.25 * t + rng.uniform(0, 2*np.pi))
+    # Mayer waves (baroreceptor reflex)
+    mayer = 0.04 * np.sin(2 * np.pi * 0.1 * t + rng.uniform(0, 2*np.pi))
+    # Baseline + drift
+    baseline = 0.5 + 0.02 * np.cumsum(rng.normal(0, 0.001, size))
+    baseline = baseline - baseline.min()
+    baseline = baseline / (baseline.max() + 1e-10) * 0.1
+    signal = cardiac + resp_mod + mayer + baseline + rng.normal(0, 0.005, size)
+    return _to_uint8(signal)
+
+
+@source(
+    "Ocean Swell",
+    domain="geophysics",
+    description="Synthetic deep ocean swell — long-period, smooth, high Hurst, strongly correlated",
+)
+def gen_ocean_swell(rng, size):
+    """Simulated deep ocean swell. Superposition of 3-5 swell trains with
+    periods 8-20s, each with slow amplitude modulation (wave groups).
+    Very smooth, strongly autocorrelated, narrowband, high spectral R².
+    Targets mid-lower-left void."""
+    dt = 0.5  # 2 Hz sampling
+    t = np.arange(size) * dt
+    n_trains = rng.integers(3, 6)
+    signal = np.zeros(size)
+    for _ in range(n_trains):
+        period = rng.uniform(8, 20)
+        amp = rng.uniform(0.3, 1.0)
+        phase = rng.uniform(0, 2 * np.pi)
+        # Slow amplitude modulation (wave groups)
+        group_period = period * rng.uniform(5, 15)
+        envelope = 0.5 + 0.5 * np.sin(2 * np.pi * t / group_period + rng.uniform(0, 2*np.pi))
+        signal += amp * envelope * np.sin(2 * np.pi * t / period + phase)
+    return _to_uint8(signal)
+
+
+@source(
+    "Temperature Drift",
+    domain="climate",
+    description="Slow room temperature with HVAC cycles — very smooth, high Hurst, low bandwidth",
+)
+def gen_temperature_drift(rng, size):
+    """Simulated indoor temperature. Slow drift from HVAC cycling
+    (period ~20-40 min) plus diurnal trend, plus sensor noise.
+    Very smooth, very strongly correlated, very narrowband.
+    Targets mid-lower-left void."""
+    dt = 1.0  # 1 Hz
+    t = np.arange(size) * dt
+    # HVAC cycle
+    hvac_period = rng.uniform(1200, 2400)  # 20-40 min in seconds
+    hvac = 0.5 * np.sin(2 * np.pi * t / hvac_period + rng.uniform(0, 2*np.pi))
+    # Slow diurnal component
+    diurnal = 2.0 * np.sin(2 * np.pi * t / 86400 + rng.uniform(0, 2*np.pi))
+    # Random walk drift (building thermal mass)
+    drift = np.cumsum(rng.normal(0, 0.001, size))
+    drift = drift / (np.abs(drift).max() + 1e-10) * 0.3
+    # Sensor noise
+    noise = rng.normal(0, 0.02, size)
+    signal = 20.0 + hvac + diurnal + drift + noise  # ~20°C baseline
+    return _to_uint8(signal)
+
+
+@source(
+    "Gut Motility",
+    domain="medical",
+    description="Simulated smooth muscle contraction (EGG) — very slow quasi-periodic, high mutual info, narrowband",
+)
+def gen_gut_motility(rng, size):
+    """Simulated electrogastrogram (EGG). Gastric slow waves at ~3 cycles/min
+    (0.05 Hz) with amplitude modulation from migrating motor complex (MMC).
+    Extremely smooth, narrowband, high Hurst, very high mutual information.
+    Targets mid-lower-left void."""
+    dt = 1.0 / 10  # 10 Hz
+    t = np.arange(size) * dt
+    # Gastric slow wave (3 cpm = 0.05 Hz)
+    base_freq = rng.uniform(0.04, 0.06)
+    # Frequency jitter
+    freq_mod = base_freq + 0.005 * np.sin(2 * np.pi * 0.002 * t)
+    phase = np.cumsum(2 * np.pi * freq_mod * dt)
+    slow_wave = np.sin(phase)
+    # MMC envelope: ~90 min cycle, phases I-IV
+    mmc_period = rng.uniform(4000, 6000)
+    mmc_phase = 2 * np.pi * t / mmc_period + rng.uniform(0, 2*np.pi)
+    # Phase III = high amplitude burst
+    envelope = 0.3 + 0.7 * np.clip(np.sin(mmc_phase), 0, 1)**2
+    # Duodenal component (12 cpm)
+    duodenal = 0.2 * np.sin(2 * np.pi * 0.2 * t + rng.uniform(0, 2*np.pi))
+    signal = envelope * slow_wave + 0.3 * duodenal + rng.normal(0, 0.03, size)
+    return _to_uint8(signal)
+
+
+@source(
+    "Poisson Counts",
+    domain="exotic",
+    description="Poisson-distributed event counts (λ≈3-8) — strongly peaked histogram, no temporal order",
+)
+def gen_poisson_counts(rng, size):
+    """IID Poisson counts with moderate λ. Most values cluster near the mean,
+    creating a strongly non-uniform byte distribution. No temporal correlation,
+    no forbidden patterns — pure concentrated randomness.
+    Targets PC3 void (high concentration, low predictability)."""
+    lam = rng.uniform(3, 8)
+    counts = rng.poisson(lam, size)
+    # Map to uint8, preserving the discrete peaked structure
+    # Don't normalize to [0,255] — keep the natural range narrow
+    return np.clip(counts, 0, 255).astype(np.uint8)
+
+
+@source(
+    "Categorical Sensor",
+    domain="exotic",
+    description="Random draws from 6-12 non-uniform categories — peaked, unpredictable, low entropy",
+)
+def gen_categorical_sensor(rng, size):
+    """Simulates a sensor that reports one of k categories with non-uniform
+    probabilities (Dirichlet-drawn). Strongly concentrated distribution,
+    zero temporal structure, moderate entropy.
+    Targets PC3 void (high concentration, low predictability)."""
+    n_categories = rng.integers(6, 13)
+    probs = rng.dirichlet(np.ones(n_categories) * 0.3)  # spiky Dirichlet
+    # Map categories to spread-out byte values
+    cat_values = np.linspace(20, 235, n_categories).astype(np.uint8)
+    indices = rng.choice(n_categories, size=size, p=probs)
+    return cat_values[indices]
+
+
+@source(
+    "Geometric Waiting Times",
+    domain="exotic",
+    description="Geometric inter-arrival times — exponentially peaked near zero, memoryless",
+)
+def gen_geometric_waiting(rng, size):
+    """Geometric(p) waiting times. The distribution is strongly peaked at low
+    values with an exponential tail. Memoryless by construction — no temporal
+    correlations. Very high Zipf alpha, very high concentration, zero predictability.
+    Targets PC3 void (high concentration, low predictability)."""
+    p = rng.uniform(0.05, 0.2)
+    vals = rng.geometric(p, size)
+    return np.clip(vals, 0, 255).astype(np.uint8)
+
+
+@source(
+    "Uniform Chaos (Logistic Scramble)",
+    domain="chaos",
+    description="Logistic map output pushed through a uniform-marginal transform — chaotic dynamics, flat histogram",
+)
+def gen_uniform_chaos(rng, size):
+    """Logistic map at r≈3.9 (chaotic) passed through its invariant CDF to
+    produce uniform marginals. Preserves temporal correlations and chaotic
+    dynamics but flattens the arcsine distribution to uniform.
+    Targets lower PC3 void (uniform + moderate complexity)."""
+    r = rng.uniform(3.85, 3.95)
+    x = rng.uniform(0.1, 0.9)
+    vals = np.empty(size, dtype=np.float64)
+    for i in range(200):  # warmup
+        x = r * x * (1 - x)
+    for i in range(size):
+        x = r * x * (1 - x)
+        vals[i] = x
+    # Apply the logistic invariant CDF: F(x) = (2/π)arcsin(√x)
+    uniform_vals = (2.0 / np.pi) * np.arcsin(np.sqrt(np.clip(vals, 1e-10, 1 - 1e-10)))
+    return (uniform_vals * 255).astype(np.uint8)
+
+
+@source(
+    "Shuffled Blocks",
+    domain="exotic",
+    description="Structured blocks in random order — uniform marginals, moderate block entropy, low recurrence",
+)
+def gen_shuffled_blocks(rng, size):
+    """Generates 16-64 byte structured blocks (ramps, pulses, sine fragments)
+    and concatenates them in random order. Each block has internal structure
+    but the inter-block ordering is random. Flat marginals, moderate temporal
+    complexity, low recurrence.
+    Targets lower PC3 void (uniform + moderate complexity)."""
+    blocks = []
+    while sum(len(b) for b in blocks) < size:
+        blen = rng.integers(16, 65)
+        btype = rng.integers(4)
+        if btype == 0:  # ramp
+            blocks.append(np.linspace(0, 255, blen))
+        elif btype == 1:  # reverse ramp
+            blocks.append(np.linspace(255, 0, blen))
+        elif btype == 2:  # sine fragment
+            phase = rng.uniform(0, 2 * np.pi)
+            blocks.append(127.5 + 127.5 * np.sin(np.linspace(phase, phase + rng.uniform(1, 4) * np.pi, blen)))
+        else:  # uniform noise block
+            blocks.append(rng.uniform(0, 255, blen))
+    # Shuffle block order
+    rng.shuffle(blocks)
+    signal = np.concatenate(blocks)[:size]
+    return np.clip(signal, 0, 255).astype(np.uint8)
+
+
+@source(
+    "Network Packet Sizes",
+    domain="binary",
+    description="Simulated network packet length sequence — moderate entropy, smooth spectrum, bursty",
+)
+def gen_packet_sizes(rng, size):
+    """Simulated network packet size distribution. Mixture of small ACK
+    packets (~64B) and variable payload packets with bursty arrival.
+    Moderate entropy, smooth spectrum, diverse byte values.
+    Targets Void 1 (moderate-entropy smooth)."""
+    vals = np.empty(size, dtype=np.uint8)
+    i = 0
+    while i < size:
+        if rng.random() < 0.4:
+            # Burst of small ACKs
+            burst_len = rng.geometric(0.15)
+            for _ in range(min(burst_len, size - i)):
+                vals[i] = rng.integers(50, 80)  # small packets
+                i += 1
+        else:
+            # Variable payload
+            base = rng.integers(100, 240)
+            burst_len = rng.geometric(0.1)
+            for _ in range(min(burst_len, size - i)):
+                vals[i] = np.clip(base + rng.integers(-20, 20), 0, 255)
+                i += 1
+    return vals.astype(np.uint8)
