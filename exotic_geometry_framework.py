@@ -3816,8 +3816,10 @@ class ZariskiGeometry(ExoticGeometry):
         if len(X) >= 50:
             metrics.update(self._vandermonde_residuals(X))
             metrics.update(self._zariski_separation(X, rng))
+            metrics.update(self._residual_convexity(X))
 
         metrics.update(self._heyting_gap(data))
+        metrics.update(self._heyting_stability(data))
 
         return GeometryResult(geometry_name=self.name, metrics=metrics)
 
@@ -3926,6 +3928,60 @@ class ZariskiGeometry(ExoticGeometry):
 
         cos_sim = np.sum(V[i_idx] * V[j_idx], axis=1)
         return {'nonsep_fraction': float(np.mean(cos_sim > 0.999))}
+
+    def _heyting_stability(self, data: np.ndarray, n_windows: int = 16) -> dict:
+        """Stability of Heyting gap across data windows.
+
+        Computes heyting_gap on non-overlapping windows and returns
+        mean_gap / (std_gap + 0.01). Structured data has consistent
+        non-Hausdorff gaps (high stability); noise has erratic gaps
+        (low stability).
+
+        Evolved via ShinkaEvolve zariski_discovery v1 gen 34+.
+        """
+        chunk_size = len(data) // n_windows
+        if chunk_size < 100:
+            gap = self._heyting_gap(data)['heyting_gap']
+            return {'heyting_stability': gap / 0.01 if gap > 0 else 0.0}
+        gaps = [self._heyting_gap(data[i * chunk_size:(i + 1) * chunk_size])['heyting_gap']
+                for i in range(n_windows)]
+        mean_gap = np.mean(gaps)
+        std_gap = np.std(gaps)
+        return {'heyting_stability': float(mean_gap / (std_gap + 0.01))}
+
+    def _residual_convexity(self, X: np.ndarray) -> dict:
+        """Convexity (elbow) in the log-residual spectrum.
+
+        Computes the discrete second derivative of log10(residuals) at
+        degrees 1-3. A positive value means the residual drops sharply
+        then plateaus — signature of data fitting a specific algebraic
+        degree. Near zero for noise (smooth residual curve).
+
+        Evolved via ShinkaEvolve zariski_discovery v1 gen 32+.
+        """
+        from itertools import combinations_with_replacement
+        n, d = X.shape
+        residuals = []
+        for deg in range(1, self.max_degree + 1):
+            columns = [np.ones(n)]
+            for dd in range(1, deg + 1):
+                for idx in combinations_with_replacement(range(d), dd):
+                    col = np.ones(n)
+                    for var in idx:
+                        col = col * X[:, var]
+                    columns.append(col)
+            n_mono = len(columns)
+            if n_mono >= n:
+                break
+            V = np.column_stack(columns)
+            s = np.linalg.svd(V, compute_uv=False)
+            residuals.append(s[-1] / np.sqrt(n) if s[0] > 1e-15 else 0.0)
+
+        if len(residuals) >= 3:
+            log_res = np.log10(np.array(residuals) + 1e-15)
+            convexity = (log_res[0] - log_res[1]) - (log_res[1] - log_res[2])
+            return {'residual_convexity': float(max(0, convexity))}
+        return {'residual_convexity': 0.0}
 
 
 # =============================================================================
@@ -5841,46 +5897,90 @@ class ProductH2RGeometry(ExoticGeometry):
         r = min(r, 0.9999)
         return 2 * np.arctanh(r)
 
+    def _temporal_memory(self, series, max_lag=5):
+        """Sum of absolute autocorrelation at lags 1..max_lag.
+
+        Measures temporal persistence: high for structured data
+        (correlated consecutive values), near zero for shuffled data.
+
+        Evolved via ShinkaEvolve h2r_discovery v1.
+        """
+        n = len(series)
+        if n < max_lag + 2 or np.var(series) < 1e-15:
+            return 0.0
+        total = 0.0
+        for k in range(1, max_lag + 1):
+            if n > k + 1:
+                c = np.corrcoef(series[:-k], series[k:])[0, 1]
+                total += abs(c) if np.isfinite(c) else 0.0
+        return total
+
+    def _boundary_dynamics(self, points, window_size=500, threshold=0.85):
+        """Variance of windowed boundary fraction.
+
+        Measures how the fraction of points near the Poincaré disk
+        boundary varies over time. Structured data has regime changes
+        (periods near/far from boundary); random data is uniform.
+
+        Evolved via ShinkaEvolve h2r_discovery v1.
+        """
+        radii = np.sqrt(points[:, 0]**2 + points[:, 1]**2)
+        n = len(radii)
+        step = window_size // 2
+        if n < window_size:
+            return 0.0
+        fracs = []
+        for i in range(0, n - window_size + 1, step):
+            fracs.append(np.mean(radii[i:i + window_size] > threshold))
+        return float(np.var(fracs)) if len(fracs) > 1 else 0.0
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         """Compute H² × ℝ metrics."""
         points = self.embed(data)
 
-        if len(points) < 2:
+        zero_metrics = {
+            "hyperbolic_variance": 0.0,
+            "depth_height_corr": 0.0,
+            "radial_temporal_memory": 0.0,
+            "boundary_dynamics": 0.0,
+        }
+        if len(points) < 10:
             return GeometryResult(
                 geometry_name=self.name,
-                metrics={"n_points": len(points)},
+                metrics=zero_metrics,
                 raw_data={"points": points}
             )
 
         # Hyperbolic distances from origin
-        hyp_dists = [self.hyperbolic_distance_from_origin(p[0], p[1]) for p in points]
-        mean_hyp_dist = np.mean(hyp_dists)
-        hyp_dist_variance = np.var(hyp_dists)
-
-        # Boundary proximity (how close to edge of disk)
         radii = np.sqrt(points[:, 0]**2 + points[:, 1]**2)
-        boundary_proximity = np.mean(radii > 0.8)
+        hyp_dists = 2 * np.arctanh(np.clip(radii, 0, 0.9999))
+        hyp_dist_variance = float(np.var(hyp_dists))
 
-        # Height statistics
+        # Heights
         heights = points[:, 2]
-        height_drift = heights[-1] - heights[0]
-        height_variance = np.var(heights)
 
         # Correlation between hyperbolic depth and height
         if np.std(hyp_dists) > 1e-10 and np.std(heights) > 1e-10:
-            depth_height_corr = np.corrcoef(hyp_dists, heights)[0, 1]
+            depth_height_corr = float(np.corrcoef(hyp_dists, heights)[0, 1])
         else:
-            depth_height_corr = 0
+            depth_height_corr = 0.0
+
+        # Temporal memory (sum of |ACF| at lags 1-5 for radial distances)
+        radial_memory = self._temporal_memory(hyp_dists)
+
+        # Boundary dynamics (variance of windowed boundary fraction)
+        boundary_dyn = self._boundary_dynamics(points)
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "hyperbolic_variance": hyp_dist_variance,
                 "depth_height_corr": depth_height_corr,
+                "radial_temporal_memory": float(np.clip(radial_memory, 0, 25)),
+                "boundary_dynamics": float(np.clip(boundary_dyn, 0, 1)),
             },
             raw_data={
                 "points": points,
-                "hyperbolic_distances": hyp_dists,
             }
         )
 
@@ -5966,58 +6066,95 @@ class SL2RGeometry(ExoticGeometry):
         """
         return np.linalg.norm(M1 - M2, 'fro')
 
+    def _lag1_autocorr(self, series):
+        """Absolute lag-1 autocorrelation of a time series."""
+        if len(series) < 3 or np.std(series) < 1e-9:
+            return 0.0
+        c = np.corrcoef(series[:-1], series[1:])[0, 1]
+        return abs(c) if np.isfinite(c) else 0.0
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute SL(2,ℝ) metrics."""
+        """Compute SL(2,ℝ) metrics.
+
+        Original metrics: trace/spectral classification + Lyapunov exponent.
+        Evolved metrics (ShinkaEvolve sl2r_discovery v1):
+        - boost_autocorrelation: temporal memory in KAK boost parameter
+        - trace_autocorrelation: temporal memory in geometric trace sequence
+        - lyapunov_std: burstiness of divergence across blocks
+        """
         matrices = self.embed(data)
 
+        zero_metrics = {
+            "parabolic_fraction": 0.0,
+            "hyperbolic_fraction": 0.0,
+            "mean_trace": 0.0,
+            "lyapunov_exponent": 0.0,
+            "mean_spectral_radius": 0.0,
+            "boost_autocorrelation": 0.0,
+            "trace_autocorrelation": 0.0,
+            "lyapunov_std": 0.0,
+        }
         if len(matrices) < 2:
             return GeometryResult(
                 geometry_name=self.name,
-                metrics={"n_matrices": len(matrices)},
-                raw_data={"matrices": matrices}
+                metrics=zero_metrics,
+                raw_data={}
             )
 
         # Trace classification for SL(2,R):
         #   Elliptic:   |trace| < 2  ⟺  trace² < 4
         #   Parabolic:  |trace| = 2  ⟺  trace² = 4
         #   Hyperbolic: |trace| > 2  ⟺  trace² > 4
-        traces = [np.trace(M) for M in matrices]
-        trace_sq = np.array([t**2 for t in traces])
+        traces = np.array([np.trace(M) for M in matrices])
+        trace_sq = traces**2
         eps = 0.2  # tolerance for parabolic boundary
 
-        elliptic_frac = np.mean(trace_sq < 4 - eps)
-        parabolic_frac = np.mean(np.abs(trace_sq - 4) <= eps)
-        hyperbolic_frac = np.mean(trace_sq > 4 + eps)
+        parabolic_frac = float(np.mean(np.abs(trace_sq - 4) <= eps))
+        hyperbolic_frac = float(np.mean(trace_sq > 4 + eps))
 
         # Lyapunov exponent: average log of spectral radius over running product
-        # Use windowed products (blocks of 50) to avoid float64 overflow
         block_size = 50
         log_norms = []
         for start in range(0, len(matrices) - block_size + 1, block_size):
             product = np.eye(2)
             for M in matrices[start:start + block_size]:
                 product = product @ M
-            # Log of operator norm (largest singular value)
             s = np.linalg.svd(product, compute_uv=False)
             log_norms.append(np.log(s[0] + 1e-300))
-        lyapunov_exponent = np.mean(log_norms) / block_size if log_norms else 0.0
+        lyap_arr = np.array(log_norms) / block_size if log_norms else np.array([0.0])
+        lyapunov_exponent = float(np.mean(lyap_arr))
 
         # Spectral radius (largest eigenvalue magnitude)
         eigenvalues = [np.max(np.abs(np.linalg.eigvals(M))) for M in matrices]
-        mean_spectral_radius = np.mean(eigenvalues)
+        mean_spectral_radius = float(np.mean(eigenvalues))
+
+        # Boost parameter autocorrelation (temporal memory in raw KAK params)
+        norm_data = self._normalize_to_unit(
+            self.validate_data(data), self.input_scale)
+        boost_params = (norm_data[1::3] - 0.5) * 4.0
+        boost_autocorr = self._lag1_autocorr(boost_params)
+
+        # Trace autocorrelation (temporal memory in geometric representation)
+        trace_autocorr = self._lag1_autocorr(traces)
+
+        # Lyapunov std (burstiness of divergence)
+        lyap_std = float(np.std(lyap_arr))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "parabolic_fraction": parabolic_frac,
                 "hyperbolic_fraction": hyperbolic_frac,
-                "mean_trace": np.mean(traces),
+                "mean_trace": float(np.mean(traces)),
                 "lyapunov_exponent": lyapunov_exponent,
                 "mean_spectral_radius": mean_spectral_radius,
+                "boost_autocorrelation": float(np.clip(boost_autocorr, 0, 1)),
+                "trace_autocorrelation": float(np.clip(trace_autocorr, 0, 1)),
+                "lyapunov_std": float(np.clip(lyap_std, 0, 5)),
             },
             raw_data={
                 "matrices": matrices,
-                "traces": traces,
+                "traces": traces.tolist(),
             }
         )
 
@@ -11075,6 +11212,8 @@ class PredictabilityGeometry(ExoticGeometry):
       Low = regular/predictable, high = complex/unpredictable.
     - excess_predictability: H(X) - H(X|past_8) — total information
       gained from knowing the past 8 steps.
+    - transition_entropy_variance: variance of per-symbol next-symbol entropy.
+      High = heterogeneous predictability (some contexts predictive, others not).
     """
 
     def __init__(self, input_scale: float = 255.0, n_symbols: int = 8):
@@ -11224,6 +11363,34 @@ class PredictabilityGeometry(ExoticGeometry):
 
         return -np.log(A / B)
 
+    def _transition_entropy_variance(self, symbols):
+        """Variance of per-symbol next-symbol entropy (normalized).
+
+        Builds the k=1 transition matrix P(x_t | x_{t-1}), computes the
+        entropy of each row, and returns the variance across rows.
+
+        High variance = some contexts are highly predictive while others
+        are not (heterogeneous predictability). Low variance = all contexts
+        are equally (un)predictable.
+
+        Evolved via ShinkaEvolve predictability_discovery v1 gen 45.
+        """
+        n_sym = self.n_symbols
+        counts = np.zeros((n_sym, n_sym), dtype=np.int32)
+        np.add.at(counts, (symbols[:-1], symbols[1:]), 1)
+        row_sums = counts.sum(axis=1)
+        valid = row_sums > 5
+        if np.sum(valid) <= 1:
+            return 0.0
+        p_mat = counts[valid] / row_sums[valid, np.newaxis]
+        log_p = np.log2(p_mat, where=p_mat > 0,
+                        out=np.zeros_like(p_mat, dtype=float))
+        row_entropies = -np.sum(p_mat * log_p, axis=1)
+        max_ent = np.log2(n_sym)
+        if max_ent < 1e-9:
+            return 0.0
+        return float(np.var(row_entropies / max_ent))
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         x = self.embed(data)
         n = len(x)
@@ -11231,7 +11398,8 @@ class PredictabilityGeometry(ExoticGeometry):
             "cond_entropy_k1",
             "cond_entropy_k8",
             "entropy_decay_rate", "sample_entropy",
-            "excess_predictability"]}
+            "excess_predictability",
+            "transition_entropy_variance"]}
 
         if n < 200:
             return GeometryResult(self.name, _nan, {})
@@ -11268,6 +11436,9 @@ class PredictabilityGeometry(ExoticGeometry):
         # Excess predictability
         excess = h_marginal - h_cond.get(8, h_marginal)
 
+        # Transition entropy variance
+        trans_ent_var = self._transition_entropy_variance(symbols)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -11276,6 +11447,7 @@ class PredictabilityGeometry(ExoticGeometry):
                 "entropy_decay_rate": float(np.clip(decay_rate, -2, 0.5)),
                 "sample_entropy": float(np.clip(sampen, 0, 10)),
                 "excess_predictability": float(np.clip(excess, 0, 10)),
+                "transition_entropy_variance": float(np.clip(trans_ent_var, 0, 1)),
             },
             raw_data={}
         )

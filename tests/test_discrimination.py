@@ -27,6 +27,7 @@ from exotic_geometry_framework import (
     MultifractalGeometry, PredictabilityGeometry, AttractorGeometry,
     # Symmetry
     E8Geometry, HeisenbergGeometry, TropicalGeometry, LorentzianGeometry, SolGeometry,
+    ProductH2RGeometry, SL2RGeometry,
     # Scale
     SpiralGeometry, HolderRegularityGeometry, PVariationGeometry,
     MultiScaleWassersteinGeometry,
@@ -474,6 +475,19 @@ class TestPredictability:
         se_rnd = res_rnd.metrics["sample_entropy"]
         assert se_per < se_rnd, "periodic should be less entropic than random"
         assert se_chaos < se_rnd, "chaos should be less entropic than random"
+
+    def test_transition_entropy_variance_structured_high(self):
+        """Structured data has heterogeneous transition entropy (some contexts
+        predictive, others not) → higher variance than noise (uniform transitions)."""
+        geom = PredictabilityGeometry()
+        res_chaos = geom.compute_metrics(_logistic_chaos())
+        res_rnd = geom.compute_metrics(_white_noise())
+        assert res_chaos.metrics["transition_entropy_variance"] > res_rnd.metrics["transition_entropy_variance"]
+
+    def test_returns_six_metrics(self):
+        geom = PredictabilityGeometry()
+        res = geom.compute_metrics(_periodic())
+        assert len(res.metrics) == 6
 
 
 class TestHigherOrder:
@@ -1529,6 +1543,33 @@ class TestZariski:
         assert r.metrics["heyting_gap"] > 0.5, \
             f"Fibonacci heyting_gap={r.metrics['heyting_gap']:.4f}, expected > 0.5"
 
+    def test_heyting_stability_structured_high(self):
+        """Structured data has consistent Heyting gap across windows (high
+        stability), noise has erratic gaps (low stability)."""
+        geom = ZariskiGeometry()
+        r_fib = geom.compute_metrics(_fibonacci_word())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_fib.metrics["heyting_stability"] > r_noise.metrics["heyting_stability"]
+
+    def test_residual_convexity_polynomial_high(self):
+        """Polynomial recurrence (logistic map) creates a sharp elbow in
+        log-residual spectrum. Noise has smooth residuals (low convexity)."""
+        geom = ZariskiGeometry()
+        x = 0.4
+        out = np.empty(SIZE)
+        for i in range(SIZE):
+            x = 3.99 * x * (1 - x)
+            out[i] = x
+        logistic = (out * 255).astype(np.uint8)
+        r_log = geom.compute_metrics(logistic)
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_log.metrics["residual_convexity"] > r_noise.metrics["residual_convexity"]
+
+    def test_returns_six_metrics(self):
+        geom = ZariskiGeometry()
+        r = geom.compute_metrics(_white_noise())
+        assert len(r.metrics) == 6
+
 
 # ── CAYLEY (GEOMETRIC GROUP THEORY) GEOMETRY ─────────────────────────
 
@@ -2067,3 +2108,57 @@ class TestKleinBottle:
         assert r_sine.metrics["orientation_coherence"] > r_noise.metrics["orientation_coherence"], \
             (f"Sine coherence={r_sine.metrics['orientation_coherence']:.3f} should exceed "
              f"noise coherence={r_noise.metrics['orientation_coherence']:.3f}")
+
+
+# ── H² × ℝ (THURSTON) GEOMETRY ──────────────────────────────────────────
+
+class TestProductH2R:
+    """H² × ℝ geometry: Poincaré disk × real line."""
+
+    def test_radial_temporal_memory_structured_high(self):
+        """Structured data (sine) has correlated consecutive hyperbolic
+        distances → high temporal memory. Noise has uncorrelated distances."""
+        geom = ProductH2RGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["radial_temporal_memory"] > r_noise.metrics["radial_temporal_memory"]
+
+    def test_boundary_dynamics_brownian_high(self):
+        """Brownian motion has varying boundary proximity across windows
+        (drifts in/out of disk boundary). Noise is more uniform."""
+        geom = ProductH2RGeometry()
+        r_brown = geom.compute_metrics(_brownian())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_brown.metrics["boundary_dynamics"] > r_noise.metrics["boundary_dynamics"]
+
+    def test_returns_four_metrics(self):
+        geom = ProductH2RGeometry()
+        r = geom.compute_metrics(_white_noise())
+        assert len(r.metrics) == 4
+
+
+# ── SL(2,ℝ) (THURSTON) GEOMETRY ─────────────────────────────────────────
+
+class TestSL2R:
+    """SL(2,ℝ) geometry: 2×2 matrices with det=1."""
+
+    def test_boost_autocorrelation_structured_high(self):
+        """Structured data has correlated consecutive KAK boost parameters.
+        Noise has uncorrelated boosts."""
+        geom = SL2RGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["boost_autocorrelation"] > r_noise.metrics["boost_autocorrelation"]
+
+    def test_trace_autocorrelation_structured_high(self):
+        """Structured data has correlated consecutive matrix traces.
+        Noise has uncorrelated traces."""
+        geom = SL2RGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["trace_autocorrelation"] > r_noise.metrics["trace_autocorrelation"]
+
+    def test_returns_eight_metrics(self):
+        geom = SL2RGeometry()
+        r = geom.compute_metrics(_white_noise())
+        assert len(r.metrics) == 8
