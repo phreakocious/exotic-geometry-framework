@@ -2942,8 +2942,51 @@ class WassersteinGeometry(ExoticGeometry):
         cdf_q = np.cumsum(q)
         return np.sum(np.abs(cdf_p - cdf_q)) / len(p)
 
+    def _windowed_histograms(self, data: np.ndarray,
+                             n_windows: int = 16) -> list:
+        """Split data into n_windows segments, return normalized histograms."""
+        seg_len = len(data) // n_windows
+        if seg_len < 100:
+            return []
+        hists = []
+        for i in range(n_windows):
+            seg = data[i * seg_len:(i + 1) * seg_len]
+            x = seg.astype(float) / self.input_scale
+            hist, _ = np.histogram(x, bins=self.n_bins, range=(0, 1), density=True)
+            hists.append(hist / (np.sum(hist) + 1e-10))
+        return hists
+
+    def _transport_dynamics(self, data: np.ndarray) -> dict:
+        """Windowed transport dynamics in Wasserstein space.
+
+        transport_variability: std of W₁ between consecutive windowed
+        distributions. Measures burstiness of distributional change.
+
+        recurrence_distance: for each window, the minimum W₁ to any
+        prior window. Low = trajectory revisits prior states (confined).
+        High = trajectory wanders (random). (evolved via ShinkaEvolve)
+        """
+        hists = self._windowed_histograms(data, n_windows=16)
+        if len(hists) < 4:
+            return {'transport_variability': 0.0, 'recurrence_distance': 0.0}
+
+        dists = np.array([self.wasserstein_1d(hists[i], hists[i + 1])
+                          for i in range(len(hists) - 1)])
+        transport_variability = float(np.std(dists))
+
+        min_dists = []
+        for i in range(1, len(hists)):
+            d2past = [self.wasserstein_1d(hists[i], hists[j])
+                      for j in range(i)]
+            min_dists.append(np.min(d2past))
+        recurrence_distance = float(np.mean(min_dists))
+
+        return {'transport_variability': transport_variability,
+                'recurrence_distance': recurrence_distance}
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         """Compute Wasserstein metrics: distance from uniform, self-similarity."""
+        data = self.validate_data(data)
         hist = self.embed(data)
 
         # Distance from uniform distribution
@@ -2951,7 +2994,6 @@ class WassersteinGeometry(ExoticGeometry):
         dist_from_uniform = self.wasserstein_1d(hist, uniform)
 
         # Self-similarity: compare first half to second half
-        data = self.validate_data(data)
         mid = len(data) // 2
         hist1 = self.embed(data[:mid])
         hist2 = self.embed(data[mid:])
@@ -2965,14 +3007,17 @@ class WassersteinGeometry(ExoticGeometry):
         # Concentration: how peaked is the distribution
         concentration = np.max(hist) * self.n_bins  # 1 = uniform, >1 = concentrated
 
+        metrics = {
+            "dist_from_uniform": dist_from_uniform,
+            "self_similarity": self_similarity,
+            "entropy": entropy,
+            "concentration": concentration,
+        }
+        metrics.update(self._transport_dynamics(data))
+
         return GeometryResult(
             geometry_name=self.name,
-            metrics={
-                "dist_from_uniform": dist_from_uniform,
-                "self_similarity": self_similarity,
-                "entropy": entropy,
-                "concentration": concentration,
-            },
+            metrics=metrics,
             raw_data={
                 "histogram": hist,
             }
@@ -5258,8 +5303,62 @@ class FisherGeometry(ExoticGeometry):
         """
         return np.diag(1.0 / p)
 
+    def _windowed_distributions(self, data: np.ndarray,
+                                n_windows: int = 32) -> list:
+        """Split data into n_windows segments, return Laplace-smoothed histograms."""
+        seg_len = len(data) // n_windows
+        if seg_len < 100:
+            return []
+        dists = []
+        for i in range(n_windows):
+            seg = data[i * seg_len:(i + 1) * seg_len].astype(float)
+            seg = (seg - seg.min()) / (seg.max() - seg.min() + 1e-10)
+            hist, _ = np.histogram(seg, bins=self.n_bins, range=(0, 1))
+            dists.append((hist + 1).astype(float) / (seg_len + self.n_bins))
+        return dists
+
+    @staticmethod
+    def _fisher_rao_distance(p: np.ndarray, q: np.ndarray) -> float:
+        """Fisher-Rao geodesic distance: 2·arccos(Σ√(p_i·q_i))."""
+        bc = np.sum(np.sqrt(p * q))
+        return float(2.0 * np.arccos(np.clip(bc, -1.0, 1.0)))
+
+    def _geodesic_dynamics(self, data: np.ndarray) -> dict:
+        """Windowed distributional dynamics on the statistical manifold.
+
+        geodesic_velocity: mean Fisher-Rao distance between consecutive
+        windowed distributions. Measures how fast the distribution moves.
+
+        velocity_spectral_gini: Gini coefficient of the power spectrum of
+        the velocity series. Concentrated spectrum = regular dynamics.
+        (evolved via ShinkaEvolve)
+        """
+        windows = self._windowed_distributions(data, n_windows=32)
+        if len(windows) < 4:
+            return {'geodesic_velocity': 0.0, 'velocity_spectral_gini': 0.0}
+
+        vels = np.array([self._fisher_rao_distance(windows[i], windows[i + 1])
+                         for i in range(len(windows) - 1)])
+        geodesic_velocity = float(np.mean(vels))
+
+        # Spectral Gini of velocity series
+        v_det = vels - np.mean(vels)
+        fft_c = np.fft.rfft(v_det)[1:]
+        ps = np.abs(fft_c) ** 2
+        if np.sum(ps) < 1e-12 or len(ps) < 2:
+            gini = 0.0
+        else:
+            s = np.sort(ps)
+            n = len(s)
+            idx = np.arange(1, n + 1)
+            gini = float(np.sum((2 * idx - n - 1) * s) / (n * np.sum(s) + 1e-12))
+
+        return {'geodesic_velocity': geodesic_velocity,
+                'velocity_spectral_gini': gini}
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         """Compute Fisher geometry metrics."""
+        data = self.validate_data(data)
         p = self.embed(data)
 
         # Fisher information matrix
@@ -5281,17 +5380,16 @@ class FisherGeometry(ExoticGeometry):
         else:
             eff_dim = 0
 
-        # KL divergence from uniform (information content)
-        uniform = np.ones(self.n_bins) / self.n_bins
-        kl_div = np.sum(p * np.log((p + 1e-10) / uniform))
+        metrics = {
+            "trace_fisher": trace_F,
+            "log_det_fisher": log_det_F,
+            "effective_dimension": eff_dim,
+        }
+        metrics.update(self._geodesic_dynamics(data))
 
         return GeometryResult(
             geometry_name=self.name,
-            metrics={
-                "trace_fisher": trace_F,
-                "log_det_fisher": log_det_F,
-                "effective_dimension": eff_dim,
-            },
+            metrics=metrics,
             raw_data={
                 "distribution": p,
                 "fisher_matrix": F,

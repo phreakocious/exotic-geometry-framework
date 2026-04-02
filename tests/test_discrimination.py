@@ -242,6 +242,25 @@ class TestFisher:
         res_rnd = geom.compute_metrics(_white_noise())
         assert res_peaked.metrics["trace_fisher"] > res_rnd.metrics["trace_fisher"]
 
+    def test_geodesic_velocity_structured_high(self):
+        """Brownian motion has drifting distributions across windows — high
+        geodesic velocity. White noise is stationary — low velocity."""
+        geom = FisherGeometry()
+        r_brown = geom.compute_metrics(_brownian())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_brown.metrics["geodesic_velocity"] > r_noise.metrics["geodesic_velocity"], \
+            (f"Brownian geodesic_velocity={r_brown.metrics['geodesic_velocity']:.4f} "
+             f"should exceed noise={r_noise.metrics['geodesic_velocity']:.4f}")
+
+    def test_returns_five_metrics(self):
+        """Geometry should return exactly 5 metrics."""
+        geom = FisherGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"trace_fisher", "log_det_fisher", "effective_dimension",
+                    "geodesic_velocity", "velocity_spectral_gini"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
 
 class TestWasserstein:
     def test_distance_from_uniform(self):
@@ -251,6 +270,35 @@ class TestWasserstein:
         res_peaked = geom.compute_metrics(peaked)
         res_rnd = geom.compute_metrics(_white_noise())
         assert res_peaked.metrics["dist_from_uniform"] > res_rnd.metrics["dist_from_uniform"]
+
+    def test_transport_variability_structured_high(self):
+        """Brownian motion has bursty distributional changes across windows.
+        Noise has uniform transport between windows — low variability."""
+        geom = WassersteinGeometry()
+        r_brown = geom.compute_metrics(_brownian())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_brown.metrics["transport_variability"] > r_noise.metrics["transport_variability"], \
+            (f"Brownian transport_variability={r_brown.metrics['transport_variability']:.5f} "
+             f"should exceed noise={r_noise.metrics['transport_variability']:.5f}")
+
+    def test_recurrence_distance_noise_high(self):
+        """Noise trajectory wanders — each window is far from prior windows.
+        Periodic signals revisit similar distributions — low recurrence distance."""
+        geom = WassersteinGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_brown = geom.compute_metrics(_brownian())
+        assert r_brown.metrics["recurrence_distance"] > r_sine.metrics["recurrence_distance"], \
+            (f"Brownian recurrence_distance={r_brown.metrics['recurrence_distance']:.5f} "
+             f"should exceed sine={r_sine.metrics['recurrence_distance']:.5f}")
+
+    def test_returns_six_metrics(self):
+        """Geometry should return exactly 6 metrics."""
+        geom = WassersteinGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"dist_from_uniform", "self_similarity", "entropy",
+                    "concentration", "transport_variability", "recurrence_distance"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
 
 
 class TestZipfMandelbrot:
