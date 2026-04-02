@@ -2502,6 +2502,7 @@ class CantorGeometry(ExoticGeometry):
     def embed(self, data: np.ndarray) -> np.ndarray:
         """Embed bytes as Cantor set coordinates."""
         data = self.validate_data(data)
+        data = np.asarray(data, dtype=np.uint8)
 
         coords = []
         for byte in data:
@@ -8842,6 +8843,156 @@ class SpectralGeometry(ExoticGeometry):
 
 
 # =============================================================================
+# LAPLACIAN GEOMETRY (1D)
+# =============================================================================
+
+class LaplacianGeometry(ExoticGeometry):
+    """1D discrete Laplacian analysis.
+
+    Applies the discrete Laplacian (second difference) and its iterates to
+    a 1D signal.  Six metrics:
+
+    - biharmonic_ratio: ||f''''||² / ||f''||²  — energy cascade from curvature
+      to curvature-of-curvature.  Low for smooth signals (energy dies fast),
+      high for rough/noisy (energy persists across derivative orders).
+    - poisson_recovery_error: solve Δu = Δf with periodic BC via FFT, compare
+      u to f.  Error measures non-periodic boundary content — structure that
+      lives at the edges of the signal rather than in the bulk.
+    - gradient_sign_persistence: fraction of consecutive first differences with
+      the same sign.  Measures monotone run structure — how often the signal
+      keeps going in the same direction.
+    - laplacian_spectral_ratio: low/high frequency energy of f''.  Separates
+      broad curvature (smooth bends) from fine curvature (rapid oscillation).
+    - curvature_autocorrelation: lag-1 autocorrelation of |f''|.  Temporal
+      clustering of curvature events — structured signals have persistent
+      curvature regimes that shuffling destroys.
+    - cross_scale_curvature_coherence: correlation of |Laplacian| at scale 1
+      vs scale 2 (dilated kernel).  Hierarchical curvature consistency.
+    """
+
+    def __init__(self, input_scale: float = 255.0):
+        self.input_scale = input_scale
+
+    @property
+    def name(self) -> str:
+        return "Laplacian"
+
+    @property
+    def description(self) -> str:
+        return ("Discrete Laplacian analysis: biharmonic energy cascade, "
+                "Poisson recovery error, gradient sign persistence, "
+                "curvature spectral ratio.")
+
+    @property
+    def view(self) -> str:
+        return "scale"
+
+    @property
+    def detects(self) -> str:
+        return "Curvature cascade, non-periodic boundary content, monotone runs"
+
+    @property
+    def dimension(self) -> Union[int, str]:
+        return "1D"
+
+    @property
+    def encoding_invariant(self) -> bool:
+        return True
+
+    def validate_data(self, data: np.ndarray) -> np.ndarray:
+        data = np.asarray(data, dtype=np.float64).ravel()
+        if self.input_scale != 1.0:
+            data = data / self.input_scale
+        return data - np.mean(data)
+
+    def embed(self, data: np.ndarray) -> np.ndarray:
+        return self.validate_data(data)
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        f = self.validate_data(data)
+        n = len(f)
+        metrics: Dict[str, float] = {}
+
+        f_norm_sq = np.sum(f ** 2) + 1e-12
+
+        # First difference (gradient)
+        d1 = np.diff(f)
+
+        # Second difference (Laplacian)
+        d2 = np.diff(f, n=2)
+        d2_energy = np.sum(d2 ** 2)
+
+        # Fourth difference (biharmonic)
+        if n > 4:
+            d4 = np.diff(f, n=4)
+            d4_energy = np.sum(d4 ** 2)
+        else:
+            d4_energy = 0.0
+
+        # Biharmonic ratio: how much energy survives two more derivatives
+        metrics['biharmonic_ratio'] = float(d4_energy / (d2_energy + 1e-12))
+
+        # Poisson recovery error: non-periodic boundary content.
+        # Use np.gradient (non-periodic, edge-extrapolated) for the Laplacian,
+        # then recover with periodic FFT solver.  Mismatch = boundary content.
+        lap_grad = np.gradient(np.gradient(f))
+        k = np.fft.fftfreq(n) * 2 * np.pi
+        k_sq = k ** 2
+        k_sq[0] = 1.0  # avoid division by zero
+        lap_hat = np.fft.fft(lap_grad)
+        rec_hat = lap_hat / (-k_sq)
+        rec_hat[0] = 0.0  # zero mean
+        recovered = np.fft.ifft(rec_hat).real
+        recovery_err = np.sum((recovered - f) ** 2)
+        metrics['poisson_recovery_error'] = float(recovery_err / f_norm_sq)
+
+        # Gradient sign persistence: monotone run structure
+        if len(d1) > 1:
+            same_sign = np.sum(np.sign(d1[:-1]) == np.sign(d1[1:]))
+            metrics['gradient_sign_persistence'] = float(same_sign / (len(d1) - 1))
+        else:
+            metrics['gradient_sign_persistence'] = 0.5
+
+        # Laplacian spectral ratio: low vs high frequency energy of f''
+        lap_fft = np.abs(np.fft.rfft(d2)) ** 2
+        nf = len(lap_fft)
+        quarter = max(1, nf // 4)
+        low_e = np.sum(lap_fft[:quarter])
+        high_e = np.sum(lap_fft[-quarter:])
+        metrics['laplacian_spectral_ratio'] = float(low_e / (high_e + 1e-12))
+
+        # Curvature autocorrelation: lag-1 autocorrelation of |d2|.
+        # Temporal clustering of curvature — structured signals have persistent
+        # curvature regimes; shuffling destroys this.
+        abs_d2 = np.abs(d2)
+        if len(abs_d2) > 1 and np.std(abs_d2) > 1e-9:
+            curv_ac = np.corrcoef(abs_d2[:-1], abs_d2[1:])[0, 1]
+            metrics['curvature_autocorrelation'] = float(curv_ac if np.isfinite(curv_ac) else 0.0)
+        else:
+            metrics['curvature_autocorrelation'] = 0.0
+
+        # Cross-scale curvature coherence: correlation of |Laplacian| at scale 1
+        # vs scale 2 (dilated kernel [1,0,-2,0,1]).  Structured signals have
+        # hierarchical curvature that is consistent across scales.
+        if n > 6:
+            kernel_s1 = np.array([1.0, -2.0, 1.0])
+            kernel_s2 = np.array([1.0, 0.0, -2.0, 0.0, 1.0])
+            lap_s1 = np.convolve(f, kernel_s1, 'valid')
+            lap_s2 = np.convolve(f, kernel_s2, 'valid')
+            ml = min(len(lap_s1), len(lap_s2))
+            abs_s1, abs_s2 = np.abs(lap_s1[:ml]), np.abs(lap_s2[:ml])
+            if ml > 1 and np.std(abs_s1) > 1e-9 and np.std(abs_s2) > 1e-9:
+                xsc = np.corrcoef(abs_s1, abs_s2)[0, 1]
+                metrics['cross_scale_curvature_coherence'] = float(xsc if np.isfinite(xsc) else 0.0)
+            else:
+                metrics['cross_scale_curvature_coherence'] = 0.0
+        else:
+            metrics['cross_scale_curvature_coherence'] = 0.0
+
+        return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+
+# =============================================================================
 # INFORMATION / COMPLEXITY GEOMETRY (1D)
 # =============================================================================
 
@@ -12392,7 +12543,7 @@ class KleinBottleGeometry(ExoticGeometry):
         bm_len = min(512, n)  # BM on up to 512 bits per channel
         channel_lcs = []
         for bit_pos in range(8):
-            channel = ((data >> bit_pos) & 1).astype(np.int8)
+            channel = ((data.astype(np.uint8) >> bit_pos) & 1).astype(np.int8)
             lc = self._berlekamp_massey(channel, max_len=bm_len)
             channel_lcs.append(lc / (bm_len / 2.0))
         linear_complexity = float(np.mean(channel_lcs))
@@ -12479,7 +12630,7 @@ class KleinBottleGeometry(ExoticGeometry):
             data_trunc = data[:target_len]
             channel_kurtosis = []
             for bit_pos in range(8):
-                ch = ((data_trunc >> bit_pos) & 1).astype(np.float64)
+                ch = ((data_trunc.astype(np.uint8) >> bit_pos) & 1).astype(np.float64)
                 signal = 1.0 - 2.0 * ch  # {0,1} → {+1,-1}
                 # In-place Fast Walsh-Hadamard Transform
                 h = 1
@@ -13246,6 +13397,7 @@ class GeometryAnalyzer:
             PVariationGeometry(input_scale=s),
             MultiScaleWassersteinGeometry(input_scale=s),
             # Spectral / information / recurrence
+            LaplacianGeometry(input_scale=s),
             SpectralGeometry(input_scale=s),
             InformationGeometry(input_scale=s),
             RecurrenceGeometry(input_scale=s),

@@ -30,7 +30,7 @@ from exotic_geometry_framework import (
     ProductH2RGeometry, SL2RGeometry,
     # Scale
     SpiralGeometry, HolderRegularityGeometry, PVariationGeometry,
-    MultiScaleWassersteinGeometry,
+    MultiScaleWassersteinGeometry, LaplacianGeometry,
     # Quasicrystal
     PenroseGeometry, AmmannBeenkerGeometry,
     DodecagonalGeometry, SeptagonalGeometry,
@@ -825,6 +825,107 @@ class TestMultiScaleWasserstein:
         res_rnd = geom.compute_metrics(_white_noise())
         # Multi-scale signal → Wasserstein distances vary more across scales
         assert res_ms.metrics["w_std"] > res_rnd.metrics["w_std"]
+
+
+class TestLaplacian:
+    def test_returns_six_metrics(self):
+        geom = LaplacianGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"biharmonic_ratio", "poisson_recovery_error",
+                    "gradient_sign_persistence", "laplacian_spectral_ratio",
+                    "curvature_autocorrelation", "cross_scale_curvature_coherence"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
+    def test_biharmonic_ratio_smooth_vs_rough(self):
+        """Smooth signals have low biharmonic ratio (energy dies across derivatives);
+        rough signals have high ratio (energy persists)."""
+        geom = LaplacianGeometry()
+        r_smooth = geom.compute_metrics(_sine_wave())
+        r_rough = geom.compute_metrics(_white_noise())
+        assert r_rough.metrics["biharmonic_ratio"] > r_smooth.metrics["biharmonic_ratio"], \
+            (f"Noise biharmonic={r_rough.metrics['biharmonic_ratio']:.3f} should exceed "
+             f"sine biharmonic={r_smooth.metrics['biharmonic_ratio']:.3f}")
+
+    def test_gradient_sign_persistence_smooth_high(self):
+        """Smooth correlated signal has high sign persistence (long monotone runs);
+        noise has low persistence (~0.33 for iid uniform)."""
+        geom = LaplacianGeometry()
+        r_smooth = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_smooth.metrics["gradient_sign_persistence"] > r_noise.metrics["gradient_sign_persistence"], \
+            (f"Sine persistence={r_smooth.metrics['gradient_sign_persistence']:.3f} should exceed "
+             f"noise persistence={r_noise.metrics['gradient_sign_persistence']:.3f}")
+
+    def test_laplacian_spectral_ratio_smooth_high(self):
+        """Smooth signals concentrate curvature energy at low frequencies;
+        noise distributes it evenly."""
+        geom = LaplacianGeometry()
+        r_smooth = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_smooth.metrics["laplacian_spectral_ratio"] > r_noise.metrics["laplacian_spectral_ratio"], \
+            (f"Sine spectral_ratio={r_smooth.metrics['laplacian_spectral_ratio']:.3f} should exceed "
+             f"noise spectral_ratio={r_noise.metrics['laplacian_spectral_ratio']:.3f}")
+
+    def test_curvature_autocorrelation_structured_vs_shuffled(self):
+        """Structured signals have different curvature autocorrelation than their
+        shuffled counterparts."""
+        geom = LaplacianGeometry()
+        diffs = []
+        for seed in range(10):
+            t = np.linspace(0, 50, SIZE)
+            data = np.uint8(np.clip(128 + 127 * np.mod(t, 1.0) * 2 - 127, 0, 255))
+            noise = np.random.default_rng(seed + 100).integers(0, 5, SIZE, dtype=np.uint8)
+            data = np.clip(data.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+            r_real = geom.compute_metrics(data)
+            shuf = data.copy()
+            np.random.default_rng(1000 + seed).shuffle(shuf)
+            r_shuf = geom.compute_metrics(shuf)
+            diffs.append(r_real.metrics["curvature_autocorrelation"] -
+                         r_shuf.metrics["curvature_autocorrelation"])
+        mean_diff = abs(np.mean(diffs))
+        assert mean_diff > 0.05, \
+            f"curvature_autocorrelation should differ between structured and shuffled, got mean|diff|={mean_diff:.4f}"
+
+    def test_cross_scale_curvature_coherence_structured_high(self):
+        """Structured signals have consistent curvature across scales;
+        shuffled signals lose cross-scale coherence."""
+        geom = LaplacianGeometry()
+        rng = np.random.default_rng(42)
+        t = np.linspace(0, 20 * np.pi, SIZE)
+        structured = np.uint8(np.clip(128 + 100 * np.sin(t) * np.sin(t * 0.1), 0, 255))
+        r_struct = geom.compute_metrics(structured)
+        shuf = structured.copy()
+        rng.shuffle(shuf)
+        r_shuf = geom.compute_metrics(shuf)
+        assert r_struct.metrics["cross_scale_curvature_coherence"] > \
+               r_shuf.metrics["cross_scale_curvature_coherence"], \
+            (f"Structured cross_scale={r_struct.metrics['cross_scale_curvature_coherence']:.3f} "
+             f"should exceed shuffled={r_shuf.metrics['cross_scale_curvature_coherence']:.3f}")
+
+    def test_noise_baseline_near_zero(self):
+        """White noise vs shuffled noise: Cohen's d should be small for all metrics."""
+        geom = LaplacianGeometry()
+        rng = np.random.default_rng(999)
+        real_vals = {m: [] for m in ["biharmonic_ratio", "gradient_sign_persistence",
+                                      "laplacian_spectral_ratio", "poisson_recovery_error",
+                                      "curvature_autocorrelation",
+                                      "cross_scale_curvature_coherence"]}
+        shuf_vals = {m: [] for m in real_vals}
+        for _ in range(20):
+            data = rng.integers(0, 256, SIZE, dtype=np.uint8)
+            r_real = geom.compute_metrics(data)
+            shuf = data.copy()
+            rng.shuffle(shuf)
+            r_shuf = geom.compute_metrics(shuf)
+            for m in real_vals:
+                real_vals[m].append(r_real.metrics[m])
+                shuf_vals[m].append(r_shuf.metrics[m])
+        for m in real_vals:
+            rv, sv = np.array(real_vals[m]), np.array(shuf_vals[m])
+            pooled = np.sqrt((np.var(rv) + np.var(sv)) / 2) + 1e-12
+            d = abs((np.mean(rv) - np.mean(sv)) / pooled)
+            assert d < 1.5, f"Noise self-discrimination too high for {m}: d={d:.3f}"
 
 
 # ── QUASICRYSTAL LENS ─────────────────────────────────────────────────
