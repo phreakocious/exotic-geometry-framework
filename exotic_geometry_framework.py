@@ -7577,12 +7577,30 @@ class FractalJuliaGeometry(ExoticGeometry):
 
         return z0_vals
 
+    def _continuous_potential(self, escapes: np.ndarray,
+                              final_mod: np.ndarray) -> np.ndarray:
+        """Normalized iteration count: smooth escape time via log-log.
+
+        For escaping points: n + 1 - log(log|z_final|)/log(2).
+        For trapped points: max_iter. This removes the discrete steps
+        in the integer escape landscape.
+        """
+        pot = escapes.astype(np.float64)
+        esc_idx = np.where(escapes < self.max_iter)[0]
+        if len(esc_idx) > 0:
+            fm = final_mod[esc_idx]
+            pot[esc_idx] += 1.0 - np.log(np.log(fm)) / np.log(2.0)
+        return pot
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         """Compute Julia escape metrics."""
         z0_vals = self.embed(data)
 
         if len(z0_vals) == 0:
-            return GeometryResult(self.name, {}, {})
+            return GeometryResult(self.name, {
+                "escape_entropy": 0.0, "stability": 0.0,
+                "potential_smoothness": 0.0, "potential_variance": 0.0,
+            }, {})
 
         escapes = []
         final_moduli = []
@@ -7602,26 +7620,36 @@ class FractalJuliaGeometry(ExoticGeometry):
         final_moduli = np.array(final_moduli)
 
         # Metrics (similar to Mandelbrot but for fixed c)
-        mean_escape = np.mean(escapes)
         counts = np.bincount(escapes)
         probs = counts[counts > 0] / len(escapes)
         escape_entropy = -np.sum(probs * np.log2(probs + 1e-10))
-        
-        # Connectedness proxy: fraction of points that never escape
-        connectedness = np.mean(escapes == self.max_iter)
-        
+
         # Stability: variance of escape times
         stability = np.var(escapes)
+
+        # Continuous potential and derived metrics (evolved via ShinkaEvolve)
+        pot = self._continuous_potential(escapes, final_moduli)
+
+        # Potential smoothness: mean |diff| of continuous potential.
+        # Structured data has correlated z0 path → smooth potential landscape.
+        # Shuffled data has random z0 pairs → jumpy potential.
+        potential_smoothness = float(np.mean(np.abs(np.diff(pot)))) if len(pot) > 1 else 0.0
+
+        # Potential variance: diversity of dynamical behavior.
+        # Structured data explores specific fractal regions → high variance.
+        potential_variance = float(np.var(pot))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "escape_entropy": escape_entropy,
                 "stability": stability,
+                "potential_smoothness": potential_smoothness,
+                "potential_variance": potential_variance,
             },
             raw_data={
                 "z0_vals": z0_vals,
-                "escapes": escapes
+                "escapes": escapes,
             }
         )
 

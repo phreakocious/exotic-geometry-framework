@@ -1191,6 +1191,25 @@ class TestFractalJulia:
         assert res_per.metrics["escape_entropy"] >= 0
         assert res_rnd.metrics["escape_entropy"] >= 0
 
+    def test_potential_smoothness_structured_low(self):
+        """Structured data has correlated z0 pairs → smooth potential landscape.
+        Shuffled/noise data has random z0 pairs → jumpy potential."""
+        geom = FractalJuliaGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["potential_smoothness"] < r_noise.metrics["potential_smoothness"], \
+            (f"Sine potential_smoothness={r_sine.metrics['potential_smoothness']:.4f} "
+             f"should be less than noise={r_noise.metrics['potential_smoothness']:.4f}")
+
+    def test_returns_four_metrics(self):
+        """Geometry should return exactly 4 metrics."""
+        geom = FractalJuliaGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"escape_entropy", "stability", "potential_smoothness",
+                    "potential_variance"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
 
 # ── CROSS-GEOMETRY CONSISTENCY ─────────────────────────────────────────
 
