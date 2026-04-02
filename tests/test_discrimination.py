@@ -508,6 +508,21 @@ class TestHigherOrder:
         res_rnd = geom.compute_metrics(_white_noise())
         assert res_chaos.metrics["perm_forbidden"] > res_rnd.metrics["perm_forbidden"]
 
+    def test_c3_energy_structured_high(self):
+        """Brownian motion has nonzero third-order temporal correlations
+        (asymmetric increments). White noise has C3 ≈ 0."""
+        geom = HigherOrderGeometry()
+        res_brown = geom.compute_metrics(_brownian())
+        res_noise = geom.compute_metrics(_white_noise())
+        assert res_brown.metrics["c3_energy"] > res_noise.metrics["c3_energy"]
+
+    def test_returns_six_metrics(self):
+        geom = HigherOrderGeometry()
+        r = geom.compute_metrics(_logistic_chaos())
+        expected = {"skew_mean", "kurt_max", "perm_entropy", "perm_forbidden",
+                    "c3_energy", "bicoherence_max"}
+        assert set(r.metrics.keys()) == expected
+
 
 class TestAttractor:
     def test_chaos_vs_noise(self):
@@ -518,6 +533,21 @@ class TestAttractor:
         res_rnd = geom.compute_metrics(_white_noise())
         # Lower correlation dimension = lower-dimensional attractor
         assert res_chaos.metrics["correlation_dimension"] < res_rnd.metrics["correlation_dimension"]
+
+    def test_trajectory_smoothness_structured_high(self):
+        """Smooth signals produce coherent trajectories in delay-embedded space.
+        Noise produces anti-correlated random walk (smoothness ≈ -0.47)."""
+        geom = AttractorGeometry()
+        res_sine = geom.compute_metrics(_sine_wave())
+        res_noise = geom.compute_metrics(_white_noise())
+        assert res_sine.metrics["trajectory_smoothness"] > res_noise.metrics["trajectory_smoothness"]
+
+    def test_returns_five_metrics(self):
+        geom = AttractorGeometry()
+        r = geom.compute_metrics(_sine_wave())
+        expected = {"correlation_dimension", "d2_saturation", "lyapunov_max",
+                    "filling_ratio", "trajectory_smoothness"}
+        assert set(r.metrics.keys()) == expected
 
 
 class TestMultifractal:
@@ -618,6 +648,20 @@ class TestSol:
         assert res_aniso.metrics["z_variance"] != pytest.approx(
             res_rnd.metrics["z_variance"], abs=0.01
         )
+
+    def test_dz_persistence_structured_high(self):
+        """Smooth signal → correlated z-increments → high dz_persistence.
+        Noise → uncorrelated z-increments → dz_persistence near 0."""
+        geom = SolGeometry()
+        res_sine = geom.compute_metrics(_sine_wave())
+        res_noise = geom.compute_metrics(_white_noise())
+        assert res_sine.metrics["dz_persistence"] > res_noise.metrics["dz_persistence"]
+
+    def test_returns_four_metrics(self):
+        geom = SolGeometry()
+        r = geom.compute_metrics(_sine_wave())
+        expected = {"z_drift", "z_variance", "path_length", "dz_persistence"}
+        assert set(r.metrics.keys()) == expected
 
 
 # ── SCALE LENS ─────────────────────────────────────────────────────────

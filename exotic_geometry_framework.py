@@ -5705,18 +5705,41 @@ class SolGeometry(ExoticGeometry):
         )
         path_length = np.sum(sol_ds)
 
+        # z-increment persistence: mean ACF of dz at lags 1-5
+        dz_persistence = self._dz_persistence(path)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "z_drift": z_drift,
                 "z_variance": z_variance,
                 "path_length": path_length,
+                "dz_persistence": dz_persistence,
             },
             raw_data={
                 "path": path,
                 "final_position": final,
             }
         )
+
+    def _dz_persistence(self, path: np.ndarray, max_lag: int = 5) -> float:
+        """Mean autocorrelation of z-increments at lags 1..max_lag.
+
+        Measures temporal coherence of movement along the z-axis in Sol.
+        Structured data produces smooth z-trajectories (high persistence),
+        while shuffled data yields random z-increments (persistence ≈ 0).
+        """
+        dz = np.diff(path[:, 2])
+        if len(dz) <= max_lag:
+            return 0.0
+        dz_c = dz - np.mean(dz)
+        var = np.var(dz)
+        if var < 1e-15:
+            return 0.0
+        acf_sum = 0.0
+        for lag in range(1, max_lag + 1):
+            acf_sum += np.mean(dz_c[:-lag] * dz_c[lag:]) / var
+        return float(acf_sum / max_lag)
 
 
 class ProductS2RGeometry(ExoticGeometry):
@@ -7859,7 +7882,7 @@ class HigherOrderGeometry(ExoticGeometry):
         if np.ptp(fdata) == 0:
             return GeometryResult(self.name, {k: float('nan') for k in [
                 'skew_mean', 'kurt_max', 'perm_entropy', 'perm_forbidden',
-                'bicoherence_max']}, {})
+                'c3_energy', 'bicoherence_max']}, {})
 
         metrics = {}
 
@@ -7930,6 +7953,10 @@ class HigherOrderGeometry(ExoticGeometry):
                                 centered[tau1:valid_n+tau1] *
                                 centered[tau2:valid_n+tau2])
                     c3_values.append(c3)
+
+        # C3 energy: mean |C3(τ1,τ2)| — third-order temporal correlation.
+        # Zero for Gaussian processes; high for nonlinear deterministic dynamics.
+        metrics['c3_energy'] = float(np.mean(np.abs(c3_values))) if c3_values else 0.0
 
         # --- Bicoherence (segment-averaged normalized bispectrum) ---
         # Single-FFT bicoherence is trivially 1. Must average over segments.
@@ -11715,7 +11742,7 @@ class AttractorGeometry(ExoticGeometry):
         n = len(x)
         _nan = {k: float('nan') for k in [
             "correlation_dimension", "d2_saturation",
-            "lyapunov_max", "filling_ratio"]}
+            "lyapunov_max", "filling_ratio", "trajectory_smoothness"]}
 
         if n < 200:
             return GeometryResult(self.name, _nan, {})
@@ -11751,6 +11778,9 @@ class AttractorGeometry(ExoticGeometry):
         else:
             filling = 0.0
 
+        # Trajectory smoothness in delay-embedded space
+        smoothness = self._trajectory_smoothness(emb)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -11758,9 +11788,32 @@ class AttractorGeometry(ExoticGeometry):
                 "d2_saturation": float(np.clip(saturation, 0, 1)),
                 "lyapunov_max": float(np.clip(lam, -2, 5)),
                 "filling_ratio": float(np.clip(filling, 0, 1)),
+                "trajectory_smoothness": smoothness,
             },
             raw_data={}
         )
+
+    def _trajectory_smoothness(self, emb: np.ndarray) -> float:
+        """Mean cosine of angle between successive displacement vectors.
+
+        In delay-embedded space, structured signals produce smooth trajectories
+        (successive displacements point in similar directions, smoothness > 0).
+        Noise produces random-walk trajectories where successive steps are
+        anti-correlated (smoothness ≈ -0.47 in 5D).
+        """
+        if emb is None or len(emb) < 3:
+            return 0.0
+        vectors = emb[1:] - emb[:-1]
+        norms = np.linalg.norm(vectors, axis=1)
+        valid = (norms[:-1] > 1e-9) & (norms[1:] > 1e-9)
+        if not np.any(valid):
+            return 0.0
+        v1 = vectors[:-1][valid]
+        v2 = vectors[1:][valid]
+        n1 = norms[:-1][valid]
+        n2 = norms[1:][valid]
+        cos_angles = np.sum(v1 * v2, axis=1) / (n1 * n2)
+        return float(np.mean(cos_angles))
 
 
 class InflationGeometry(ExoticGeometry):
