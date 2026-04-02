@@ -1532,6 +1532,26 @@ class TestCayley:
             (f"Noise sat_r={r_noise.metrics['saturation_radius']:.4f} "
              f"should be < brownian sat_r={r_brown.metrics['saturation_radius']:.4f}")
 
+    def test_local_linearity_structured_high(self):
+        """Structured signals live on low-dimensional manifolds — local PCA
+        neighborhoods are dominated by one direction (linearity ~ 1).
+        Noise is isotropic (linearity ~ 1/3 in 3D embedding)."""
+        geom = CayleyGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["local_linearity"] > r_noise.metrics["local_linearity"], \
+            (f"Sine local_linearity={r_sine.metrics['local_linearity']:.4f} "
+             f"should exceed noise={r_noise.metrics['local_linearity']:.4f}")
+
+    def test_returns_five_metrics(self):
+        """Geometry should return exactly 5 metrics."""
+        geom = CayleyGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"delta_hyp_norm", "growth_exponent", "spectral_gap",
+                    "saturation_radius", "local_linearity"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
 
 class TestSpectralGraph:
     """Spectral Graph Geometry computes heat kernel spectral invariants
@@ -1635,11 +1655,32 @@ class TestBoltzmann:
         assert r.metrics["frustration"] > 0.8, \
             f"Fibonacci frustration={r.metrics['frustration']:.4f} should be near 1.0"
 
-    def test_returns_three_metrics(self):
-        """Geometry should always return exactly 3 metrics."""
+    def test_nn_dominance_structured_high(self):
+        """Brownian motion has strong nearest-neighbor couplings (temporal
+        adjacency dominates), so nn_dominance should be high."""
+        geom = BoltzmannGeometry()
+        r_brown = geom.compute_metrics(_brownian())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_brown.metrics["nn_dominance"] > r_noise.metrics["nn_dominance"], \
+            (f"Brownian nn_dominance={r_brown.metrics['nn_dominance']:.4f} "
+             f"should exceed noise={r_noise.metrics['nn_dominance']:.4f}")
+
+    def test_coupling_temporal_variance_structured_low(self):
+        """Periodic signals have stationary coupling structure — J is the
+        same in both halves. Noise yields different random J per half."""
+        geom = BoltzmannGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["coupling_temporal_variance"] < r_noise.metrics["coupling_temporal_variance"], \
+            (f"Sine coupling_temporal_variance={r_sine.metrics['coupling_temporal_variance']:.4f} "
+             f"should be less than noise={r_noise.metrics['coupling_temporal_variance']:.4f}")
+
+    def test_returns_five_metrics(self):
+        """Geometry should always return exactly 5 metrics."""
         geom = BoltzmannGeometry()
         r = geom.compute_metrics(_white_noise())
-        expected = {"coupling_strength", "frustration", "spectral_gap_J"}
+        expected = {"coupling_strength", "frustration", "spectral_gap_J",
+                    "nn_dominance", "coupling_temporal_variance"}
         assert set(r.metrics.keys()) == expected, \
             f"Expected {expected}, got {set(r.metrics.keys())}"
 

@@ -3966,7 +3966,7 @@ class CayleyGeometry(ExoticGeometry):
             return GeometryResult(geometry_name=self.name, metrics={
                 'delta_hyp_norm': 0.0,
                 'growth_exponent': 0.0, 'spectral_gap': 0.0,
-                'saturation_radius': 0.0,
+                'saturation_radius': 0.0, 'local_linearity': 1.0 / self.embed_dim,
             })
 
         # Pairwise distance matrix (needed for δ-hyperbolicity)
@@ -3980,6 +3980,7 @@ class CayleyGeometry(ExoticGeometry):
         adj = self._build_knn_graph(X)
         metrics.update(self._growth_exponent(adj, n, rng))
         metrics.update(self._spectral_gap(adj, n))
+        metrics.update(self._local_linearity(X))
 
         return GeometryResult(geometry_name=self.name, metrics=metrics)
 
@@ -4129,6 +4130,37 @@ class CayleyGeometry(ExoticGeometry):
             spectral_gap = 0.0
 
         return {'spectral_gap': spectral_gap}
+
+    def _local_linearity(self, X: np.ndarray) -> dict:
+        """Average local linearity via PCA of k-NN neighborhoods.
+
+        For each point, compute PCA of its k nearest neighbors and measure
+        the fraction of variance captured by the first principal component.
+        Structured data on low-dimensional manifolds yields linearity ~ 1.0;
+        isotropic noise yields ~ 1/embed_dim.
+        """
+        from scipy.spatial import KDTree
+
+        n = len(X)
+        if n <= self.k_nn:
+            return {'local_linearity': 1.0 / self.embed_dim}
+
+        tree = KDTree(X)
+        _, indices = tree.query(X, k=self.k_nn + 1)
+
+        scores = np.empty(n)
+        for i in range(n):
+            nbrs = X[indices[i, 1:]]
+            centered = nbrs - nbrs.mean(axis=0)
+            cov = centered.T @ centered
+            eigs = np.linalg.eigh(cov)[0]
+            total = eigs.sum()
+            if total < 1e-9:
+                scores[i] = 1.0 / self.embed_dim
+            else:
+                scores[i] = eigs[-1] / total
+
+        return {'local_linearity': float(np.mean(scores))}
 
 
 # =============================================================================
@@ -4487,20 +4519,44 @@ class BoltzmannGeometry(ExoticGeometry):
         fallback = GeometryResult(
             geometry_name=self.name,
             metrics={'coupling_strength': 0.0, 'frustration': 0.5,
-                     'spectral_gap_J': 1.0}
+                     'spectral_gap_J': 1.0,
+                     'nn_dominance': 0.0, 'coupling_temporal_variance': 0.0}
         )
 
-        if len(windows) < 100:
+        if len(windows) < 200:
             return fallback
 
         J = self._fit_ising(windows)
+        cs = self._coupling_strength(J)
+
+        # NN dominance: ratio of nearest-neighbor coupling strength to
+        # overall coupling strength. Measures locality of interactions —
+        # structured signals have stronger adjacent-position couplings.
+        # (evolved via ShinkaEvolve)
+        d = J.shape[0]
+        nn_couplings = np.abs(np.diag(J, k=1))
+        nn_dominance = float(np.mean(nn_couplings) / (cs + 1e-9)) if d > 1 else 1.0
+
+        # Coupling temporal variance: relative Frobenius norm change of J
+        # between first and second half of the signal. Measures how the
+        # energy landscape evolves — structured signals have nonstationary
+        # coupling patterns. (evolved via ShinkaEvolve)
+        n_win = len(windows)
+        mid = n_win // 2
+        J1 = self._fit_ising(windows[:mid])
+        J2 = self._fit_ising(windows[mid:])
+        diff_norm = np.linalg.norm(J1 - J2, 'fro')
+        avg_norm = (np.linalg.norm(J1, 'fro') + np.linalg.norm(J2, 'fro')) / 2.0
+        coupling_temporal_variance = float(diff_norm / (avg_norm + 1e-9))
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                'coupling_strength': self._coupling_strength(J),
+                'coupling_strength': cs,
                 'frustration': self._frustration(J),
                 'spectral_gap_J': self._spectral_gap_J(J),
+                'nn_dominance': nn_dominance,
+                'coupling_temporal_variance': coupling_temporal_variance,
             }
         )
 
