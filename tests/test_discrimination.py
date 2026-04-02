@@ -166,6 +166,24 @@ class TestSpherical:
         # Concentrated data → high concentration metric, low angular spread
         assert res_const.metrics["concentration"] > res_rnd.metrics["concentration"]
 
+    def test_spectral_gini_structured_high(self):
+        """Sine wave concentrates power in one frequency → high Gini.
+        Noise spreads power → low Gini."""
+        geom = SphericalGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["spectral_gini"] > r_noise.metrics["spectral_gini"], \
+            (f"Sine spectral_gini={r_sine.metrics['spectral_gini']:.4f} "
+             f"should be > noise={r_noise.metrics['spectral_gini']:.4f}")
+
+    def test_returns_five_metrics(self):
+        geom = SphericalGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"concentration", "angular_spread", "hemisphere_balance",
+                    "mean_z", "spectral_gini"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
 
 class TestCantor:
     def test_hierarchical_vs_uniform(self):
@@ -310,6 +328,40 @@ class TestZipfMandelbrot:
         res_rnd = geom.compute_metrics(_white_noise())
         # Higher alpha = steeper rank-frequency curve (more Zipfian)
         assert res_zipf.metrics["zipf_alpha"] > res_rnd.metrics["zipf_alpha"]
+
+    def test_bigram_predictability_structured_high(self):
+        """Structured data has predictable byte transitions → high bigram_predictability.
+        White noise has uniform transitions → near zero."""
+        geom = ZipfMandelbrotGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["bigram_predictability"] > r_noise.metrics["bigram_predictability"], \
+            (f"Sine bigram_pred={r_sine.metrics['bigram_predictability']:.4f} "
+             f"should be > noise={r_noise.metrics['bigram_predictability']:.4f}")
+
+    def test_entropy_nonstationarity_regime_high(self):
+        """Regime-switching data has varying complexity across windows.
+        Sine wave has constant complexity → low nonstationarity."""
+        geom = ZipfMandelbrotGeometry()
+        # Create regime data: blocks of constant vs chaotic
+        rng = np.random.default_rng(999)
+        regime = np.concatenate([
+            np.full(2048, 100, dtype=np.uint8),
+            rng.integers(0, 256, 2048, dtype=np.uint8),
+        ] * (SIZE // 4096))
+        r_regime = geom.compute_metrics(regime)
+        r_sine = geom.compute_metrics(_sine_wave())
+        assert r_regime.metrics["entropy_nonstationarity"] > r_sine.metrics["entropy_nonstationarity"], \
+            (f"Regime entropy_nonstat={r_regime.metrics['entropy_nonstationarity']:.4f} "
+             f"should be > sine={r_sine.metrics['entropy_nonstationarity']:.4f}")
+
+    def test_returns_seven_metrics(self):
+        geom = ZipfMandelbrotGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"zipf_alpha", "mandelbrot_q", "zipf_r_squared", "hapax_ratio",
+                    "gini_coefficient", "bigram_predictability", "entropy_nonstationarity"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
 
 
 # ── TOPOLOGICAL LENS ───────────────────────────────────────────────────
@@ -1223,7 +1275,34 @@ class TestSpiral:
         res_exp = geom.compute_metrics(exp_signal)
         assert res_const.metrics["angular_uniformity"] > res_exp.metrics["angular_uniformity"]
 
-    # test_tightness removed: tightness metric was pruned from SpiralGeometry.
+    def test_angular_acf_structured_high(self):
+        """Sine wave has correlated angular diffs → high ACF. Noise has low ACF."""
+        geom = SpiralGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["angular_acf"] > r_noise.metrics["angular_acf"], \
+            (f"Sine angular_acf={r_sine.metrics['angular_acf']:.4f} "
+             f"should be > noise={r_noise.metrics['angular_acf']:.4f}")
+
+    def test_growth_stability_constant_high(self):
+        """Constant data has perfectly consistent growth. Regime-switching data has
+        different growth rates in different windows → lower stability."""
+        geom = SpiralGeometry()
+        r_const = geom.compute_metrics(_constant())
+        # Create regime-switching: alternating blocks of 0 and 255
+        blocks = np.concatenate([np.full(512, 0, dtype=np.uint8),
+                                 np.full(512, 255, dtype=np.uint8)] * (SIZE // 1024))
+        r_regime = geom.compute_metrics(blocks)
+        assert r_const.metrics["growth_stability"] >= r_regime.metrics["growth_stability"], \
+            (f"Constant growth_stability={r_const.metrics['growth_stability']:.4f} "
+             f"should be >= regime={r_regime.metrics['growth_stability']:.4f}")
+
+    def test_returns_four_metrics(self):
+        geom = SpiralGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"angular_uniformity", "angular_acf", "radial_acf", "growth_stability"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
 
 
 class TestFractalMandelbrot:
@@ -1234,6 +1313,24 @@ class TestFractalMandelbrot:
         res_chaos = geom.compute_metrics(_logistic_chaos())
         res_const = geom.compute_metrics(_constant())
         assert res_chaos.metrics["escape_time_variance"] > res_const.metrics["escape_time_variance"]
+
+    def test_potential_roughness_structured_low(self):
+        """Structured data has smooth sequential potential (low roughness).
+        Noise has uncorrelated potential (roughness ≈ 2.0)."""
+        geom = FractalMandelbrotGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["potential_roughness"] < r_noise.metrics["potential_roughness"], \
+            (f"Sine potential_roughness={r_sine.metrics['potential_roughness']:.4f} "
+             f"should be < noise={r_noise.metrics['potential_roughness']:.4f}")
+
+    def test_returns_four_metrics(self):
+        geom = FractalMandelbrotGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"escape_time_variance", "interior_fraction", "escape_entropy",
+                    "potential_roughness"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
 
 
 class TestFractalJulia:

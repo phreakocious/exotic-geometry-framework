@@ -2416,6 +2416,9 @@ class SphericalGeometry(ExoticGeometry):
         north_frac = np.mean(embedded[:, 2] > 0)
         hemisphere_balance = 1 - 2 * abs(north_frac - 0.5)
 
+        # Spectral Gini: concentration of FFT power spectrum of S² trajectory
+        sg = self._spectral_gini(embedded)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -2423,12 +2426,34 @@ class SphericalGeometry(ExoticGeometry):
                 "angular_spread": angular_spread,
                 "hemisphere_balance": hemisphere_balance,
                 "mean_z": np.mean(embedded[:, 2]),
+                **sg,
             },
             raw_data={
                 "embedded_points": embedded,
                 "mean_direction": mean_dir,
             }
         )
+
+    def _spectral_gini(self, pts: np.ndarray) -> dict:
+        """Gini coefficient of combined FFT power spectrum of S² trajectory.
+
+        Structured signals concentrate power in few frequencies (high Gini).
+        Random signals spread power uniformly (low Gini, ~0.3 for finite N).
+        """
+        if len(pts) < 16:
+            return {'spectral_gini': 0.0}
+        psd = sum(np.abs(np.fft.rfft(pts[:, k])) ** 2 for k in range(3))
+        psd = psd[1:]  # drop DC
+        if len(psd) < 2:
+            return {'spectral_gini': 0.0}
+        total = psd.sum()
+        if total < 1e-9:
+            return {'spectral_gini': 0.0}
+        s = np.sort(psd)
+        n = len(s)
+        idx = np.arange(1, n + 1)
+        gini = float(np.sum((2 * idx - n - 1) * s) / (n * total))
+        return {'spectral_gini': gini}
 
 
 # =============================================================================
@@ -3583,16 +3608,70 @@ class SpiralGeometry(ExoticGeometry):
         else:
             tightness = 0
 
+        # Temporal autocorrelation of angular and radial components
+        acf_metrics = self._spiral_acf(angular_diffs, radii, points)
+        # Growth stability across windows
+        growth_stab = self._growth_stability(radii)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "angular_uniformity": angular_uniformity,
+                **acf_metrics,
+                **growth_stab,
             },
             raw_data={
                 "points": points,
                 "radii": radii,
             }
         )
+
+    def _rms_acf(self, series: np.ndarray, max_lag: int = 5) -> float:
+        """Root-mean-square of autocorrelation at lags 1..max_lag."""
+        n = len(series)
+        if n < max_lag + 2:
+            return 0.0
+        std_dev = np.std(series)
+        if std_dev < 1e-9:
+            return 1.0
+        mean_val = np.mean(series)
+        norm = (series - mean_val) / std_dev
+        acfs = [float(np.mean(norm[:-lag] * norm[lag:])) for lag in range(1, max_lag + 1)]
+        return float(np.sqrt(np.mean(np.square(acfs))))
+
+    def _spiral_acf(self, angular_diffs: np.ndarray, radii: np.ndarray,
+                    points: np.ndarray) -> dict:
+        """Multi-lag RMS autocorrelation of angular diffs and radial residuals."""
+        angular_acf = self._rms_acf(angular_diffs)
+        # Radial residual ACF: detrend log-radii against cumulative angle
+        try:
+            thetas = np.cumsum(np.concatenate([[0.0], angular_diffs]))
+            log_r = np.log(radii + 1e-10)
+            coeffs = np.polyfit(thetas, log_r, 1)
+            residuals = log_r - np.polyval(coeffs, thetas)
+            radial_acf = self._rms_acf(residuals)
+        except (np.linalg.LinAlgError, ValueError):
+            radial_acf = 0.0
+        return {
+            'angular_acf': angular_acf,
+            'radial_acf': radial_acf,
+        }
+
+    def _growth_stability(self, radii: np.ndarray, window: int = 512,
+                          step: int = 256) -> dict:
+        """Consistency of exponential growth rate across windows."""
+        if len(radii) < window + step:
+            return {'growth_stability': 0.0}
+        indices = range(0, len(radii) - window + 1, step)
+        if len(list(indices)) < 2:
+            return {'growth_stability': 0.0}
+        rates = []
+        for i in indices:
+            seg = radii[i:i + window]
+            log_r = np.log(seg + 1e-10)
+            idx = np.arange(len(seg))
+            rates.append(np.polyfit(idx, log_r, 1)[0])
+        return {'growth_stability': float(np.exp(-50.0 * np.std(rates)))}
 
 
 # =============================================================================
@@ -7666,18 +7745,49 @@ class FractalMandelbrotGeometry(ExoticGeometry):
         log_moduli = np.log(final_moduli + 1e-10)
         mean_log_modulus = np.mean(log_moduli)
 
+        # Potential roughness: von Neumann ratio on log1p continuous potential
+        pot_roughness = self._potential_roughness(escapes, final_moduli)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "escape_time_variance": escape_variance,
                 "interior_fraction": interior_fraction,
                 "escape_entropy": escape_entropy,
+                **pot_roughness,
             },
             raw_data={
                 "c_vals": c_vals,
                 "escapes": escapes
             }
         )
+
+    def _continuous_potential(self, escapes: np.ndarray,
+                              final_moduli: np.ndarray) -> np.ndarray:
+        """Normalized iteration count for smooth escape time."""
+        pot = escapes.astype(np.float64)
+        esc_idx = np.where(escapes < self.max_iter)[0]
+        if len(esc_idx) > 0:
+            fm = np.maximum(final_moduli[esc_idx], 1.001)
+            pot[esc_idx] += 1.0 - np.log(np.log(fm)) / np.log(2.0)
+        return pot
+
+    def _potential_roughness(self, escapes: np.ndarray,
+                             final_moduli: np.ndarray) -> dict:
+        """Von Neumann ratio on log1p continuous potential.
+
+        Equals ~2.0 for uncorrelated (random) sequences, <2.0 for structured
+        data with smooth sequential potential.
+        """
+        pot = self._continuous_potential(escapes, final_moduli)
+        if len(pot) < 2:
+            return {'potential_roughness': 2.0}
+        log_pot = np.log1p(pot)
+        var = np.var(log_pot)
+        if var < 1e-9:
+            return {'potential_roughness': 2.0}
+        msd = float(np.mean(np.diff(log_pot) ** 2))
+        return {'potential_roughness': float(msd / var)}
 
 
 class FractalJuliaGeometry(ExoticGeometry):
@@ -11038,7 +11148,64 @@ class ZipfMandelbrotGeometry(ExoticGeometry):
         else:
             metrics['gini_coefficient'] = float('nan')
 
+        # Temporal metrics: bigram predictability and entropy nonstationarity
+        temporal = self._temporal_vocabulary(y)
+        metrics.update(temporal)
+
         return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
+
+    def _bigram_cond_entropy(self, symbols: np.ndarray, n_symbols: int) -> float:
+        """H(X_{t+1} | X_t) from bigram transition matrix.
+
+        Uses coarse-grained symbols (not raw bytes) to avoid estimation bias
+        from sparse transition matrices.
+        """
+        if len(symbols) < 2:
+            return float(np.log2(n_symbols))
+        flat = symbols[:-1].astype(np.uint32) * n_symbols + symbols[1:].astype(np.uint32)
+        counts = np.bincount(flat, minlength=n_symbols * n_symbols).reshape(n_symbols, n_symbols)
+        row_sums = counts.sum(axis=1)
+        active = row_sums > 0
+        if not np.any(active):
+            return float(np.log2(n_symbols))
+        p_cond = np.zeros_like(counts, dtype=float)
+        p_cond[active] = counts[active] / row_sums[active, np.newaxis]
+        log_p = np.log2(p_cond, where=p_cond > 0, out=np.zeros_like(p_cond))
+        h_per_row = -(p_cond * log_p).sum(axis=1)
+        total = row_sums.sum()
+        return float(np.sum((row_sums[active] / total) * h_per_row[active]))
+
+    def _temporal_vocabulary(self, data: np.ndarray) -> dict:
+        """Temporal vocabulary metrics using 16-symbol coarse-graining.
+
+        Quantizes bytes to 16 bins to give a 16x16 transition matrix (256 cells),
+        well-sampled at typical data lengths. This avoids the severe estimation
+        bias of 256x256 bigram matrices.
+        """
+        n_symbols = 16
+        symbols = np.minimum(data.astype(np.int32) * n_symbols // 256, n_symbols - 1)
+        max_h = np.log2(n_symbols)  # 4.0 bits
+
+        # Global bigram predictability: max_H - H(X_{t+1}|X_t)
+        global_h = self._bigram_cond_entropy(symbols, n_symbols)
+        predictability = max_h - global_h
+
+        # Entropy nonstationarity: std of windowed conditional entropy
+        window, step = 2048, 1024
+        nonstationarity = 0.0
+        if len(symbols) >= window:
+            h_windows = []
+            for start in range(0, len(symbols) - window + 1, step):
+                h_w = self._bigram_cond_entropy(symbols[start:start + window], n_symbols)
+                if np.isfinite(h_w):
+                    h_windows.append(h_w)
+            if len(h_windows) >= 2:
+                nonstationarity = float(np.std(h_windows))
+
+        return {
+            'bigram_predictability': predictability,
+            'entropy_nonstationarity': nonstationarity,
+        }
 
 
 # =============================================================================
