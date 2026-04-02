@@ -31,7 +31,7 @@ from exotic_geometry_framework import (
     SpiralGeometry, HolderRegularityGeometry, PVariationGeometry,
     MultiScaleWassersteinGeometry,
     # Quasicrystal
-    PenroseGeometry, AmmannBeenkerGeometry, EinsteinHatGeometry,
+    PenroseGeometry, AmmannBeenkerGeometry,
     DodecagonalGeometry, SeptagonalGeometry,
     InflationGeometry,
     NonstationarityGeometry,
@@ -197,6 +197,20 @@ class TestCantor:
         # the ternary embedding maps removed middle-third intervals to large voids.
         assert res_cantor.metrics["max_gap"] > res_rnd.metrics["max_gap"]
 
+    def test_temporal_metrics_discriminate(self):
+        """Bit-plane autocorrelation and jump entropy should be higher for
+        structured data than for shuffled data."""
+        geom = CantorGeometry()
+        rng = np.random.default_rng(42)
+        # Structured: sequential ramp (strong bit-plane correlations)
+        structured = np.arange(SIZE, dtype=np.uint8)
+        shuffled = structured.copy()
+        rng.shuffle(shuffled)
+        res_s = geom.compute_metrics(structured)
+        res_sh = geom.compute_metrics(shuffled)
+        assert res_s.metrics["bit_plane_autocorrelation"] > res_sh.metrics["bit_plane_autocorrelation"]
+        assert res_s.metrics["jump_entropy"] > res_sh.metrics["jump_entropy"]
+
 
 class TestInformation:
     def test_compression_ordering(self):
@@ -321,6 +335,16 @@ class TestMostowRigidity:
         res_noise = geom.compute_metrics(_white_noise(SIZE))
         assert res_fib.metrics["spectral_rigidity"] > res_noise.metrics["spectral_rigidity"]
 
+    def test_mean_turn_angle_structured_high(self):
+        """Structured data traces straighter paths in the Poincare ball
+        (mean turn angle near pi); random data is erratic (smaller angles)."""
+        geom = MostowRigidityGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["mean_turn_angle"] > r_noise.metrics["mean_turn_angle"], \
+            (f"Sine turn_angle={r_sine.metrics['mean_turn_angle']:.3f} should exceed "
+             f"noise turn_angle={r_noise.metrics['mean_turn_angle']:.3f}")
+
 
 # ── DYNAMICAL LENS ─────────────────────────────────────────────────────
 
@@ -340,6 +364,25 @@ class TestSpectral:
         res_sine = geom.compute_metrics(_sine_wave())
         res_rnd = geom.compute_metrics(_white_noise())
         assert res_sine.metrics["spectral_flatness"] < res_rnd.metrics["spectral_flatness"]
+
+    def test_returns_eight_metrics(self):
+        geom = SpectralGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"spectral_slope", "spectral_r2", "spectral_entropy",
+                    "spectral_flatness", "spectral_bandwidth",
+                    "peak_frequency", "high_freq_ratio", "phase_coherence"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
+    def test_phase_coherence_structured_high(self):
+        """Structured signal has locked phase relationships;
+        white noise has random phases."""
+        geom = SpectralGeometry()
+        r_struct = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_struct.metrics["phase_coherence"] > r_noise.metrics["phase_coherence"], \
+            (f"Sine phase_coh={r_struct.metrics['phase_coherence']:.3f} should exceed "
+             f"noise phase_coh={r_noise.metrics['phase_coherence']:.3f}")
 
 
 class TestRecurrence:
@@ -451,8 +494,9 @@ class TestE8:
 class TestHeisenberg:
     def test_spiral_vs_random(self):
         """Heisenberg z = accumulated signed area swept by (x,y) path.
-        A spiral (coherent rotation) sweeps systematic area → large |final_z|.
-        White noise path cancels → smaller |final_z| relative to path_length."""
+        A spiral (coherent rotation) sweeps systematic area → large area_length_ratio.
+        White noise path cancels → smaller ratio. Structured spiral also has
+        higher z_rate_spectral_entropy (peaked spectrum vs flat)."""
         geom = HeisenbergGeometry(center_data=True)
         # Deterministic spiral: x=cos(t), y=sin(t) → sweeps π per revolution
         t = np.linspace(0, 20 * np.pi, SIZE)
@@ -464,8 +508,10 @@ class TestHeisenberg:
         spiral[1::2] = spiral_y[:SIZE // 2]
         res_spiral = geom.compute_metrics(spiral)
         res_rnd = geom.compute_metrics(_white_noise())
-        # Spiral sweeps coherent area → high |final_z|
-        assert res_spiral.metrics["final_z"] > res_rnd.metrics["final_z"]
+        # Spiral sweeps coherent area → high area_length_ratio
+        assert res_spiral.metrics["area_length_ratio"] > res_rnd.metrics["area_length_ratio"]
+        # Spiral has structured z-increments → higher spectral entropy metric
+        assert res_spiral.metrics["z_rate_spectral_entropy"] > res_rnd.metrics["z_rate_spectral_entropy"]
 
 
 class TestTropical:
@@ -537,6 +583,35 @@ class TestHolderRegularity:
         res_rough = geom.compute_metrics(_white_noise())
         assert res_smooth.metrics["holder_mean"] > res_rough.metrics["holder_mean"]
 
+    def test_returns_seven_metrics(self):
+        geom = HolderRegularityGeometry()
+        r = geom.compute_metrics(_brownian())
+        expected = {"hurst_exponent", "holder_mean", "holder_std",
+                    "holder_min", "holder_max",
+                    "increment_autocorrelation", "alpha_autocorrelation"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
+    def test_increment_autocorrelation_structured_high(self):
+        """Structured signal has clustered volatility across scales;
+        white noise does not."""
+        geom = HolderRegularityGeometry()
+        r_struct = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_struct.metrics["increment_autocorrelation"] > r_noise.metrics["increment_autocorrelation"], \
+            (f"Sine inc_ac={r_struct.metrics['increment_autocorrelation']:.3f} should exceed "
+             f"noise inc_ac={r_noise.metrics['increment_autocorrelation']:.3f}")
+
+    def test_alpha_autocorrelation_structured_high(self):
+        """Logistic chaos has spatially clustered regularity;
+        white noise does not."""
+        geom = HolderRegularityGeometry()
+        r_struct = geom.compute_metrics(_logistic_chaos())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_struct.metrics["alpha_autocorrelation"] > r_noise.metrics["alpha_autocorrelation"], \
+            (f"Logistic alpha_ac={r_struct.metrics['alpha_autocorrelation']:.3f} should exceed "
+             f"noise alpha_ac={r_noise.metrics['alpha_autocorrelation']:.3f}")
+
 
 class TestPVariation:
     def test_smooth_vs_rough(self):
@@ -546,6 +621,32 @@ class TestPVariation:
         res_rough = geom.compute_metrics(_white_noise())
         # At p=2, rough > smooth
         assert res_rough.metrics["var_p2"] > res_smooth.metrics["var_p2"]
+
+    def test_returns_four_metrics(self):
+        geom = PVariationGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"var_p2", "variation_index",
+                    "volatility_clustering", "increment_persistence"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
+    def test_volatility_clustering_structured_high(self):
+        """Smooth data has clustered volatility (increment magnitudes are correlated)."""
+        geom = PVariationGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["volatility_clustering"] > r_noise.metrics["volatility_clustering"], \
+            (f"Sine vol_cluster={r_sine.metrics['volatility_clustering']:.3f} should exceed "
+             f"noise vol_cluster={r_noise.metrics['volatility_clustering']:.3f}")
+
+    def test_increment_persistence_correlated_high(self):
+        """Smooth correlated data has positive persistence; noise has ~ -0.5."""
+        geom = PVariationGeometry()
+        r_sine = geom.compute_metrics(_sine_wave())
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_sine.metrics["increment_persistence"] > r_noise.metrics["increment_persistence"], \
+            (f"Sine persistence={r_sine.metrics['increment_persistence']:.3f} should exceed "
+             f"noise persistence={r_noise.metrics['increment_persistence']:.3f}")
 
 
 class TestMultiScaleWasserstein:
@@ -733,46 +834,10 @@ class TestAmmannBeenker:
                 f"Invalid pell_conformance={val} on {data_fn.__name__}"
 
 
-class TestEinsteinHat:
-    def test_hat_kernel_embedded_vs_noise(self):
-        """Data with the Hat kernel embedded should have higher hat_boundary_match
-        than white noise. The Hat kernel is [2,1,1,-2,1,2,1,-2,1,2,-1,2,-1] in
-        hex turn units."""
-        geom = EinsteinHatGeometry()
-        # Build a signal whose hex turns contain the kernel repeatedly.
-        # Kernel turns in hex units: [2,1,1,-2,1,2,1,-2,1,2,-1,2,-1]
-        # Convert turns to direction sequence: dir[i+1] = (dir[i] + turn) % 6
-        kernel_turns = [2, 1, 1, -2, 1, 2, 1, -2, 1, 2, -1, 2, -1]
-        rng = np.random.default_rng(999)
-        dirs = [0]
-        for _ in range(SIZE // len(kernel_turns)):
-            for t in kernel_turns:
-                dirs.append((dirs[-1] + t) % 6)
-        hat_data = np.array(dirs[:SIZE], dtype=np.uint8)
-        res_hat = geom.compute_metrics(hat_data)
-        res_noise = geom.compute_metrics(_white_noise())
-        assert res_hat.metrics["hat_boundary_match"] > res_noise.metrics["hat_boundary_match"], \
-            f"Hat kernel data={res_hat.metrics['hat_boundary_match']:.3f} should > noise={res_noise.metrics['hat_boundary_match']:.3f}"
 
-    # test_fibonacci_inflation_similarity removed: inflation_similarity metric was pruned from EinsteinHatGeometry.
-
-    def test_brownian_not_hat(self):
-        """Brownian motion has smooth 1/f² spectrum — should NOT score high
-        on hat_boundary_match.
-        Uses a dedicated RNG to avoid sensitivity to global RNG state."""
-        geom = EinsteinHatGeometry()
-        rng_bm = np.random.default_rng(99)
-        steps = rng_bm.normal(0, 1, SIZE)
-        walk = np.cumsum(steps)
-        walk -= walk.min()
-        mx = walk.max()
-        if mx > 0:
-            walk = walk / mx * 255
-        bm_data = walk.astype(np.uint8)
-        res_bm = geom.compute_metrics(bm_data)
-        # Brownian should score low on hat_boundary_match
-        assert res_bm.metrics["hat_boundary_match"] < 0.3, \
-            f"Brownian hat_boundary_match={res_bm.metrics['hat_boundary_match']:.3f} should be < 0.3"
+# EinsteinHatGeometry removed: the Hat monotile is an inherently 2D tiling;
+# the byte→hex-direction embedding (data % 6) is a category error that cannot
+# produce meaningful 1D discrimination (F=0.94, bottom of all geometries).
 
     # chirality removed: 0% D1 drop, kernel-independent (dead metric per 2×2 classification)
     # hex_balance removed: was identical to Penrose:index_diversity (subword_complexity)
@@ -949,7 +1014,7 @@ class TestDegenerateInput:
         TorusGeometry, SphericalGeometry, CantorGeometry,
         HyperbolicGeometry, PersistentHomologyGeometry,
         E8Geometry, HeisenbergGeometry, TropicalGeometry,
-        PenroseGeometry, AmmannBeenkerGeometry, EinsteinHatGeometry,
+        PenroseGeometry, AmmannBeenkerGeometry,
         DodecagonalGeometry, SeptagonalGeometry,
         InflationGeometry,
         SpectralGeometry, RecurrenceGeometry, PredictabilityGeometry,
@@ -1022,6 +1087,23 @@ class TestUltrametric:
         # Both should have finite metrics
         assert np.isfinite(res_tree.metrics["distance_entropy"])
         assert np.isfinite(res_rnd.metrics["distance_entropy"])
+
+    def test_temporal_metrics_discriminate(self):
+        """Temporal 2-adic metrics should discriminate structured from shuffled."""
+        geom = UltrametricGeometry(p=2)
+        # Structured: sequential ramp (consecutive diffs are always 1, v_2=0)
+        structured = np.arange(SIZE, dtype=np.uint8)
+        shuffled = structured.copy()
+        np.random.default_rng(42).shuffle(shuffled)
+        res_s = geom.compute_metrics(structured)
+        res_sh = geom.compute_metrics(shuffled)
+        # Structured data should have higher predictability
+        assert res_s.metrics["multiscale_markov_predictability"] > res_sh.metrics["multiscale_markov_predictability"]
+        # All three temporal metrics should be finite
+        for m in ["multiscale_markov_predictability", "valuation_spectral_concentration",
+                   "valuation_transition_predictability"]:
+            assert np.isfinite(res_s.metrics[m])
+            assert np.isfinite(res_sh.metrics[m])
 
 
 class TestSpiral:
@@ -1597,10 +1679,11 @@ class TestGottwaldMelbourne:
         assert r.metrics["k_statistic"] > 0.6, \
             f"Noise K={r.metrics['k_statistic']:.4f} should be high"
 
-    def test_returns_two_metrics(self):
+    def test_returns_four_metrics(self):
         geom = GottwaldMelbourneGeometry()
         r = geom.compute_metrics(_white_noise())
-        expected = {"k_statistic", "k_variance"}
+        expected = {"k_statistic", "k_variance",
+                    "angular_spectral_structure", "radial_spectral_structure"}
         assert set(r.metrics.keys()) == expected, \
             f"Expected {expected}, got {set(r.metrics.keys())}"
 
@@ -1737,11 +1820,12 @@ class TestOrdinalPartition:
 class TestNonstationarity:
     """Nonstationarity geometry: tracks how local geometric character changes."""
 
-    def test_returns_four_metrics(self):
+    def test_returns_five_metrics(self):
         geom = NonstationarityGeometry()
         r = geom.compute_metrics(_white_noise())
         expected = {"metric_volatility", "vol_of_vol",
-                    "regime_persistence", "trajectory_dim"}
+                    "regime_persistence", "trajectory_dim",
+                    "dynamic_coupling"}
         assert set(r.metrics.keys()) == expected, \
             f"Expected {expected}, got {set(r.metrics.keys())}"
 
@@ -1784,6 +1868,21 @@ class TestNonstationarity:
             (f"Concat persistence={r_concat.metrics['regime_persistence']:.3f} should exceed "
              f"noise persistence={r_noise.metrics['regime_persistence']:.3f}")
 
+    def test_dynamic_coupling_structured_high(self):
+        """Deterministic dynamics have correlated descriptor changes → high coupling."""
+        geom = NonstationarityGeometry()
+        # Logistic chaos: all descriptor dimensions are coupled by the dynamics
+        x = 0.4
+        chaotic = np.empty(SIZE, dtype=np.uint8)
+        for i in range(SIZE):
+            x = 3.99 * x * (1 - x)
+            chaotic[i] = int(x * 255)
+        r_chaos = geom.compute_metrics(chaotic)
+        r_noise = geom.compute_metrics(_white_noise())
+        assert r_chaos.metrics["dynamic_coupling"] > r_noise.metrics["dynamic_coupling"], \
+            (f"Chaos coupling={r_chaos.metrics['dynamic_coupling']:.3f} should exceed "
+             f"noise coupling={r_noise.metrics['dynamic_coupling']:.3f}")
+
     def test_trajectory_dim_noise_high(self):
         """White noise fills descriptor space → high trajectory_dim.
         Sine wave is constrained → low trajectory_dim."""
@@ -1810,12 +1909,23 @@ def _xorshift32(size=SIZE, seed=1):
 class TestKleinBottle:
     """Klein Bottle geometry: GF(2) linear structure via LFSR complexity and binary rank."""
 
-    def test_returns_three_metrics(self):
+    def test_returns_four_metrics(self):
         geom = KleinBottleGeometry()
         r = geom.compute_metrics(_white_noise())
-        expected = {"linear_complexity", "rank_deficit", "orientation_coherence"}
+        expected = {"linear_complexity", "rank_deficit", "orientation_coherence",
+                    "wht_spectral_kurtosis"}
         assert set(r.metrics.keys()) == expected, \
             f"Expected {expected}, got {set(r.metrics.keys())}"
+
+    def test_wht_kurtosis_structured_high(self):
+        """Structured data should have higher WHT spectral kurtosis than shuffled."""
+        geom = KleinBottleGeometry()
+        structured = np.arange(SIZE, dtype=np.uint8)
+        shuffled = structured.copy()
+        np.random.default_rng(42).shuffle(shuffled)
+        r_s = geom.compute_metrics(structured)
+        r_sh = geom.compute_metrics(shuffled)
+        assert r_s.metrics["wht_spectral_kurtosis"] > r_sh.metrics["wht_spectral_kurtosis"]
 
     def test_linear_complexity_xorshift_low(self):
         """XorShift32 is a GF(2)-linear recurrence: LC << n/2."""

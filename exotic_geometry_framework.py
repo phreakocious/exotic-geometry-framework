@@ -42,7 +42,6 @@ AVAILABLE GEOMETRIES (31 total):
   Aperiodic:
     - PenroseGeometry: quasicrystals, 5-fold symmetry, golden ratio φ
     - AmmannBeenkerGeometry: octagonal, 8-fold symmetry, silver ratio
-    - EinsteinHatGeometry: chiral aperiodic monotile, chirality detection
 
   Higher-Order:
     - HigherOrderGeometry: 3rd/4th order statistics (bispectrum, kurtosis,
@@ -2150,6 +2149,27 @@ class MostowRigidityGeometry(ExoticGeometry):
         except np.linalg.LinAlgError:
             spectral_rigidity = 0.0
 
+        # --- Mean hyperbolic turn angle (evolved via ShinkaEvolve) ---
+        # For consecutive triples p_{t-1}, p_t, p_{t+1}, compute the angle at p_t
+        # using the hyperbolic law of cosines. Structured data traces straighter
+        # paths (mean angle near pi); random data is erratic (mean angle near pi/3).
+        if len(pts_sub) >= 3:
+            angles = []
+            for i in range(1, len(pts_sub) - 1):
+                a = self._hyp_dist(pts_sub[i], pts_sub[i + 1])
+                b = self._hyp_dist(pts_sub[i - 1], pts_sub[i])
+                c = self._hyp_dist(pts_sub[i - 1], pts_sub[i + 1])
+                denom = np.sinh(a) * np.sinh(b)
+                if denom < 1e-12:
+                    angles.append(np.pi)
+                    continue
+                cos_g = np.clip(
+                    (np.cosh(a) * np.cosh(b) - np.cosh(c)) / denom, -1.0, 1.0)
+                angles.append(np.arccos(cos_g))
+            mean_turn_angle = float(np.mean(angles) / np.pi) if angles else 0.0
+        else:
+            mean_turn_angle = 0.0
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -2158,6 +2178,7 @@ class MostowRigidityGeometry(ExoticGeometry):
                 "distance_rigidity": distance_rigidity,
                 "margulis_ratio": margulis_ratio,
                 "spectral_rigidity": spectral_rigidity,
+                "mean_turn_angle": mean_turn_angle,
             },
         )
 
@@ -2179,6 +2200,14 @@ class HeisenbergGeometry(ExoticGeometry):
       so twist measures actual dependency between consecutive values.
 
     Use center_data=True for correlation detection, False for mean bias detection.
+
+    Metrics:
+    - area_length_ratio: log(1 + |z_final|/n²). Captures nilpotent scaling
+      (correlated data has z ~ n², noise ~ n^1.5). Replaces raw final_z.
+    - z_rate_spectral_entropy: 1 - normalized spectral entropy of dz/dt.
+      Structured data → peaked spectrum, noise → flat.
+      (ShinkaEvolve heisenberg_v1 gen 10)
+    - xy_spread: std dev of x,y path coordinates.
     """
 
     def __init__(self, input_scale: float = 255.0, center_data: bool = False):
@@ -2251,35 +2280,49 @@ class HeisenbergGeometry(ExoticGeometry):
         return np.array(path)
 
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute Heisenberg metrics: final z, twist rate, spread, z variance."""
+        """Compute Heisenberg metrics: area-length ratio, spectral entropy, spread."""
         path = self.embed(data)
-
-        # Final position
-        final = path[-1]
-        final_z = abs(final[2])  # Accumulated twist
-
-        # Twist rate (z per step)
         n_steps = len(path) - 1
-        twist_rate = final_z / n_steps if n_steps > 0 else 0
+
+        _nan = {k: float('nan') for k in [
+            "area_length_ratio", "z_rate_spectral_entropy", "xy_spread"]}
+        if n_steps < 20:
+            return GeometryResult(self.name, _nan, {})
 
         # XY spread
         xy_std = np.std(path[:, :2])
 
-        # Z accumulation profile — normalize by n_steps² to make
-        # scale-invariant (z is cumulative, so raw var grows as O(N²))
-        z_values = path[:, 2]
-        z_variance = np.var(z_values) / (n_steps ** 2) if n_steps > 0 else 0
+        # Area-to-length ratio: log(1 + |z_final|/n²).
+        # Better conditioned than raw final_z (kurtosis 39, range 33M).
+        # Captures nilpotent scaling: correlated data has z ~ n², noise has z ~ n^1.5.
+        z_final = path[-1, 2]
+        area_length = float(np.log1p(abs(z_final) / (n_steps ** 2)))
+
+        # Z-rate spectral entropy (ShinkaEvolve heisenberg_v1 gen 10).
+        # dz/dt = z[i+1] - z[i] captures instantaneous non-commutativity.
+        # Structured data → peaked spectrum (low entropy), noise → flat (high).
+        z_increments = np.diff(path[:, 2])
+        z_spectral_entropy = 0.0
+        if np.std(z_increments) > 1e-10:
+            psd = np.abs(np.fft.rfft(z_increments)) ** 2
+            psd_sum = np.sum(psd)
+            if psd_sum > 1e-10:
+                psd_norm = psd / psd_sum
+                entropy = -np.sum(psd_norm * np.log2(psd_norm + 1e-12))
+                n_freqs = len(psd_norm)
+                if n_freqs > 1:
+                    max_entropy = np.log2(n_freqs)
+                    if max_entropy > 1e-10:
+                        z_spectral_entropy = 1.0 - entropy / max_entropy
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                "final_z": final_z,
-                "xy_spread": xy_std,
+                "area_length_ratio": area_length,
+                "z_rate_spectral_entropy": float(np.clip(z_spectral_entropy, 0, 1)),
+                "xy_spread": float(xy_std),
             },
-            raw_data={
-                "path": path,
-                "final_position": final,
-            }
+            raw_data={}
         )
 
 
@@ -2447,29 +2490,60 @@ class CantorGeometry(ExoticGeometry):
 
         return np.array(coords)
 
+    def _bit_plane_autocorrelation(self, data: np.ndarray) -> float:
+        """Weighted lag-1 autocorrelation across 8 bit planes.
+
+        Each byte has 8 bits; each bit plane is a binary time series.
+        Lag-1 autocorrelation of each plane measures temporal structure
+        at that bit position. Weights by ternary significance (MSB most
+        important in the Cantor embedding).
+
+        Structured data has correlated bit planes; shuffling destroys
+        the temporal correlations while preserving bit distributions.
+        """
+        data_np = np.asarray(data, dtype=np.uint8)
+        bit_planes = np.unpackbits(data_np[:, np.newaxis], axis=1)
+        autocorrs = np.zeros(8, dtype=np.float64)
+        for i in range(8):
+            plane = bit_planes[:, i].astype(np.float64)
+            if np.std(plane) < 1e-9:
+                autocorrs[i] = 1.0
+                continue
+            c = np.corrcoef(plane[:-1], plane[1:])[0, 1]
+            autocorrs[i] = np.abs(c) if np.isfinite(c) else 0.0
+        weights = (1.0 / self.base) ** np.arange(1, 9)
+        return float(np.sum(weights * autocorrs) / np.sum(weights))
+
+    def _jump_entropy(self, coords: np.ndarray) -> float:
+        """1 - normalized Shannon entropy of consecutive Cantor jump sizes.
+
+        The sequence |coord[t+1] - coord[t]| has a characteristic distribution
+        for structured data (clustered jumps) vs shuffled (more uniform).
+        Low entropy = structured jumps = high metric value.
+        """
+        if len(coords) < 2:
+            return 0.0
+        jumps = np.abs(np.diff(coords))
+        if np.std(jumps) < 1e-9:
+            return 1.0
+        hist, _ = np.histogram(jumps, bins=32, range=(0.0, 1.0))
+        hist_sum = np.sum(hist)
+        if hist_sum < 1:
+            return 0.0
+        p = hist / hist_sum
+        entropy = -np.sum(p * np.log2(p + 1e-12))
+        max_entropy = np.log2(32)
+        return float(np.clip(1.0 - entropy / max_entropy, 0, 1))
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute fractal metrics: box-counting dimension estimate, gaps."""
+        """Compute Cantor set metrics: gaps, coverage, temporal structure."""
+        data = self.validate_data(data)
         embedded = self.embed(data)
-
-        # Box-counting dimension via base-aligned scales.
-        # At scale ε = (1/base)^k, bins exactly match the Cantor intervals,
-        # so N(ε) = 2^k for a full Cantor set → d = log2/log(base).
-        # Misaligned scales (e.g. 0.1, 0.05) straddle gaps and overcount.
-        log_inv_eps = []
-        log_n = []
-        for k in range(1, 9):
-            n_bins = self.base ** k
-            hist, _ = np.histogram(embedded, bins=n_bins, range=(0, 1))
-            n_occupied = int(np.sum(hist > 0))
-            if n_occupied > 1:
-                log_inv_eps.append(k * np.log(self.base))
-                log_n.append(np.log(n_occupied))
-
-        if len(log_inv_eps) >= 2:
-            slope, _ = np.polyfit(log_inv_eps, log_n, 1)
-            est_dimension = float(np.clip(slope, 0.0, 1.0))
-        else:
-            est_dimension = 0.0
+        _nan = {k: float('nan') for k in [
+            "mean_gap", "max_gap", "coverage",
+            "bit_plane_autocorrelation", "jump_entropy"]}
+        if len(embedded) < 20:
+            return GeometryResult(self.name, _nan, {})
 
         # Gap analysis
         sorted_coords = np.sort(embedded)
@@ -2480,12 +2554,18 @@ class CantorGeometry(ExoticGeometry):
         # Coverage (fraction of distinct embedded values)
         coverage = len(np.unique(embedded)) / len(embedded)
 
+        # Temporal metrics (evolved via ShinkaEvolve)
+        bit_autocorr = self._bit_plane_autocorrelation(data)
+        jump_ent = self._jump_entropy(embedded)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "mean_gap": mean_gap,
                 "max_gap": max_gap,
                 "coverage": coverage,
+                "bit_plane_autocorrelation": float(bit_autocorr),
+                "jump_entropy": float(jump_ent),
             },
             raw_data={
                 "embedded_coords": embedded,
@@ -2557,11 +2637,116 @@ class UltrametricGeometry(ExoticGeometry):
         """Return data as-is (p-adic metric is on integers)."""
         return self.validate_data(data).astype(int)
 
-    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute ultrametric metrics."""
-        embedded = self.embed(data)
+    def _consecutive_valuations(self, data: np.ndarray) -> np.ndarray:
+        """Compute v_p(|data[t+1] - data[t]|) for consecutive pairs."""
+        diffs = np.abs(np.diff(data.astype(np.int32)))
+        vals = np.zeros(len(diffs), dtype=np.int32)
+        for i, d in enumerate(diffs):
+            if d == 0:
+                vals[i] = 8
+            else:
+                v = 0
+                dd = int(d)
+                while dd % self.p == 0:
+                    dd //= self.p
+                    v += 1
+                vals[i] = v
+        return vals
 
-        # Sample pairwise distances
+    def _multiscale_markov_predictability(self, data: np.ndarray) -> float:
+        """Conditional entropy at multiple 2-adic scales, averaged.
+
+        At each scale k, reduces data to states mod 2^k, builds a Markov
+        transition matrix, and computes normalized entropy rate. Averages
+        across scales k=2..7. Returns 1 - mean_entropy: high = predictable.
+        """
+        n = len(data)
+        entropies = []
+        for k in range(2, 8):
+            n_states = 1 << k
+            mod_data = data % n_states
+            counts = np.zeros((n_states, n_states), dtype=np.float64)
+            for i in range(n - 1):
+                counts[mod_data[i], mod_data[i + 1]] += 1
+            row_sums = counts.sum(axis=1)
+            total = row_sums.sum()
+            if total < 1:
+                continue
+            pi = row_sums / total
+            h_rate = 0.0
+            for s in range(n_states):
+                if pi[s] > 1e-12:
+                    probs = counts[s] / row_sums[s]
+                    nz = probs[probs > 1e-12]
+                    h_rate += pi[s] * (-np.sum(nz * np.log2(nz)))
+            max_ent = float(k)
+            if max_ent > 1e-9:
+                entropies.append(h_rate / max_ent)
+        if not entropies:
+            return 0.0
+        return float(np.clip(1.0 - np.mean(entropies), 0, 1))
+
+    def _valuation_spectral_concentration(self, val_seq: np.ndarray) -> float:
+        """1 - normalized spectral entropy of the valuation sequence.
+
+        Measures global periodicity in how 2-adic distances between
+        consecutive values vary over time. High = structured/periodic.
+        """
+        n = len(val_seq)
+        if n < 4:
+            return 0.0
+        ps = np.abs(np.fft.rfft(val_seq - np.mean(val_seq))) ** 2
+        ps_sum = np.sum(ps)
+        if ps_sum < 1e-9:
+            return 1.0
+        p_norm = ps / ps_sum
+        nz = p_norm[p_norm > 1e-12]
+        entropy = -np.sum(nz * np.log2(nz))
+        max_ent = np.log2(len(ps))
+        if max_ent < 1e-9:
+            return 1.0
+        return float(np.clip(1.0 - entropy / max_ent, 0, 1))
+
+    def _valuation_transition_predictability(self, val_seq: np.ndarray) -> float:
+        """1 - normalized conditional entropy of valuation-level transitions.
+
+        Measures local Markov structure: given the current v_2 level,
+        how predictable is the next level? High = deterministic transitions.
+        """
+        n_levels = 9  # v_2 ranges 0..8
+        if len(val_seq) < 2:
+            return 0.0
+        counts = np.zeros((n_levels, n_levels), dtype=np.float64)
+        for i in range(len(val_seq) - 1):
+            counts[val_seq[i], val_seq[i + 1]] += 1
+        row_sums = counts.sum(axis=1)
+        total = row_sums.sum()
+        if total < 1:
+            return 0.0
+        pi = row_sums / total
+        h_rate = 0.0
+        for s in range(n_levels):
+            if pi[s] > 1e-12:
+                probs = counts[s] / row_sums[s]
+                nz = probs[probs > 1e-12]
+                h_rate += pi[s] * (-np.sum(nz * np.log2(nz)))
+        max_ent = np.log2(n_levels)
+        if max_ent < 1e-9:
+            return 1.0
+        return float(np.clip(1.0 - h_rate / max_ent, 0, 1))
+
+    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
+        """Compute ultrametric metrics: distributional + temporal."""
+        embedded = self.embed(data)
+        _nan = {k: float('nan') for k in [
+            "mean_distance", "distance_entropy",
+            "multiscale_markov_predictability",
+            "valuation_spectral_concentration",
+            "valuation_transition_predictability"]}
+        if len(embedded) < 50:
+            return GeometryResult(self.name, _nan, {})
+
+        # --- Distributional (original) ---
         n = min(len(embedded), 500)
         rng = np.random.default_rng(0)
         indices = rng.choice(len(embedded), n, replace=False)
@@ -2573,8 +2758,6 @@ class UltrametricGeometry(ExoticGeometry):
                 distances.append(self.p_adic_distance(sample[i], sample[j]))
 
         distances = np.array(distances)
-
-        # Statistics
         mean_dist = np.mean(distances)
         dist_entropy = -np.sum([
             (np.sum(distances == d) / len(distances)) *
@@ -2582,11 +2765,21 @@ class UltrametricGeometry(ExoticGeometry):
             for d in set(distances)
         ])
 
+        # --- Temporal (evolved via ShinkaEvolve) ---
+        data_uint8 = data if data.dtype == np.uint8 else np.asarray(data, dtype=np.uint8)
+        val_seq = self._consecutive_valuations(data_uint8)
+        mmp = self._multiscale_markov_predictability(data_uint8)
+        vsc = self._valuation_spectral_concentration(val_seq)
+        vtp = self._valuation_transition_predictability(val_seq)
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "mean_distance": mean_dist,
                 "distance_entropy": dist_entropy,
+                "multiscale_markov_predictability": mmp,
+                "valuation_spectral_concentration": vsc,
+                "valuation_transition_predictability": vtp,
             },
             raw_data={
                 "sample_distances": distances,
@@ -4423,13 +4616,27 @@ class GottwaldMelbourneGeometry(ExoticGeometry):
         k = np.corrcoef(xi, msd)[0, 1]
         return float(np.clip(k, 0, 1))
 
+    @staticmethod
+    def _spectral_flatness(x):
+        """Spectral flatness of a signal: geometric_mean(PSD) / arithmetic_mean(PSD).
+        Returns 1 - flatness so that high = structured, low = noise-like."""
+        if len(x) < 20 or np.std(x) < 1e-15:
+            return 0.0
+        ps = np.abs(np.fft.rfft(x)) ** 2 + 1e-16
+        gmean = np.exp(np.mean(np.log(ps)))
+        amean = np.mean(ps)
+        flatness = gmean / amean if amean > 1e-16 else 1.0
+        return float(1.0 - np.clip(flatness, 0, 1))
+
     def compute_metrics(self, data: np.ndarray) -> GeometryResult:
         phi = self.embed(data)
         N = len(phi)
 
         fallback = GeometryResult(
             geometry_name=self.name,
-            metrics={'k_statistic': 0.5, 'k_variance': 0.5}
+            metrics={'k_statistic': 0.5, 'k_variance': 0.5,
+                     'angular_spectral_structure': 0.0,
+                     'radial_spectral_structure': 0.0}
         )
 
         if N < 200:
@@ -4447,11 +4654,45 @@ class GottwaldMelbourneGeometry(ExoticGeometry):
         k_median = float(np.median(k_vals))
         k_iqr = float(np.percentile(k_vals, 75) - np.percentile(k_vals, 25))
 
+        # Radial-angular coherence (ShinkaEvolve gottwald_v1 gen 44).
+        # Decompose (p,q) trajectory into polar coords, measure spectral
+        # flatness of dθ/dt (angular velocity) and dr/dt (radial velocity).
+        # Structured signals have non-flat spectra in at least one component.
+        angular_scores = []
+        radial_scores = []
+        start_n = N // 10  # skip transient near origin
+
+        for c in c_vals:
+            j = np.arange(1, N + 1, dtype=np.float64)
+            p = np.cumsum(phi * np.cos(j * c))
+            q = np.cumsum(phi * np.sin(j * c))
+
+            if N - start_n < 100:
+                angular_scores.append(0.0)
+                radial_scores.append(0.0)
+                continue
+
+            p_s, q_s = p[start_n:], q[start_n:]
+
+            # Angular velocity spectral flatness
+            theta = np.unwrap(np.arctan2(q_s, p_s))
+            d_theta = np.diff(theta)
+            angular_scores.append(self._spectral_flatness(d_theta))
+
+            # Radial velocity spectral flatness
+            r = np.sqrt(p_s ** 2 + q_s ** 2)
+            dr = np.diff(r)
+            radial_scores.append(self._spectral_flatness(dr))
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
-                'k_statistic': np.clip(k_median, 0, 1),
-                'k_variance': np.clip(k_iqr, 0, 1),
+                'k_statistic': float(np.clip(k_median, 0, 1)),
+                'k_variance': float(np.clip(k_iqr, 0, 1)),
+                'angular_spectral_structure': float(np.clip(
+                    np.median(angular_scores), 0, 1)),
+                'radial_spectral_structure': float(np.clip(
+                    np.median(radial_scores), 0, 1)),
             }
         )
 
@@ -6519,159 +6760,6 @@ class AmmannBeenkerGeometry(ExoticGeometry):
 
 
 # =============================================================================
-# EINSTEIN (HAT) GEOMETRY (chiral aperiodic monotile)
-# =============================================================================
-
-class EinsteinHatGeometry(ExoticGeometry):
-    """
-    Einstein Hat Geometry — hexagonal chiral analysis with Hat motif matching.
-
-    Analyzes data as a path on a hexagonal grid and cross-correlates its turn
-    sequence with the projected boundary of the Hat aperiodic monotile
-    (Smith et al. 2023).
-
-    Limitation: The actual Hat lives on a kite grid (12 directions, 30° apart),
-    not a hex grid (6 directions, 60° apart). The Hat's boundary turns include
-    90° angles that don't exist on the hex grid. The hat_kernel is the nearest
-    hex-grid projection of the true boundary, so hat_boundary_match is an
-    approximate motif detector, not an exact shape test.
-
-    Metrics:
-    - Hat Boundary Match: Cross-correlation with the Hat's projected turn kernel.
-    - Inflation Similarity: Path tortuosity self-similarity under downsampling.
-      Not specific to the Hat's inflation factor.
-    - Chirality: Signed area bias of the hex path.
-    - Hex Balance: Directional uniformity.
-    """
-
-    def __init__(self, input_scale: float = 255.0):
-        self.input_scale = input_scale
-        # Hat boundary turn sequence projected onto the hex grid.
-        # The actual Hat polykite (Smith et al. 2023) lives on a kite grid
-        # with 12 directions (30° steps), not 6 (60° steps). Its exact
-        # boundary turns in degrees are:
-        #   [90, 60, 60, -90, 60, 90, 60, -90, 60, 90, -60, 90, -60]
-        # (from hatviz by Craig Kaplan, co-author of the paper).
-        # Projected to nearest hex unit (÷60°, rounded):
-        self.hat_kernel = np.array([2, 1, 1, -2, 1, 2, 1, -2, 1, 2, -1, 2, -1])
-
-    @property
-    def name(self) -> str:
-        return "Einstein (Hat Monotile)"
-
-    @property
-    def description(self) -> str:
-        return "Correlates the signal with the Hat monotile boundary kernel (Smith et al., 2023). Detects the aperiodic tiling's distinctive chiral hexagonal structure."
-
-    @property
-    def view(self) -> str:
-        return "quasicrystal"
-
-    @property
-    def detects(self) -> str:
-        return "Hat motif correlation, tortuosity self-similarity, chirality"
-
-    @property
-    def dimension(self) -> str:
-        return "2D with hex+chiral"
-
-    def embed(self, data: np.ndarray) -> np.ndarray:
-        """Embed data as a path on a hexagonal grid (axial coordinates q, r)."""
-        data = self.validate_data(data)
-        # Map values to 6 hexagonal directions
-        directions = (data % 6).astype(int)
-        
-        # Axial moves: q, r
-        # 0: +1, 0  (East)
-        # 1: 0, +1  (South East)
-        # 2: -1, +1 (South West)
-        # 3: -1, 0  (West)
-        # 4: 0, -1  (North West)
-        # 5: +1, -1 (North East)
-        moves = np.array([
-            [1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]
-        ])
-        
-        path = np.zeros((len(data) + 1, 2), dtype=int)
-        # Vectorized path integration
-        path[1:] = np.cumsum(moves[directions], axis=0)
-        
-        return path
-
-    def compute_metrics(self, data: np.ndarray) -> GeometryResult:
-        """Compute Hat monotile metrics.
-
-        Combines:
-        - Hat kernel cross-correlation on the hex-path turn sequence
-          (specific to the Hat tile's boundary shape)
-        - 1D spectral analysis for quasicrystalline structure (φ ratio)
-        - Chirality from hex path (the Hat and its mirror are distinct)
-        """
-        data = self.validate_data(data)
-
-        # === Hat boundary match via kernel cross-correlation ===
-        # Map data to hex directions, compute turn sequence, cross-correlate
-        # with the Hat's projected boundary kernel.
-        directions = (data % 6).astype(int)
-        turns = np.diff(directions) % 6  # turn angles in hex units
-        # Shift to signed: 0..5 → -3..+2 (so turn of 4 = -2, turn of 5 = -1)
-        turns = np.where(turns > 3, turns - 6, turns)
-        kernel = self.hat_kernel.astype(np.float64)
-        klen = len(kernel)
-        if len(turns) >= klen:
-            # Hanning-windowed cross-correlation (ShinkaEvolve Gen 6 winner)
-            # Weighting the center of each window more heavily makes the
-            # correlation sensitive to the kernel SHAPE, not just its
-            # statistics — boosting D1 drop from 0.845 to 0.932.
-            hanning = np.hanning(klen)
-            k_centered = kernel - kernel.mean()
-            k_weighted = k_centered * hanning
-            k_std = np.std(k_weighted)
-            if k_std < 1e-10:
-                hat_boundary_match = 0.0
-            else:
-                k_norm = k_weighted / k_std
-                n_windows = len(turns) - klen + 1
-                scores = np.empty(n_windows)
-                for i in range(n_windows):
-                    window = turns[i:i + klen].astype(np.float64)
-                    w_centered = window - window.mean()
-                    w_weighted = w_centered * hanning
-                    w_std = np.std(w_weighted)
-                    if w_std < 1e-10:
-                        scores[i] = 0.0
-                    else:
-                        scores[i] = np.dot(k_norm, w_weighted / w_std) / klen
-                match_frac = (scores > 0.9).mean()
-                hat_boundary_match = float(np.clip(match_frac * klen, 0, 1))
-
-        else:
-            hat_boundary_match = 0.0
-
-        # === 1D spectral metrics at golden ratio ===
-        m = _quasicrystal_spectral_1d(data, (1 + np.sqrt(5)) / 2)
-
-        # === Chirality from local hex turn asymmetry ===
-        # Previous approach (signed area of hex path) was drift-sensitive:
-        # trending data (fBm H>0.5) accumulates large spurious signed area.
-        # Fix: use sin(turn_angle) which measures local left/right asymmetry,
-        # is zero-mean for uniform random turns, and ignores global drift.
-        directions = (data % 6).astype(int)
-        hex_turns = np.diff(directions) % 6  # [0, 5]
-        # sin(turn × 60°) naturally captures left (turns 1,2) vs right (4,5)
-        # and has exact zero mean under uniform distribution
-        chirality = float(np.mean(np.sin(hex_turns * (np.pi / 3.0))))
-
-        return GeometryResult(
-            geometry_name=self.name,
-            metrics={
-                "hat_boundary_match": hat_boundary_match,
-            },
-            raw_data={}
-        )
-
-
-# =============================================================================
 # DODECAGONAL GEOMETRY (12-fold aperiodic)
 # =============================================================================
 
@@ -6744,12 +6832,14 @@ class DodecagonalGeometry(ExoticGeometry):
         combined = float(np.clip((z1 + z2 + z3) / 9.0, -1.0, 1.0))
 
         m = _quasicrystal_spectral_1d(data, self.RATIO)
+        pisot = self._pisot_triplet_coherence(data)
 
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 "dodec_phase_coherence": combined,
                 "z_sqrt3_coherence": float(np.clip(z2 / 4.0, -1.0, 1.0)),
+                "pisot_triplet_coherence": pisot,
             },
             raw_data={}
         )
@@ -6888,6 +6978,81 @@ class DodecagonalGeometry(ExoticGeometry):
         z3 = robust_z(t3, n3)
 
         return z1, z2, z3
+
+    def _pisot_triplet_coherence(self, data: np.ndarray) -> float:
+        """Pisot triplet verification (ShinkaEvolve dodecagonal_v1 gen 9, D1=0.343).
+
+        Finds spectral peak triplets at (f, f·δ, f·δ²) and verifies the
+        algebraic identity X(f·δ²) + X(f) ≈ 4·X(f·δ) via cosine similarity
+        on complex FFT coefficients. Only the correct ratio satisfies this
+        at detected peaks.
+        """
+        x = data.astype(np.float64)
+        N = len(x)
+        x = x - x.mean()
+        s = x.std()
+        if s < 1e-10 or N < 2000:
+            return 0.0
+        x = x / s
+
+        r = self.RATIO
+        X = np.fft.rfft(x)[1:]  # skip DC
+        ps = np.abs(X) ** 2
+        n_freq = len(X)
+        freqs = np.arange(n_freq, dtype=np.float64)
+
+        # Detrended residual for peak detection
+        log_ps = np.log(ps + 1e-30)
+        win = min(max(n_freq // 10, 20), n_freq)
+        kernel = np.ones(win) / win
+        smooth = np.convolve(log_ps, kernel, mode='same')
+        residual = log_ps - smooth
+
+        # Simple peak finder
+        threshold = 1.5 * np.std(residual)
+        peaks = []
+        for i in range(1, len(residual) - 1):
+            if residual[i] > threshold and residual[i] > residual[i-1] and residual[i] > residual[i+1]:
+                peaks.append(i)
+        if len(peaks) < 5:
+            return 0.0
+
+        peak_set = set(peaks)
+        tol = 3
+        ic = self._interp_complex
+        scores = []
+        weights = []
+
+        max_base = int(n_freq / (r ** 2))
+        for f0 in peaks:
+            if f0 > max_base:
+                break
+            f1_exp = f0 * r
+            f2_exp = f0 * r ** 2
+            f1_found = any(p in peak_set for p in range(int(f1_exp) - tol, int(f1_exp) + tol + 1))
+            if not f1_found:
+                continue
+            f2_found = any(p in peak_set for p in range(int(f2_exp) - tol, int(f2_exp) + tol + 1))
+            if not f2_found:
+                continue
+
+            X0 = X[f0]
+            X1 = ic([f1_exp], freqs, X)[0]
+            X2 = ic([f2_exp], freqs, X)[0]
+
+            va = 4.0 * X1
+            vb = X0 + X2
+            abs_va, abs_vb = np.abs(va), np.abs(vb)
+            if abs_va < 1e-9 or abs_vb < 1e-9:
+                continue
+
+            cos_sim = float(np.real(va * np.conj(vb)) / (abs_va * abs_vb))
+            scores.append(cos_sim)
+            weights.append(np.log1p(ps[f0]))
+
+        if not scores:
+            return 0.0
+        return float(np.clip(np.average(scores, weights=weights), 0, 1))
 
 
 # =============================================================================
@@ -7455,13 +7620,18 @@ class HigherOrderGeometry(ExoticGeometry):
         max_freq = min(seg_len // 2, self.bispec_max_freq)
 
         if n_segs >= 4 and max_freq > 2:
-            # Accumulate bispectrum and power across segments
-            bispec_sum = {}
-            power_sums = np.zeros(seg_len // 2)
+            # Accumulate bispectrum and normalization across segments
+            # Kim & Powers (1979) bicoherence:
+            #   b²(f1,f2) = |<X(f1)X(f2)X*(f3)>|² /
+            #               (<|X(f1)X(f2)|²> · <|X(f3)|²>)
+            bispec_sum = {}      # (f1,f2) → sum of X[f1]*X[f2]*conj(X[f3])
+            pair_power_sum = {}  # (f1,f2) → sum of |X[f1]*X[f2]|²
+            single_power_sum = np.zeros(seg_len // 2)  # sum of |X[f]|²
             for s in range(n_segs):
                 seg = centered[s*seg_len:(s+1)*seg_len]
                 X = np.fft.fft(seg)
-                power_sums += np.abs(X[:seg_len//2])**2
+                X_half = X[:seg_len//2]
+                single_power_sum += np.abs(X_half)**2
                 for f1 in range(1, max_freq):
                     for f2 in range(f1, max_freq):
                         f3 = f1 + f2
@@ -7470,19 +7640,23 @@ class HigherOrderGeometry(ExoticGeometry):
                             key = (f1, f2)
                             if key not in bispec_sum:
                                 bispec_sum[key] = 0.0
+                                pair_power_sum[key] = 0.0
                             bispec_sum[key] += B
+                            pair_power_sum[key] += float(
+                                np.abs(X[f1] * X[f2])**2)
 
-            power_avg = power_sums / n_segs
             bicoherence_vals = []
             for (f1, f2), B_sum in bispec_sum.items():
                 f3 = f1 + f2
-                B_avg = B_sum / n_segs
-                denom = np.sqrt(power_avg[f1] * power_avg[f2] *
-                               power_avg[f3] + 1e-10)
-                bicoherence_vals.append(np.abs(B_avg) / denom)
+                denom = np.sqrt(pair_power_sum[(f1, f2)] *
+                                single_power_sum[f3] + 1e-30)
+                bicoherence_vals.append(np.abs(B_sum) / denom)
 
             bic = np.array(bicoherence_vals)
-            metrics['bicoherence_max'] = float(np.max(bic))
+            # Use top-1% mean rather than single max for stability
+            top_k = max(1, len(bic) // 100)
+            top_vals = np.partition(bic, -top_k)[-top_k:]
+            metrics['bicoherence_max'] = float(np.mean(top_vals))
         else:
             metrics['bicoherence_max'] = 0
 
@@ -7659,6 +7833,32 @@ class HolderRegularityGeometry(ExoticGeometry):
             holder_max = hurst
             multifractal_width = 0.0
 
+        # Increment autocorrelation: lag-1 autocorr of |increments| averaged
+        # across scales 1,2,4,8,16,32. Measures volatility persistence —
+        # structured signals have clustered large/small changes.
+        # (evolved via ShinkaEvolve)
+        inc_ac_sum, inc_ac_count = 0.0, 0
+        for ell in [1, 2, 4, 8, 16, 32]:
+            if n < ell + 2:
+                break
+            inc_ell = np.abs(x[ell:] - x[:-ell])
+            if len(inc_ell) >= 30 and np.std(inc_ell) > 1e-9:
+                ac = float(np.corrcoef(inc_ell[1:], inc_ell[:-1])[0, 1])
+                if np.isfinite(ac):
+                    inc_ac_sum += max(0.0, ac)
+                    inc_ac_count += 1
+        increment_autocorrelation = inc_ac_sum / inc_ac_count if inc_ac_count > 0 else 0.0
+
+        # Alpha autocorrelation: lag-1 autocorr of local Hölder exponents.
+        # Measures spatial clustering of smooth/rough regions — structured
+        # signals have coherent regularity zones, shuffled signals don't.
+        # (evolved via ShinkaEvolve)
+        if len(valid_alpha) >= 30 and np.std(valid_alpha) > 1e-9:
+            ac_alpha = float(np.corrcoef(valid_alpha[1:], valid_alpha[:-1])[0, 1])
+            alpha_autocorrelation = max(0.0, ac_alpha) if np.isfinite(ac_alpha) else 0.0
+        else:
+            alpha_autocorrelation = 0.0
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -7667,6 +7867,8 @@ class HolderRegularityGeometry(ExoticGeometry):
                 "holder_std": holder_std,
                 "holder_min": holder_min,
                 "holder_max": holder_max,
+                "increment_autocorrelation": increment_autocorrelation,
+                "alpha_autocorrelation": alpha_autocorrelation,
             },
             raw_data={
                 "zeta": zeta,
@@ -7818,6 +8020,29 @@ class PVariationGeometry(ExoticGeometry):
             metrics["variation_index"] = float(variation_index)
         else:
             metrics["variation_index"] = 2.0  # default
+
+        # --- Temporal increment metrics (evolved via ShinkaEvolve) ---
+        dx = np.diff(x)
+        if len(dx) >= 2:
+            # Volatility clustering: lag-1 autocorrelation of squared increments.
+            # Measures whether large changes predict large changes.
+            dx_sq = dx ** 2
+            if np.std(dx_sq) > 1e-12:
+                vc = float(np.corrcoef(dx_sq[:-1], dx_sq[1:])[0, 1])
+                metrics["volatility_clustering"] = vc if np.isfinite(vc) else 0.0
+            else:
+                metrics["volatility_clustering"] = 0.0
+
+            # Increment persistence: lag-1 autocorrelation of signed increments.
+            # Positive = trending (persistent), ~ -0.5 = iid, negative = mean-reverting.
+            if np.std(dx) > 1e-12:
+                ip = float(np.corrcoef(dx[:-1], dx[1:])[0, 1])
+                metrics["increment_persistence"] = ip if np.isfinite(ip) else 0.0
+            else:
+                metrics["increment_persistence"] = 0.0
+        else:
+            metrics["volatility_clustering"] = 0.0
+            metrics["increment_persistence"] = 0.0
 
         return GeometryResult(
             geometry_name=self.name,
@@ -8129,6 +8354,21 @@ class SpectralGeometry(ExoticGeometry):
         hf_mask = freqs > 0.25
         high_freq_ratio = float(np.sum(psd[hf_mask]) / total)
 
+        # Phase coherence: entropy of adjacent-bin phase differences.
+        # PSD discards phase; this recovers it. Structured signals have
+        # locked phase relationships (low entropy → high coherence);
+        # shuffling randomizes phases. (evolved via ShinkaEvolve)
+        phases = np.angle(F[1:])  # skip DC (already removed from psd/freqs)
+        phase_diffs = np.diff(phases)
+        phase_diffs_wrapped = (phase_diffs + np.pi) % (2 * np.pi) - np.pi
+        ph_hist, _ = np.histogram(phase_diffs_wrapped, bins=32,
+                                  range=(-np.pi, np.pi))
+        ph_prob = ph_hist / np.sum(ph_hist)
+        ph_pos = ph_prob[ph_prob > 0]
+        ph_ent = float(-np.sum(ph_pos * np.log2(ph_pos)))
+        ph_max_ent = np.log2(32)
+        phase_coherence = float(1.0 - ph_ent / ph_max_ent) if ph_max_ent > 0 else 0.0
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -8139,6 +8379,7 @@ class SpectralGeometry(ExoticGeometry):
                 "spectral_bandwidth": bandwidth,
                 "peak_frequency": peak_frequency,
                 "high_freq_ratio": high_freq_ratio,
+                "phase_coherence": phase_coherence,
             },
             raw_data={"psd": psd, "freqs": freqs}
         )
@@ -8349,6 +8590,9 @@ class RecurrenceGeometry(ExoticGeometry):
       High = intermittent/laminar dynamics.
     - trapping_time: mean length of vertical lines (stickiness)
     - entropy_diagonal: Shannon entropy of diagonal line length distribution
+    - transitivity: global clustering coefficient of the recurrence network.
+      Treats R as adjacency matrix; measures triangle density.
+      High = geometrically coherent attractor (ShinkaEvolve rqa_v1 gen 6).
     """
 
     def __init__(self, input_scale: float = 255.0, embed_dim: int = 3,
@@ -8436,7 +8680,7 @@ class RecurrenceGeometry(ExoticGeometry):
         _nan = {k: float('nan') for k in [
             "recurrence_rate", "determinism", "avg_diagonal",
             "max_diagonal", "laminarity", "trapping_time",
-            "entropy_diagonal"]}
+            "entropy_diagonal", "transitivity"]}
 
         if n < 30:
             return GeometryResult(self.name, _nan, {})
@@ -8525,6 +8769,19 @@ class RecurrenceGeometry(ExoticGeometry):
         vert_total, avg_vert, _, _ = self._line_stats(vert_lengths)
         laminarity = vert_total / total_recurrent if total_recurrent > 0 else 0.0
 
+        # Network transitivity (global clustering coefficient).
+        # Treats R as adjacency matrix; transitivity = trace(R³) / Σ d_i(d_i-1).
+        # ShinkaEvolve rqa_v1 gen 6: 2× baseline, huge on deterministic systems.
+        R_f = R.astype(np.float32)
+        degrees = R_f.sum(axis=1)
+        num_wedges = float(np.sum(degrees * (degrees - 1)))
+        if num_wedges > 0:
+            num_triangles = float(np.einsum('ij,jk,ki->', R_f, R_f, R_f,
+                                            optimize=True))
+            transitivity = num_triangles / num_wedges
+        else:
+            transitivity = 0.0
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
@@ -8535,6 +8792,7 @@ class RecurrenceGeometry(ExoticGeometry):
                 "laminarity": float(np.clip(laminarity, 0, 1)),
                 "trapping_time": float(np.clip(avg_vert, 0, N)),
                 "entropy_diagonal": float(np.clip(ent_diag, 0, 10)),
+                "transitivity": float(np.clip(transitivity, 0, 1)),
             },
             raw_data={}
         )
@@ -10182,7 +10440,8 @@ class VisibilityGraphGeometry(ExoticGeometry):
         if np.ptp(y) == 0:
             return GeometryResult(self.name, {k: float('nan') for k in [
                 'max_degree', 'degree_exponent_gamma', 'degree_r_squared',
-                'graph_density', 'avg_clustering_coeff', 'assortativity']}, {})
+                'graph_density', 'avg_clustering_coeff', 'assortativity',
+                'nvg_hvg_edge_divergence', 'nvg_hvg_reach_divergence']}, {})
 
         if len(y) > self.max_points:
             # Take a contiguous block from the center.
@@ -10275,6 +10534,42 @@ class VisibilityGraphGeometry(ExoticGeometry):
             metrics['assortativity'] = float(r) if np.isfinite(r) else 0.0
         else:
             metrics['assortativity'] = 0.0
+
+        # NVG vs HVG divergence (ShinkaEvolve visibility_v1, gen 4).
+        # The Horizontal Visibility Graph connects i and j iff all
+        # intermediate y[k] < min(y[i], y[j]).  It is always a subgraph
+        # of the NVG.  The fraction of NVG edges/reach NOT in the HVG
+        # measures how much visibility depends on slope structure vs
+        # local height barriers — a signal property no existing atlas
+        # metric captures.
+        n_edges_nvg = int(np.sum(degrees) // 2)
+        if n_edges_nvg > 0:
+            # Build HVG
+            hvg_adj = [[] for _ in range(N)]
+            for i in range(N):
+                for j in range(i + 1, N):
+                    threshold = min(y[i], y[j])
+                    blocked = False
+                    for k in range(i + 1, j):
+                        if y[k] >= threshold:
+                            blocked = True
+                            break
+                    if not blocked:
+                        hvg_adj[i].append(j)
+                        hvg_adj[j].append(i)
+
+            n_edges_hvg = sum(len(nb) for nb in hvg_adj) // 2
+            metrics['nvg_hvg_edge_divergence'] = float(
+                (n_edges_nvg - n_edges_hvg) / n_edges_nvg)
+
+            # Reach-weighted: sum edge lengths |j - i|
+            w_nvg = sum(j - i for i in range(N) for j in adj[i] if j > i)
+            w_hvg = sum(j - i for i in range(N) for j in hvg_adj[i] if j > i)
+            metrics['nvg_hvg_reach_divergence'] = float(
+                (w_nvg - w_hvg) / w_nvg) if w_nvg > 0 else 0.0
+        else:
+            metrics['nvg_hvg_edge_divergence'] = 0.0
+            metrics['nvg_hvg_reach_divergence'] = 0.0
 
         return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
 
@@ -11601,12 +11896,46 @@ class KleinBottleGeometry(ExoticGeometry):
         else:
             orientation_coherence = 0.5
 
+        # --- 4. WHT spectral kurtosis (evolved via ShinkaEvolve) ---
+        # Walsh-Hadamard Transform is the natural Fourier transform over GF(2).
+        # Spectral kurtosis measures energy concentration: high = structured
+        # (few dominant coefficients), low = random (flat spectrum).
+        target_len = 1 << (n.bit_length() - 1)
+        if target_len >= 128:
+            data_trunc = data[:target_len]
+            channel_kurtosis = []
+            for bit_pos in range(8):
+                ch = ((data_trunc >> bit_pos) & 1).astype(np.float64)
+                signal = 1.0 - 2.0 * ch  # {0,1} → {+1,-1}
+                # In-place Fast Walsh-Hadamard Transform
+                h = 1
+                nn = len(signal)
+                while h < nn:
+                    for i in range(0, nn, h * 2):
+                        for j in range(i, i + h):
+                            x_val = signal[j]
+                            y_val = signal[j + h]
+                            signal[j] = x_val + y_val
+                            signal[j + h] = x_val - y_val
+                    h *= 2
+                ac_power = signal[1:] ** 2
+                sum_sq = np.sum(ac_power)
+                if sum_sq < 1e-9:
+                    channel_kurtosis.append(float(nn - 1))
+                else:
+                    channel_kurtosis.append(
+                        float((nn - 1) * np.sum(ac_power ** 2) / (sum_sq ** 2)))
+            wht_spectral_kurtosis = float(np.mean(np.log1p(channel_kurtosis)))
+        else:
+            wht_spectral_kurtosis = 0.0
+
         return GeometryResult(
             geometry_name=self.name,
             metrics={
                 'linear_complexity': linear_complexity,
                 'rank_deficit': rank_deficit,
                 'orientation_coherence': orientation_coherence,
+                'wht_spectral_kurtosis': wht_spectral_kurtosis,
             },
             raw_data={}
         )
@@ -11757,6 +12086,20 @@ class NonstationarityGeometry(ExoticGeometry):
         dG = np.diff(Gz, axis=0)
         speeds = np.linalg.norm(dG, axis=1)
 
+        # 5. dynamic_coupling: cross-dimension velocity correlation (evolved via ShinkaEvolve)
+        #    Sum of |off-diagonal| correlations of descriptor velocity vectors.
+        #    High when geometric properties change together (regime switches);
+        #    low when changes are independent (noise).
+        if dG.shape[0] >= 2:
+            dG_stds = dG.std(axis=0)
+            dG_stds[dG_stds < 1e-10] = 1.0
+            dGz = (dG - dG.mean(axis=0)) / dG_stds
+            vel_corr = np.cov(dGz, rowvar=False)
+            dc = np.sum(np.abs(np.triu(vel_corr, k=1)))
+            dynamic_coupling = float(dc) if np.isfinite(dc) else 0.0
+        else:
+            dynamic_coupling = 0.0
+
         # 1. metric_volatility: mean speed
         metric_volatility = float(speeds.mean())
 
@@ -11815,6 +12158,7 @@ class NonstationarityGeometry(ExoticGeometry):
                 'vol_of_vol': vol_of_vol,
                 'regime_persistence': regime_persistence,
                 'trajectory_dim': trajectory_dim,
+                'dynamic_coupling': dynamic_coupling,
             },
             raw_data={}
         )
@@ -12315,7 +12659,6 @@ class GeometryAnalyzer:
             # Aperiodic / quasicrystal
             PenroseGeometry(input_scale=s),
             AmmannBeenkerGeometry(input_scale=s),
-            EinsteinHatGeometry(input_scale=s),
             DodecagonalGeometry(input_scale=s),
             SeptagonalGeometry(input_scale=s),
             InflationGeometry(input_scale=s),
