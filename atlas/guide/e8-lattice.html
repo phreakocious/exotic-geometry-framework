@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E8 Lattice — Structure Atlas</title>
+<meta name="description" content="Exotic geometry guide: E8 Lattice. Part of the Structure Atlas — 211 data sources analyzed through 200 metrics across 54 exotic geometries.">
+<link rel="canonical" href="https://nullphase.net/sa/guide/e8-lattice.html" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://nullphase.net/sa/guide/e8-lattice.html" />
+<meta property="og:title" content="E8 Lattice — Structure Atlas" />
+<meta property="og:description" content="Geometry guide: E8 Lattice. What it measures, how it works, atlas rankings." />
+<meta property="og:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="E8 Lattice — Structure Atlas" />
+<meta name="twitter:description" content="Geometry guide: E8 Lattice. What it measures, how it works, atlas rankings." />
+<meta name="twitter:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;0,800;1,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #0a0015;
+    --bg-card: rgba(10,5,25,0.55);
+    --text: #ddd;
+    --text-muted: #888;
+    --text-dim: #8b8bab;
+    --accent: #00ffb4;
+    --accent-hover: #7bffce;
+    --accent-math: #7b8fff;
+    --accent-magenta: #ff6eff;
+    --accent-blue: #00b4ff;
+    --border: rgba(0,255,180,0.12);
+    --border-hover: rgba(0,255,180,0.3);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.nav a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.nav a:hover { color: var(--accent-hover); }
+.nav .sep { color: var(--text-dim); }
+.nav .current { color: var(--text-muted); }
+
+/* Page title */
+h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-math));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glass cards */
+.card {
+    background: var(--bg-card);
+    padding: 24px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.card p {
+    margin: 0 0 12px;
+    color: #ccc;
+}
+.card p:last-child { margin-bottom: 0; }
+
+/* Metric blocks */
+.metric-block {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    background: rgba(123,143,255,0.03);
+    border: 1px solid rgba(123,143,255,0.08);
+    border-radius: 6px;
+}
+.metric-block:last-child { margin-bottom: 0; }
+
+.metric-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+}
+.metric-name::before {
+    content: '›';
+    color: var(--accent-math);
+    margin-right: 7px;
+    font-weight: 300;
+}
+.metric-desc {
+    margin: 0;
+    font-size: 14px;
+    color: #bbb;
+    line-height: 1.7;
+}
+
+/* Inline code */
+code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    color: var(--accent-magenta);
+    background: rgba(255,110,255,0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+/* Metric extreme tables — 2-col grid */
+.extremes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+.extremes-grid .extremes-table:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    max-width: 50%;
+}
+.extremes-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(123,143,255,0.02);
+    border: 1px solid rgba(123,143,255,0.06);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.extremes-table caption {
+    text-align: left;
+    font-size: 11px;
+    color: var(--accent);
+    padding: 8px 10px 5px;
+    font-weight: 500;
+}
+.extremes-table th {
+    text-align: left;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.extremes-table td {
+    padding: 2px 10px;
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.extremes-table td.val {
+    color: var(--accent);
+    text-align: right;
+    font-weight: 500;
+}
+.extremes-table td.domain {
+    color: var(--text-dim);
+    font-size: 10px;
+}
+.extremes-table a {
+    color: #ccc;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.extremes-table a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.extremes-table .separator td {
+    padding: 1px 10px;
+    border: none;
+    color: var(--text-dim);
+    font-size: 9px;
+}
+@media (max-width: 600px) {
+    .extremes-grid {
+        grid-template-columns: 1fr;
+    }
+    .extremes-grid .extremes-table:last-child:nth-child(odd) {
+        max-width: 100%;
+    }
+}
+
+/* Properties badge row */
+.props {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+.prop-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.prop-badge.highlight {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,255,180,0.06);
+}
+
+/* Index page */
+.geo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+.geo-card {
+    background: var(--bg-card);
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    transition: border-color 0.2s, transform 0.15s;
+    text-decoration: none;
+    display: block;
+}
+.geo-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+}
+.geo-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+}
+.geo-card .detects {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+.geo-card .badge-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.geo-card .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid rgba(123,143,255,0.2);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.geo-card .badge.ordinal {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Section headers on index */
+.lens-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 40px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.lens-header:first-of-type { margin-top: 0; }
+
+/* Atlas link button */
+.atlas-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 6px 14px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    transition: all 0.2s;
+    margin-top: 8px;
+}
+.atlas-link:hover {
+    background: rgba(0,255,180,0.1);
+    color: var(--accent-hover);
+}
+
+/* Footer */
+.footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+}
+.footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.footer a:hover { color: var(--accent-hover); }
+
+/* Strong in descriptions */
+strong { color: #eee; font-weight: 600; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .container { padding: 24px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+    .geo-grid { grid-template-columns: 1fr; }
+}
+</style>
+<script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>
+</head>
+<body>
+<div class="container">
+<nav class="nav"><a href="../index.html">Atlas</a><span class="sep">/</span><a href="index.html">Guide</a><span class="sep">/</span><span class="current">E8 Lattice</span></nav><h1>E8 Lattice</h1>
+<div class="subtitle">Lattice alignment, algebraic constraint</div>
+<div class="props"><span class="prop-badge">symmetry</span><span class="prop-badge">dim 8</span><span class="prop-badge">4 metrics</span></div>
+<div class="card">
+<h2>What It Measures</h2>
+<p>How constrained the data&#x27;s 8-byte structure is relative to the densest sphere packing in 8 dimensions.</p>
+<p>Takes each group of 8 consecutive bytes, normalizes them, and finds the closest of the 240 root vectors of E8. These roots come in two families: 112 &quot;integer&quot; roots (pairs of coordinate axes) and 128 &quot;half-integer&quot; roots (all coordinates ±1/2 with even sign parity). The geometry also snaps each 8-byte window to the nearest actual E8 lattice point via parity correction, measuring the residual distance. Data with algebraic constraints concentrates on a few roots; unconstrained data spreads evenly across all 240.</p>
+</div>
+<div class="card">
+<h2>Metrics</h2>
+<div class="metric-block"><h4 class="metric-name">std_profile</h4><p class="metric-desc">Variation in root alignment quality across windows, capturing how consistently the data&#x27;s 8-byte structure matches E8 directions. High for signals with a mix of aligned and unaligned windows.</p></div>
+<div class="metric-block"><h4 class="metric-name">coset_transition</h4><p class="metric-desc">Rate at which consecutive windows switch between integer and half-integer root cosets. Measures temporal dynamics of parity structure. <em>Evolved via ShinkaEvolve.</em></p></div>
+<div class="metric-block"><h4 class="metric-name">diversity_ratio</h4><p class="metric-desc">Fraction of the 240 E8 roots actually used. High diversity means the data explores the full root system; low means it&#x27;s confined to a subspace.</p></div>
+<div class="metric-block"><h4 class="metric-name">normalized_entropy</h4><p class="metric-desc">Shannon entropy of root usage, normalized by maximum. Uniform distributions across 240 roots score high; periodic orbits score near 0.</p></div>
+<div class="metric-block"><h4 class="metric-name">e8_structure_score</h4><p class="metric-desc">Combined structural score from root alignment, coset dynamics, and lattice closure. <em>Evolved via ShinkaEvolve.</em> Not yet in the atlas.</p></div>
+<div class="metric-block"><h4 class="metric-name">closure_score</h4><p class="metric-desc">How closely the lattice-snapped points recover the original data. <em>Evolved via ShinkaEvolve.</em> Not yet in the atlas.</p></div>
+<div class="metric-block"><h4 class="metric-name">edge_flow</h4><p class="metric-desc">Net directional flow along E8 root graph edges over time. <em>Evolved via ShinkaEvolve.</em> Not yet in the atlas.</p></div>
+<div class="metric-block"><h4 class="metric-name">trajectory_curvature</h4><p class="metric-desc">Mean curvature of the trajectory through E8 root space. <em>Evolved via ShinkaEvolve.</em> Not yet in the atlas.</p></div>
+<div class="metric-block"><h4 class="metric-name">vel_corr</h4><p class="metric-desc">Autocorrelation of the velocity (root-to-root distance per step) sequence. <em>Evolved via ShinkaEvolve.</em> Not yet in the atlas.</p></div>
+</div>
+<div class="card">
+<h2>Atlas Rankings</h2>
+<div class="extremes-grid">
+<table class="extremes-table"><caption>coset_transition</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Logistic%20r=3.68%20(Banded%20Chaos)">Logistic r=3.68 (Banded Chaos)</a></td><td class="domain">chaos</td><td class="val">0.4409</td></tr><tr><td><a href="../index.html?source=Square%20Wave">Square Wave</a></td><td class="domain">waveform</td><td class="val">0.2450</td></tr><tr><td><a href="../index.html?source=Random%20Steps">Random Steps</a></td><td class="domain">exotic</td><td class="val">0.1848</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.5%20(Period-4)">Logistic r=3.5 (Period-4)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>diversity_ratio</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Beta%20Noise">Beta Noise</a></td><td class="domain">noise</td><td class="val">0.9891</td></tr><tr><td><a href="../index.html?source=Dice%20Rolls">Dice Rolls</a></td><td class="domain">exotic</td><td class="val">0.9891</td></tr><tr><td><a href="../index.html?source=Poisson%20Spacings">Poisson Spacings</a></td><td class="domain">quantum</td><td class="val">0.9891</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0109</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.5%20(Period-4)">Logistic r=3.5 (Period-4)</a></td><td class="domain">chaos</td><td class="val">0.0109</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">0.0109</td></tr></tbody></table>
+<table class="extremes-table"><caption>normalized_entropy</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Poisson%20Spacings">Poisson Spacings</a></td><td class="domain">quantum</td><td class="val">0.9785</td></tr><tr><td><a href="../index.html?source=Geometric%20Waiting%20Times">Geometric Waiting Times</a></td><td class="domain">exotic</td><td class="val">0.9779</td></tr><tr><td><a href="../index.html?source=Zipf%20Distribution">Zipf Distribution</a></td><td class="domain">exotic</td><td class="val">0.9758</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">-0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.5%20(Period-4)">Logistic r=3.5 (Period-4)</a></td><td class="domain">chaos</td><td class="val">-0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">-0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>std_profile</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=ECG%20Fusion">ECG Fusion</a></td><td class="domain">medical</td><td class="val">8.6584</td></tr><tr><td><a href="../index.html?source=Neural%20Net%20(Pruned%2090%)">Neural Net (Pruned 90%)</a></td><td class="domain">binary</td><td class="val">8.4853</td></tr><tr><td><a href="../index.html?source=ECG%20Supraventr.">ECG Supraventr.</a></td><td class="domain">medical</td><td class="val">8.3756</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.5%20(Period-4)">Logistic r=3.5 (Period-4)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr></tbody></table>
+</div></div>
+<div class="card">
+<h2>When It Lights Up</h2>
+<p>E8 Lattice is the highest-dimensional root system geometry in the framework (window size 8), complementing G2 (2), H3 (3), D4 and H4 (4). Its 240-root system is the densest lattice sphere packing in 8D, and the coset_transition metric captures temporal structure in how the data moves between the integer and half-integer sublattices &mdash; a signature that lower-dimensional root systems cannot detect.</p>
+</div>
+<a class="atlas-link" href="../index.html">Open in Atlas</a>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:32px"><span><a href="g2-root-system.html">&larr; G2 Root System</a></span><span><a href="s2-r-thurston.html">S² × ℝ (Thurston) &rarr;</a></span></div><div class="footer"><p>Structure Atlas &mdash; 226 sources, 247 metrics, 53 geometries &mdash; <a href="../index.html">Open Atlas</a> &middot; <a href="https://github.com/phreakocious/exotic-geometry-framework">GitHub</a></p></div>
+</div>
+</body>
+</html>

@@ -41,30 +41,48 @@ def parse_geometry_sections(md_text: str) -> dict:
         'intro': str,        # "What it measures" paragraph
         'metrics': str,      # Full metrics section (markdown)
         'lights_up': str,    # "When it lights up" paragraph
-        'tier': str,         # 'tier1', 'tier2', or 'tier3'
+        'lens': str,         # e.g. 'dynamical', 'topological', etc.
     }
     """
     geometries = {}
-    current_tier = "tier1"
+    current_lens = "uncategorized"
 
     # Split on ## headers (geometry names)
     parts = re.split(r'^## ', md_text, flags=re.MULTILINE)
 
-    for part in parts[1:]:  # skip preamble
+    # Also detect # Lens headers in the preamble/between sections
+    # We'll track lens by scanning the original text for "# Foo Lens" lines
+    lens_pattern = re.compile(r'^# (\w+) Lens\s*$', re.MULTILINE)
+    # Build a map of character position -> lens name
+    lens_positions = [(m.start(), m.group(1).lower()) for m in lens_pattern.finditer(md_text)]
+
+    # For each ## section, find which lens it falls under
+    section_pattern = re.compile(r'^## ', re.MULTILINE)
+    section_starts = [m.start() for m in section_pattern.finditer(md_text)]
+
+    def get_lens_for_pos(pos):
+        """Find the most recent lens header before this position."""
+        result = "uncategorized"
+        for lpos, lname in lens_positions:
+            if lpos < pos:
+                result = lname
+            else:
+                break
+        return result
+
+    for i, part in enumerate(parts[1:]):  # skip preamble
         lines = part.strip().split('\n')
         name = lines[0].strip()
 
-        # Check for tier header
-        if name.startswith("Tier 2") or name.startswith("# Tier 2"):
-            current_tier = "tier2"
-            continue
-        if name.startswith("Tier 3") or name.startswith("# Tier 3"):
-            current_tier = "tier3"
-            continue
+        # Skip stale tier/section headers
         if name.startswith("Tier ") or name.startswith("# Tier"):
             continue
 
         body = '\n'.join(lines[1:]).strip()
+
+        # Determine lens from position in original text
+        if i < len(section_starts):
+            current_lens = get_lens_for_pos(section_starts[i])
 
         # Extract sections
         intro = ""
@@ -92,7 +110,7 @@ def parse_geometry_sections(md_text: str) -> dict:
             'intro': intro,
             'metrics': metrics_text,
             'lights_up': lights_up,
-            'tier': current_tier,
+            'lens': current_lens,
         }
 
     return geometries
@@ -570,7 +588,7 @@ def css() -> str:
     }
 
     /* Section headers on index */
-    .tier-header {
+    .lens-header {
         font-family: 'JetBrains Mono', monospace;
         font-size: 11px;
         text-transform: uppercase;
@@ -581,7 +599,7 @@ def css() -> str:
         border-bottom: 1px solid var(--border);
         font-weight: 400;
     }
-    .tier-header:first-of-type { margin-top: 0; }
+    .lens-header:first-of-type { margin-top: 0; }
 
     /* Atlas link button */
     .atlas-link {
@@ -866,11 +884,23 @@ def build_index_page(geometries: dict, catalog_lookup: dict,
     )
     html += '</div>\n'
 
-    # Group by tier: Tier 1 (encoding-invariant), Tier 2 (high-discrimination),
-    # then all remaining from catalog
-    tier1 = [(name, c) for name, c in geometries.items() if c['tier'] == 'tier1']
-    tier2 = [(name, c) for name, c in geometries.items() if c['tier'] == 'tier2']
-    tier3 = [(name, c) for name, c in geometries.items() if c['tier'] == 'tier3']
+    # Group by lens family (matching atlas viewer)
+    lens_order = ['dynamical', 'topological', 'distributional', 'symmetry', 'scale', 'quasicrystal']
+    lens_labels = {
+        'dynamical': 'Dynamical',
+        'topological': 'Topological',
+        'distributional': 'Distributional',
+        'symmetry': 'Symmetry',
+        'scale': 'Scale',
+        'quasicrystal': 'Quasicrystal',
+    }
+    lens_groups = {l: [] for l in lens_order}
+    for name, c in geometries.items():
+        lens = c.get('lens', 'uncategorized')
+        if lens in lens_groups:
+            lens_groups[lens].append((name, c))
+        else:
+            lens_groups.setdefault('uncategorized', []).append((name, c))
 
     # Get names of geometries we have content for
     written = set(geometries.keys())
@@ -925,20 +955,19 @@ def build_index_page(geometries: dict, catalog_lookup: dict,
 
         return '\n'.join(cards)
 
-    if tier1:
-        html += '<div class="tier-header">Tier 1 &mdash; Encoding-Invariant</div>\n'
-        html += f'<div class="geo-grid">\n{geo_cards(tier1)}\n</div>\n'
+    for lens in lens_order:
+        items = lens_groups[lens]
+        if items:
+            label = lens_labels.get(lens, lens.title())
+            html += f'<div class="lens-header">{escape(label)} Lens</div>\n'
+            html += f'<div class="geo-grid">\n{geo_cards(items)}\n</div>\n'
 
-    if tier2:
-        html += '<div class="tier-header">Tier 2 &mdash; High Discrimination</div>\n'
-        html += f'<div class="geo-grid">\n{geo_cards(tier2)}\n</div>\n'
-
-    if tier3:
-        html += '<div class="tier-header">Tier 3 &mdash; Remaining Geometries</div>\n'
-        html += f'<div class="geo-grid">\n{geo_cards(tier3)}\n</div>\n'
+    if lens_groups.get('uncategorized'):
+        html += '<div class="lens-header">Uncategorized</div>\n'
+        html += f'<div class="geo-grid">\n{geo_cards(lens_groups["uncategorized"])}\n</div>\n'
 
     if remaining:
-        html += '<div class="tier-header">Uncategorized</div>\n'
+        html += '<div class="lens-header">Not Yet Documented</div>\n'
         html += f'<div class="geo-grid">\n{geo_cards(remaining, from_content=False)}\n</div>\n'
 
     html += footer_html(n_sources, n_metrics, n_geos)

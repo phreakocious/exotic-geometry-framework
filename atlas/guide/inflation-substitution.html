@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inflation (Substitution) — Structure Atlas</title>
+<meta name="description" content="Exotic geometry guide: Inflation (Substitution). Part of the Structure Atlas — 211 data sources analyzed through 200 metrics across 54 exotic geometries.">
+<link rel="canonical" href="https://nullphase.net/sa/guide/inflation-substitution.html" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://nullphase.net/sa/guide/inflation-substitution.html" />
+<meta property="og:title" content="Inflation (Substitution) — Structure Atlas" />
+<meta property="og:description" content="Geometry guide: Inflation (Substitution). What it measures, how it works, atlas rankings." />
+<meta property="og:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Inflation (Substitution) — Structure Atlas" />
+<meta name="twitter:description" content="Geometry guide: Inflation (Substitution). What it measures, how it works, atlas rankings." />
+<meta name="twitter:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;0,800;1,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #0a0015;
+    --bg-card: rgba(10,5,25,0.55);
+    --text: #ddd;
+    --text-muted: #888;
+    --text-dim: #8b8bab;
+    --accent: #00ffb4;
+    --accent-hover: #7bffce;
+    --accent-math: #7b8fff;
+    --accent-magenta: #ff6eff;
+    --accent-blue: #00b4ff;
+    --border: rgba(0,255,180,0.12);
+    --border-hover: rgba(0,255,180,0.3);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.nav a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.nav a:hover { color: var(--accent-hover); }
+.nav .sep { color: var(--text-dim); }
+.nav .current { color: var(--text-muted); }
+
+/* Page title */
+h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-math));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glass cards */
+.card {
+    background: var(--bg-card);
+    padding: 24px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.card p {
+    margin: 0 0 12px;
+    color: #ccc;
+}
+.card p:last-child { margin-bottom: 0; }
+
+/* Metric blocks */
+.metric-block {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    background: rgba(123,143,255,0.03);
+    border: 1px solid rgba(123,143,255,0.08);
+    border-radius: 6px;
+}
+.metric-block:last-child { margin-bottom: 0; }
+
+.metric-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+}
+.metric-name::before {
+    content: '›';
+    color: var(--accent-math);
+    margin-right: 7px;
+    font-weight: 300;
+}
+.metric-desc {
+    margin: 0;
+    font-size: 14px;
+    color: #bbb;
+    line-height: 1.7;
+}
+
+/* Inline code */
+code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    color: var(--accent-magenta);
+    background: rgba(255,110,255,0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+/* Metric extreme tables — 2-col grid */
+.extremes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+.extremes-grid .extremes-table:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    max-width: 50%;
+}
+.extremes-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(123,143,255,0.02);
+    border: 1px solid rgba(123,143,255,0.06);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.extremes-table caption {
+    text-align: left;
+    font-size: 11px;
+    color: var(--accent);
+    padding: 8px 10px 5px;
+    font-weight: 500;
+}
+.extremes-table th {
+    text-align: left;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.extremes-table td {
+    padding: 2px 10px;
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.extremes-table td.val {
+    color: var(--accent);
+    text-align: right;
+    font-weight: 500;
+}
+.extremes-table td.domain {
+    color: var(--text-dim);
+    font-size: 10px;
+}
+.extremes-table a {
+    color: #ccc;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.extremes-table a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.extremes-table .separator td {
+    padding: 1px 10px;
+    border: none;
+    color: var(--text-dim);
+    font-size: 9px;
+}
+@media (max-width: 600px) {
+    .extremes-grid {
+        grid-template-columns: 1fr;
+    }
+    .extremes-grid .extremes-table:last-child:nth-child(odd) {
+        max-width: 100%;
+    }
+}
+
+/* Properties badge row */
+.props {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+.prop-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.prop-badge.highlight {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,255,180,0.06);
+}
+
+/* Index page */
+.geo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+.geo-card {
+    background: var(--bg-card);
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    transition: border-color 0.2s, transform 0.15s;
+    text-decoration: none;
+    display: block;
+}
+.geo-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+}
+.geo-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+}
+.geo-card .detects {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+.geo-card .badge-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.geo-card .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid rgba(123,143,255,0.2);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.geo-card .badge.ordinal {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Section headers on index */
+.lens-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 40px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.lens-header:first-of-type { margin-top: 0; }
+
+/* Atlas link button */
+.atlas-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 6px 14px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    transition: all 0.2s;
+    margin-top: 8px;
+}
+.atlas-link:hover {
+    background: rgba(0,255,180,0.1);
+    color: var(--accent-hover);
+}
+
+/* Footer */
+.footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+}
+.footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.footer a:hover { color: var(--accent-hover); }
+
+/* Strong in descriptions */
+strong { color: #eee; font-weight: 600; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .container { padding: 24px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+    .geo-grid { grid-template-columns: 1fr; }
+}
+</style>
+<script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>
+</head>
+<body>
+<div class="container">
+<nav class="nav"><a href="../index.html">Atlas</a><span class="sep">/</span><a href="index.html">Guide</a><span class="sep">/</span><span class="current">Inflation (Substitution)</span></nav><h1>Inflation (Substitution)</h1>
+<div class="subtitle">Substitution inflation symmetry, linear complexity, bounded discrepancy</div>
+<div class="props"><span class="prop-badge">quasicrystal</span><span class="prop-badge highlight">encoding-invariant</span><span class="prop-badge">dim 1D multi-scale</span><span class="prop-badge">5 metrics</span></div>
+<div class="card">
+<h2>What It Measures</h2>
+<p>Whether the data was generated by a substitution rule &mdash; a process that replaces symbols with fixed patterns at every scale.</p>
+<p>A substitution rule maps each symbol to a word: Fibonacci does a→ab, b→a; Thue-Morse does a→ab, b→ba. Iterating the rule produces an infinite aperiodic sequence whose statistical properties repeat at geometrically spaced scales (powers of the inflation factor λ). This geometry binarizes the data and tests five signatures that substitution sequences must satisfy and random or periodic sequences cannot.</p>
+</div>
+<div class="card">
+<h2>Metrics</h2>
+<div class="metric-block"><h4 class="metric-name">complexity_linearity</h4><p class="metric-desc">How linear is the growth of distinct subwords? For a substitution sequence, the number of distinct n-grams p(n) grows as c·n + d (exactly linear). For random sequences, p(n) grows exponentially (2ⁿ). For periodic sequences, p(n) flatlines. Fibonacci word and Thue-Morse both score near 1.0 (textbook linear). White noise scores 0.76 (exponential growth, poor linear fit). Logistic period-5 scores 0.46 &mdash; its near-periodicity confuses the linearity test.</p></div>
+<div class="metric-block"><h4 class="metric-name">entropy_rate</h4><p class="metric-desc">Topological entropy: does the subword count grow? Zero for substitution and periodic, positive for random and chaos. White noise and PRNG outputs score ~1.0 (exponential growth = maximal entropy). Fibonacci word scores 0.19 (barely above zero &mdash; its linear complexity growth produces a small but nonzero growth ratio). Periodic orbits score exactly 0.0.</p></div>
+<div class="metric-block"><h4 class="metric-name">discrepancy</h4><p class="metric-desc">How evenly are the symbols distributed? Measures max|D(n)|/√N, where D(n) is the deviation of cumulative symbol counts from expected. Substitution sequences have bounded discrepancy (D<em>/√N → 0). Random sequences have D</em>/√N ≈ 0.5 (random walk). Thue-Morse (0.006) and Fibonacci word (0.006) have the lowest nonzero discrepancy in the atlas &mdash; their symbols are distributed with almost crystalline uniformity. Devil&#x27;s staircase (28.1) has the highest: its long constant plateaus create massive cumulative imbalance.</p></div>
+<div class="metric-block"><h4 class="metric-name">return_concentration</h4><p class="metric-desc">How regular are the gaps between repeated subwords? Substitution sequences have few distinct return times because the hierarchical tiling constrains where each pattern can appear. Logistic period-2 and edge-of-chaos score 1.0 (perfectly regular returns). Fibonacci word scores 0.82. fBm scores 0.08 (widely scattered, irregular returns).</p></div>
+<div class="metric-block"><h4 class="metric-name">acf_geometric</h4><p class="metric-desc">Are autocorrelation peaks at geometric (λ^k) rather than arithmetic (nT) spacings? This is the substitution fingerprint: Fibonacci has ACF peaks at Fibonacci numbers (φ^k spacings), Thue-Morse at powers of 2. Quantum walk scores highest (0.91) &mdash; its interference pattern creates geometric-ratio ACF peaks through a completely different mechanism. Fibonacci word (0.88), phyllotaxis (0.89), and circle map quasiperiodic (0.89) cluster together. White noise and logistic chaos score 0.0 (no ACF peaks at all).</p></div>
+</div>
+<div class="card">
+<h2>Atlas Rankings</h2>
+<div class="extremes-grid">
+<table class="extremes-table"><caption>acf_geometric</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Quantum%20Walk">Quantum Walk</a></td><td class="domain">quantum</td><td class="val">0.9123</td></tr><tr><td><a href="../index.html?source=Wave%20Height%20(Buoy)">Wave Height (Buoy)</a></td><td class="domain">geophysics</td><td class="val">0.8984</td></tr><tr><td><a href="../index.html?source=Phyllotaxis">Phyllotaxis</a></td><td class="domain">bio</td><td class="val">0.8888</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Logistic%20Chaos">Logistic Chaos</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Tent%20Map">Tent Map</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Prime%20Gaps">Prime Gaps</a></td><td class="domain">number_theory</td><td class="val">0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>complexity_linearity</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Projectile%20with%20Drag">Projectile with Drag</a></td><td class="domain">motion</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Damped%20Pendulum">Damped Pendulum</a></td><td class="domain">motion</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Lotka-Volterra">Lotka-Volterra</a></td><td class="domain">bio</td><td class="val">1.0000</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.74%20(Period-5%20Window)">Logistic r=3.74 (Period-5 Window)</a></td><td class="domain">chaos</td><td class="val">0.4619</td></tr><tr><td><a href="../index.html?source=Wichmann-Hill">Wichmann-Hill</a></td><td class="domain">binary</td><td class="val">0.6382</td></tr><tr><td><a href="../index.html?source=BSL%20Residues">BSL Residues</a></td><td class="domain">number_theory</td><td class="val">0.6382</td></tr></tbody></table>
+<table class="extremes-table"><caption>discrepancy</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Devil's%20Staircase">Devil&#x27;s Staircase</a></td><td class="domain">exotic</td><td class="val">28.0993</td></tr><tr><td><a href="../index.html?source=Hilbert%20Walk">Hilbert Walk</a></td><td class="domain">exotic</td><td class="val">27.2802</td></tr><tr><td><a href="../index.html?source=BTC%20Close%20Price">BTC Close Price</a></td><td class="domain">financial</td><td class="val">27.2032</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Forest%20Fire">Forest Fire</a></td><td class="domain">exotic</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.5%20(Period-4)">Logistic r=3.5 (Period-4)</a></td><td class="domain">chaos</td><td class="val">0.0039</td></tr></tbody></table>
+<table class="extremes-table"><caption>entropy_rate</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Wichmann-Hill">Wichmann-Hill</a></td><td class="domain">binary</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=BSL%20Residues">BSL Residues</a></td><td class="domain">number_theory</td><td class="val">0.9999</td></tr><tr><td><a href="../index.html?source=Benford's%20Law">Benford&#x27;s Law</a></td><td class="domain">number_theory</td><td class="val">0.9999</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.5%20(Period-4)">Logistic r=3.5 (Period-4)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.83%20(Period-3%20Window)">Logistic r=3.83 (Period-3 Window)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>return_concentration</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Logistic%20Edge-of-Chaos">Logistic Edge-of-Chaos</a></td><td class="domain">chaos</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Forest%20Fire">Forest Fire</a></td><td class="domain">exotic</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Constant%200x00">Constant 0x00</a></td><td class="domain">noise</td><td class="val">1.0000</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=fBm%20(Persistent)">fBm (Persistent)</a></td><td class="domain">noise</td><td class="val">0.0847</td></tr><tr><td><a href="../index.html?source=ETH/BTC%20Ratio">ETH/BTC Ratio</a></td><td class="domain">financial</td><td class="val">0.0886</td></tr><tr><td><a href="../index.html?source=Mertens%20Function">Mertens Function</a></td><td class="domain">number_theory</td><td class="val">0.0887</td></tr></tbody></table>
+</div></div>
+<div class="card">
+<h2>When It Lights Up</h2>
+<p>Inflation is the framework&#x27;s substitution-rule detector. The combination of linear complexity + near-zero discrepancy + geometric ACF peaks is essentially unique to substitution sequences. In the ordinal view, it separates quasicrystalline sources (Fibonacci, Thue-Morse, L-System) from both periodic and random, which the other ordinal geometries struggle to do &mdash; Ordinal Partition sees Fibonacci as &quot;moderately constrained&quot; without distinguishing it from other aperiodic sequences. Inflation&#x27;s acf_geometric metric also catches quantum walk and ocean/wave signals, suggesting that geometric self-similarity in autocorrelation structure is a broader phenomenon than pure substitution dynamics.</p>
+</div>
+<a class="atlas-link" href="../index.html">Open in Atlas</a>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:32px"><span><a href="dodecagonal-stampfli.html">&larr; Dodecagonal (Stampfli)</a></span><span><a href="penrose-quasicrystal.html">Penrose (Quasicrystal) &rarr;</a></span></div><div class="footer"><p>Structure Atlas &mdash; 226 sources, 247 metrics, 53 geometries &mdash; <a href="../index.html">Open Atlas</a> &middot; <a href="https://github.com/phreakocious/exotic-geometry-framework">GitHub</a></p></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mostow Rigidity — Structure Atlas</title>
+<meta name="description" content="Exotic geometry guide: Mostow Rigidity. Part of the Structure Atlas — 211 data sources analyzed through 200 metrics across 54 exotic geometries.">
+<link rel="canonical" href="https://nullphase.net/sa/guide/mostow-rigidity.html" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://nullphase.net/sa/guide/mostow-rigidity.html" />
+<meta property="og:title" content="Mostow Rigidity — Structure Atlas" />
+<meta property="og:description" content="Geometry guide: Mostow Rigidity. What it measures, how it works, atlas rankings." />
+<meta property="og:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Mostow Rigidity — Structure Atlas" />
+<meta name="twitter:description" content="Geometry guide: Mostow Rigidity. What it measures, how it works, atlas rankings." />
+<meta name="twitter:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;0,800;1,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #0a0015;
+    --bg-card: rgba(10,5,25,0.55);
+    --text: #ddd;
+    --text-muted: #888;
+    --text-dim: #8b8bab;
+    --accent: #00ffb4;
+    --accent-hover: #7bffce;
+    --accent-math: #7b8fff;
+    --accent-magenta: #ff6eff;
+    --accent-blue: #00b4ff;
+    --border: rgba(0,255,180,0.12);
+    --border-hover: rgba(0,255,180,0.3);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.nav a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.nav a:hover { color: var(--accent-hover); }
+.nav .sep { color: var(--text-dim); }
+.nav .current { color: var(--text-muted); }
+
+/* Page title */
+h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-math));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glass cards */
+.card {
+    background: var(--bg-card);
+    padding: 24px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.card p {
+    margin: 0 0 12px;
+    color: #ccc;
+}
+.card p:last-child { margin-bottom: 0; }
+
+/* Metric blocks */
+.metric-block {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    background: rgba(123,143,255,0.03);
+    border: 1px solid rgba(123,143,255,0.08);
+    border-radius: 6px;
+}
+.metric-block:last-child { margin-bottom: 0; }
+
+.metric-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+}
+.metric-name::before {
+    content: '›';
+    color: var(--accent-math);
+    margin-right: 7px;
+    font-weight: 300;
+}
+.metric-desc {
+    margin: 0;
+    font-size: 14px;
+    color: #bbb;
+    line-height: 1.7;
+}
+
+/* Inline code */
+code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    color: var(--accent-magenta);
+    background: rgba(255,110,255,0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+/* Metric extreme tables — 2-col grid */
+.extremes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+.extremes-grid .extremes-table:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    max-width: 50%;
+}
+.extremes-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(123,143,255,0.02);
+    border: 1px solid rgba(123,143,255,0.06);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.extremes-table caption {
+    text-align: left;
+    font-size: 11px;
+    color: var(--accent);
+    padding: 8px 10px 5px;
+    font-weight: 500;
+}
+.extremes-table th {
+    text-align: left;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.extremes-table td {
+    padding: 2px 10px;
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.extremes-table td.val {
+    color: var(--accent);
+    text-align: right;
+    font-weight: 500;
+}
+.extremes-table td.domain {
+    color: var(--text-dim);
+    font-size: 10px;
+}
+.extremes-table a {
+    color: #ccc;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.extremes-table a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.extremes-table .separator td {
+    padding: 1px 10px;
+    border: none;
+    color: var(--text-dim);
+    font-size: 9px;
+}
+@media (max-width: 600px) {
+    .extremes-grid {
+        grid-template-columns: 1fr;
+    }
+    .extremes-grid .extremes-table:last-child:nth-child(odd) {
+        max-width: 100%;
+    }
+}
+
+/* Properties badge row */
+.props {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+.prop-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.prop-badge.highlight {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,255,180,0.06);
+}
+
+/* Index page */
+.geo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+.geo-card {
+    background: var(--bg-card);
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    transition: border-color 0.2s, transform 0.15s;
+    text-decoration: none;
+    display: block;
+}
+.geo-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+}
+.geo-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+}
+.geo-card .detects {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+.geo-card .badge-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.geo-card .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid rgba(123,143,255,0.2);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.geo-card .badge.ordinal {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Section headers on index */
+.lens-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 40px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.lens-header:first-of-type { margin-top: 0; }
+
+/* Atlas link button */
+.atlas-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 6px 14px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    transition: all 0.2s;
+    margin-top: 8px;
+}
+.atlas-link:hover {
+    background: rgba(0,255,180,0.1);
+    color: var(--accent-hover);
+}
+
+/* Footer */
+.footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+}
+.footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.footer a:hover { color: var(--accent-hover); }
+
+/* Strong in descriptions */
+strong { color: #eee; font-weight: 600; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .container { padding: 24px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+    .geo-grid { grid-template-columns: 1fr; }
+}
+</style>
+<script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>
+</head>
+<body>
+<div class="container">
+<nav class="nav"><a href="../index.html">Atlas</a><span class="sep">/</span><a href="index.html">Guide</a><span class="sep">/</span><span class="current">Mostow Rigidity</span></nav><h1>Mostow Rigidity</h1>
+<div class="subtitle">Geometric rigidity, volume invariance, Margulis thickness</div>
+<div class="props"><span class="prop-badge">topological</span><span class="prop-badge">dim 3</span><span class="prop-badge">6 metrics</span></div>
+<div class="card">
+<h2>What It Measures</h2>
+<p>Whether your signal&#x27;s geometry is locked in place or free to deform -- the difference between a crystal and a liquid.</p>
+<p>Embeds byte triples into the 3D Poincaré ball, forms tetrahedra, and then asks: if you shake the data slightly, does the hyperbolic geometry change? Mostow&#x27;s rigidity theorem says that in dimension 3 and above, the shape of a hyperbolic manifold is completely determined by its topology -- there are no continuous deformations. This geometry tests the discrete analog: whether small perturbations (5% Gaussian noise) alter the distance structure, volume distribution, and spectral properties.</p>
+</div>
+<div class="card">
+<h2>Metrics</h2>
+<div class="metric-block"><h4 class="metric-name">distance_rigidity</h4><p class="metric-desc">Correlation between the original and perturbed pairwise distance matrices. Rule 30 (0.985) and Symbolic Lorenz (0.984) are nearly rigid: shaking the input barely changes the distances. This means their structure is determined by the combinatorial pattern, not the exact byte values. Constants score 0.0 (no distances to correlate).</p></div>
+<div class="metric-block"><h4 class="metric-name">volume_entropy</h4><p class="metric-desc">Shannon entropy of the hyperbolic tetrahedron volume distribution. Beta Noise (4.52), XorShift32 (4.50), and Dice Rolls (4.50) produce the most varied volumes -- their points fill the ball uniformly, creating tetrahedra of many different sizes. Logistic Period-2 (0.0) produces identical tetrahedra.</p></div>
+<div class="metric-block"><h4 class="metric-name">volume_rigidity</h4><p class="metric-desc">How stable is the total hyperbolic volume under perturbation? AES Encrypted (0.97) and Gzip (0.96) are volume-rigid: noise barely changes their total volume. Lorenz and Rössler Attractors score 0.0 -- their attractor geometry is sensitive to perturbation, the volumes shift substantially.</p></div>
+<div class="metric-block"><h4 class="metric-name">margulis_ratio</h4><p class="metric-desc">Ratio of 5th-percentile to 95th-percentile pairwise distances. Measures the gap between thin and thick parts of the geometry. Logistic Period-2 (1.0) has perfectly uniform spacing. Pulse-Width Mod (0.91) is nearly uniform. Low values mean the signal has both tightly clustered and widely separated regions.</p></div>
+<div class="metric-block"><h4 class="metric-name">spectral_rigidity</h4><p class="metric-desc">Correlation between Laplacian eigenvalues before and after perturbation. L-System Dragon (1.0), Morse Code (1.0), and Symbolic Henon (1.0) have perfectly stable spectra -- their graph connectivity pattern is insensitive to small perturbations. Logistic Period-3 (0.33) has a fragile spectrum.</p></div>
+<div class="metric-block"><h4 class="metric-name">mean_turn_angle</h4><p class="metric-desc">Average angular change between consecutive tetrahedra in the hyperbolic embedding. Logistic period-3 (1.0) and constants (1.0) have maximal turn angles (the trajectory makes sharp turns between tetrahedra). Beta Noise (0.04) and Logistic Chaos (0.07) have near-zero turn angles (smooth, gradual trajectory through hyperbolic space). This measures the &quot;jerkiness&quot; of the hyperbolic path.</p></div>
+</div>
+<div class="card">
+<h2>Atlas Rankings</h2>
+<div class="extremes-grid">
+<table class="extremes-table"><caption>distance_rigidity</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Rule%2030">Rule 30</a></td><td class="domain">exotic</td><td class="val">0.9848</td></tr><tr><td><a href="../index.html?source=Symbolic%20Lorenz">Symbolic Lorenz</a></td><td class="domain">exotic</td><td class="val">0.9843</td></tr><tr><td><a href="../index.html?source=Rule%20110">Rule 110</a></td><td class="domain">exotic</td><td class="val">0.9839</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.83%20(Period-3%20Window)">Logistic r=3.83 (Period-3 Window)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Collatz%20Gap%20Lengths">Collatz Gap Lengths</a></td><td class="domain">number_theory</td><td class="val">0.0185</td></tr></tbody></table>
+<table class="extremes-table"><caption>margulis_ratio</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Square%20Wave">Square Wave</a></td><td class="domain">waveform</td><td class="val">0.9801</td></tr><tr><td><a href="../index.html?source=Pulse-Width%20Modulation">Pulse-Width Modulation</a></td><td class="domain">waveform</td><td class="val">0.9145</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.83%20(Period-3%20Window)">Logistic r=3.83 (Period-3 Window)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Forest%20Fire">Forest Fire</a></td><td class="domain">exotic</td><td class="val">0.0007</td></tr></tbody></table>
+<table class="extremes-table"><caption>mean_turn_angle</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Constant%200x00">Constant 0x00</a></td><td class="domain">noise</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.83%20(Period-3%20Window)">Logistic r=3.83 (Period-3 Window)</a></td><td class="domain">chaos</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Square%20Wave">Square Wave</a></td><td class="domain">waveform</td><td class="val">0.9893</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Beta%20Noise">Beta Noise</a></td><td class="domain">noise</td><td class="val">0.0409</td></tr><tr><td><a href="../index.html?source=Continued%20Fractions">Continued Fractions</a></td><td class="domain">number_theory</td><td class="val">0.0638</td></tr><tr><td><a href="../index.html?source=Logistic%20Chaos">Logistic Chaos</a></td><td class="domain">chaos</td><td class="val">0.0686</td></tr></tbody></table>
+<table class="extremes-table"><caption>spectral_rigidity</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Morse%20Code">Morse Code</a></td><td class="domain">waveform</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=L-System%20(Dragon%20Curve)">L-System (Dragon Curve)</a></td><td class="domain">exotic</td><td class="val">1.0000</td></tr><tr><td><a href="../index.html?source=Symbolic%20Henon">Symbolic Henon</a></td><td class="domain">exotic</td><td class="val">0.9999</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.83%20(Period-3%20Window)">Logistic r=3.83 (Period-3 Window)</a></td><td class="domain">chaos</td><td class="val">0.3347</td></tr><tr><td><a href="../index.html?source=Constant%200x00">Constant 0x00</a></td><td class="domain">noise</td><td class="val">0.3656</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.4172</td></tr></tbody></table>
+<table class="extremes-table"><caption>volume_entropy</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Beta%20Noise">Beta Noise</a></td><td class="domain">noise</td><td class="val">4.5196</td></tr><tr><td><a href="../index.html?source=Dice%20Rolls">Dice Rolls</a></td><td class="domain">exotic</td><td class="val">4.5058</td></tr><tr><td><a href="../index.html?source=XorShift32">XorShift32</a></td><td class="domain">binary</td><td class="val">4.4981</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.83%20(Period-3%20Window)">Logistic r=3.83 (Period-3 Window)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>volume_rigidity</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=AES%20Encrypted">AES Encrypted</a></td><td class="domain">binary</td><td class="val">0.9699</td></tr><tr><td><a href="../index.html?source=Gzip%20(level%201)">Gzip (level 1)</a></td><td class="domain">binary</td><td class="val">0.9641</td></tr><tr><td><a href="../index.html?source=Dice%20Rolls">Dice Rolls</a></td><td class="domain">exotic</td><td class="val">0.9631</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Lorenz%20Attractor">Lorenz Attractor</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Rossler%20Attractor">Rossler Attractor</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr></tbody></table>
+</div></div>
+<div class="card">
+<h2>When It Lights Up</h2>
+<p>Mostow Rigidity uniquely separates signals whose geometric structure is topologically determined from those that are metrically flexible. The volume_rigidity metric cleanly splits encrypted/compressed data (rigid, 0.96+) from dynamical attractors (flexible, near 0.0) -- a distinction no other geometry captures. The distance_rigidity metric at the top is dominated by cellular automata and symbolic dynamics, signals whose structure is entirely combinatorial.</p>
+</div>
+<a class="atlas-link" href="../index.html">Open in Atlas</a>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:32px"><span><a href="visibility-graph.html">&larr; Visibility Graph</a></span><span><a href="klein-bottle.html">Klein Bottle &rarr;</a></span></div><div class="footer"><p>Structure Atlas &mdash; 226 sources, 247 metrics, 53 geometries &mdash; <a href="../index.html">Open Atlas</a> &middot; <a href="https://github.com/phreakocious/exotic-geometry-framework">GitHub</a></p></div>
+</div>
+</body>
+</html>

@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Julia Set — Structure Atlas</title>
+<meta name="description" content="Exotic geometry guide: Julia Set. Part of the Structure Atlas — 211 data sources analyzed through 200 metrics across 54 exotic geometries.">
+<link rel="canonical" href="https://nullphase.net/sa/guide/julia-set.html" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://nullphase.net/sa/guide/julia-set.html" />
+<meta property="og:title" content="Julia Set — Structure Atlas" />
+<meta property="og:description" content="Geometry guide: Julia Set. What it measures, how it works, atlas rankings." />
+<meta property="og:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Julia Set — Structure Atlas" />
+<meta name="twitter:description" content="Geometry guide: Julia Set. What it measures, how it works, atlas rankings." />
+<meta name="twitter:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;0,800;1,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #0a0015;
+    --bg-card: rgba(10,5,25,0.55);
+    --text: #ddd;
+    --text-muted: #888;
+    --text-dim: #8b8bab;
+    --accent: #00ffb4;
+    --accent-hover: #7bffce;
+    --accent-math: #7b8fff;
+    --accent-magenta: #ff6eff;
+    --accent-blue: #00b4ff;
+    --border: rgba(0,255,180,0.12);
+    --border-hover: rgba(0,255,180,0.3);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.nav a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.nav a:hover { color: var(--accent-hover); }
+.nav .sep { color: var(--text-dim); }
+.nav .current { color: var(--text-muted); }
+
+/* Page title */
+h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-math));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glass cards */
+.card {
+    background: var(--bg-card);
+    padding: 24px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.card p {
+    margin: 0 0 12px;
+    color: #ccc;
+}
+.card p:last-child { margin-bottom: 0; }
+
+/* Metric blocks */
+.metric-block {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    background: rgba(123,143,255,0.03);
+    border: 1px solid rgba(123,143,255,0.08);
+    border-radius: 6px;
+}
+.metric-block:last-child { margin-bottom: 0; }
+
+.metric-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+}
+.metric-name::before {
+    content: '›';
+    color: var(--accent-math);
+    margin-right: 7px;
+    font-weight: 300;
+}
+.metric-desc {
+    margin: 0;
+    font-size: 14px;
+    color: #bbb;
+    line-height: 1.7;
+}
+
+/* Inline code */
+code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    color: var(--accent-magenta);
+    background: rgba(255,110,255,0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+/* Metric extreme tables — 2-col grid */
+.extremes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+.extremes-grid .extremes-table:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    max-width: 50%;
+}
+.extremes-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(123,143,255,0.02);
+    border: 1px solid rgba(123,143,255,0.06);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.extremes-table caption {
+    text-align: left;
+    font-size: 11px;
+    color: var(--accent);
+    padding: 8px 10px 5px;
+    font-weight: 500;
+}
+.extremes-table th {
+    text-align: left;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.extremes-table td {
+    padding: 2px 10px;
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.extremes-table td.val {
+    color: var(--accent);
+    text-align: right;
+    font-weight: 500;
+}
+.extremes-table td.domain {
+    color: var(--text-dim);
+    font-size: 10px;
+}
+.extremes-table a {
+    color: #ccc;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.extremes-table a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.extremes-table .separator td {
+    padding: 1px 10px;
+    border: none;
+    color: var(--text-dim);
+    font-size: 9px;
+}
+@media (max-width: 600px) {
+    .extremes-grid {
+        grid-template-columns: 1fr;
+    }
+    .extremes-grid .extremes-table:last-child:nth-child(odd) {
+        max-width: 100%;
+    }
+}
+
+/* Properties badge row */
+.props {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+.prop-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.prop-badge.highlight {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,255,180,0.06);
+}
+
+/* Index page */
+.geo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+.geo-card {
+    background: var(--bg-card);
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    transition: border-color 0.2s, transform 0.15s;
+    text-decoration: none;
+    display: block;
+}
+.geo-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+}
+.geo-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+}
+.geo-card .detects {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+.geo-card .badge-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.geo-card .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid rgba(123,143,255,0.2);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.geo-card .badge.ordinal {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Section headers on index */
+.lens-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 40px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.lens-header:first-of-type { margin-top: 0; }
+
+/* Atlas link button */
+.atlas-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 6px 14px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    transition: all 0.2s;
+    margin-top: 8px;
+}
+.atlas-link:hover {
+    background: rgba(0,255,180,0.1);
+    color: var(--accent-hover);
+}
+
+/* Footer */
+.footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+}
+.footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.footer a:hover { color: var(--accent-hover); }
+
+/* Strong in descriptions */
+strong { color: #eee; font-weight: 600; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .container { padding: 24px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+    .geo-grid { grid-template-columns: 1fr; }
+}
+</style>
+<script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>
+</head>
+<body>
+<div class="container">
+<nav class="nav"><a href="../index.html">Atlas</a><span class="sep">/</span><a href="index.html">Guide</a><span class="sep">/</span><span class="current">Julia Set</span></nav><h1>Julia Set</h1>
+<div class="subtitle">Dynamical trapping, basin structure, Julia dimension</div>
+<div class="props"><span class="prop-badge">topological</span><span class="prop-badge">dim 2</span><span class="prop-badge">4 metrics</span></div>
+<div class="card">
+<h2>What It Measures</h2>
+<p>How the signal&#x27;s values behave as starting conditions for a complex dynamical system.</p>
+<p>Maps pairs of consecutive data values to complex starting positions z₀ in the plane, then iterates z → z² + c (with a fixed parameter c). Some starting conditions escape to infinity; others are trapped in bounded orbits. The fractal boundary between escaping and trapped regions is the Julia set. The data&#x27;s distribution of escape times and orbit stabilities reveals its &quot;dynamical texture&quot; as seen through this particular lens.</p>
+</div>
+<div class="card">
+<h2>Metrics</h2>
+<div class="metric-block"><h4 class="metric-name">escape_entropy</h4><p class="metric-desc">Shannon entropy of the escape-time distribution. High entropy means the data samples many different escape times &mdash; the starting conditions are spread across different dynamical basins. Coupled map lattice (4.45) scores highest: its spatiotemporal chaos creates a rich diversity of starting conditions. Gaussian noise (4.39) is close behind. Logistic period-2 and Collatz parity score 0.0 &mdash; their starting conditions are degenerate (only 1-2 distinct z₀ values), so there&#x27;s only one escape time.</p></div>
+<div class="metric-block"><h4 class="metric-name">stability</h4><p class="metric-desc">Mean absolute value of the final iterate for non-escaping orbits. Devil&#x27;s staircase (938) has the highest stability: its starting conditions land in far-flung bounded orbits that stay large without escaping. Berry random wave (911) and seismograph (911) are similar &mdash; their broad amplitude distributions create starting conditions near the boundary of the Julia set, where orbits are large but trapped. Constants score 0.0 (degenerate single-point orbit).</p></div>
+<div class="metric-block"><h4 class="metric-name">potential_smoothness</h4><p class="metric-desc">Mean absolute difference of the continuous potential between consecutive starting conditions. Uses the normalized iteration count (n + 1 - log(log|z|)/log(2)) to remove discrete escape-time steps. English Literature (35.2) and Euler Totient (31.4) score highest &mdash; their byte sequences create starting conditions that jump between very different escape regimes. Constants and logistic period-2 score 0.0 (degenerate starting conditions). This measures sequential correlation in the Julia escape landscape. <em>Evolved via ShinkaEvolve.</em></p></div>
+<div class="metric-block"><h4 class="metric-name">potential_variance</h4><p class="metric-desc">Variance of the continuous potential across all starting conditions. Devil&#x27;s Staircase (909) and Berry Random Wave (883) score highest &mdash; their broad amplitude distributions sample widely across the Julia set&#x27;s escape-time landscape. Morse Code and constants score 0.0. Complements escape_entropy by measuring the spread rather than the diversity of escape behavior. <em>Evolved via ShinkaEvolve.</em></p></div>
+</div>
+<div class="card">
+<h2>Atlas Rankings</h2>
+<div class="extremes-grid">
+<table class="extremes-table"><caption>escape_entropy</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Coupled%20Map%20Lattice">Coupled Map Lattice</a></td><td class="domain">chaos</td><td class="val">4.4405</td></tr><tr><td><a href="../index.html?source=Gaussian%20Noise">Gaussian Noise</a></td><td class="domain">noise</td><td class="val">4.3829</td></tr><tr><td><a href="../index.html?source=Tohoku%20Aftershock%20Intervals">Tohoku Aftershock Intervals</a></td><td class="domain">geophysics</td><td class="val">4.2859</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">-0.0000</td></tr><tr><td><a href="../index.html?source=Collatz%20Gap%20Lengths">Collatz Gap Lengths</a></td><td class="domain">number_theory</td><td class="val">-0.0000</td></tr><tr><td><a href="../index.html?source=Square%20Wave">Square Wave</a></td><td class="domain">waveform</td><td class="val">-0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>potential_smoothness</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=English%20Literature">English Literature</a></td><td class="domain">speech</td><td class="val">35.2158</td></tr><tr><td><a href="../index.html?source=Euler%20Totient%20Ratio">Euler Totient Ratio</a></td><td class="domain">number_theory</td><td class="val">31.4227</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.5%20(Period-4)">Logistic r=3.5 (Period-4)</a></td><td class="domain">chaos</td><td class="val">29.5237</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Morse%20Code">Morse Code</a></td><td class="domain">waveform</td><td class="val">0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>potential_variance</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Devil's%20Staircase">Devil&#x27;s Staircase</a></td><td class="domain">exotic</td><td class="val">908.9853</td></tr><tr><td><a href="../index.html?source=Berry%20Random%20Wave">Berry Random Wave</a></td><td class="domain">quantum</td><td class="val">883.2148</td></tr><tr><td><a href="../index.html?source=Seismograph%20(ANMO)">Seismograph (ANMO)</a></td><td class="domain">geophysics</td><td class="val">882.8807</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Morse%20Code">Morse Code</a></td><td class="domain">waveform</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Logistic%20r=3.2%20(Period-2)">Logistic r=3.2 (Period-2)</a></td><td class="domain">chaos</td><td class="val">0.0000</td></tr></tbody></table>
+<table class="extremes-table"><caption>stability</caption><thead><tr><th style="width:55%">Source</th><th style="width:25%">Domain</th><th style="width:20%">Value</th></tr></thead><tbody><tr><td><a href="../index.html?source=Devil's%20Staircase">Devil&#x27;s Staircase</a></td><td class="domain">exotic</td><td class="val">938.4536</td></tr><tr><td><a href="../index.html?source=Berry%20Random%20Wave">Berry Random Wave</a></td><td class="domain">quantum</td><td class="val">911.2338</td></tr><tr><td><a href="../index.html?source=Seismograph%20(ANMO)">Seismograph (ANMO)</a></td><td class="domain">geophysics</td><td class="val">911.0774</td></tr><tr class="separator"><td colspan="3">···</td></tr><tr><td><a href="../index.html?source=Constant%200xFF">Constant 0xFF</a></td><td class="domain">noise</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Collatz%20Gap%20Lengths">Collatz Gap Lengths</a></td><td class="domain">number_theory</td><td class="val">0.0000</td></tr><tr><td><a href="../index.html?source=Square%20Wave">Square Wave</a></td><td class="domain">waveform</td><td class="val">0.0000</td></tr></tbody></table>
+</div></div>
+<div class="card">
+<h2>When It Lights Up</h2>
+<p>Julia Set geometry acts as a &quot;nonlinear filter&quot; &mdash; it transforms the data through a fixed dynamical system and asks what the output looks like. This is conceptually different from geometries that analyze the data&#x27;s own dynamics. It&#x27;s most useful for separating signals with similar linear statistics but different amplitude distributions: two signals with the same mean and variance can have very different Julia escape profiles if one has heavy tails (creating starting conditions near the Julia set boundary) and the other is Gaussian (starting conditions far from the boundary).</p>
+<p># Distributional Lens</p>
+</div>
+<a class="atlas-link" href="../index.html">Open in Atlas</a>
+<div style="display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:32px"><span><a href="spectral-graph.html">&larr; Spectral Graph</a></span><span><a href="fisher-information.html">Fisher Information &rarr;</a></span></div><div class="footer"><p>Structure Atlas &mdash; 226 sources, 247 metrics, 53 geometries &mdash; <a href="../index.html">Open Atlas</a> &middot; <a href="https://github.com/phreakocious/exotic-geometry-framework">GitHub</a></p></div>
+</div>
+</body>
+</html>

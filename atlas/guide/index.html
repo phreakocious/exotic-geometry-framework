@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geometry Guide — Structure Atlas</title>
+<meta name="description" content="Exotic geometry guide: Geometry Guide. Part of the Structure Atlas — 211 data sources analyzed through 200 metrics across 54 exotic geometries.">
+<link rel="canonical" href="https://nullphase.net/sa/guide/" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://nullphase.net/sa/guide/" />
+<meta property="og:title" content="Geometry Guide — Structure Atlas" />
+<meta property="og:description" content="Geometry guide: Geometry Guide. What it measures, how it works, atlas rankings." />
+<meta property="og:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Geometry Guide — Structure Atlas" />
+<meta name="twitter:description" content="Geometry guide: Geometry Guide. What it measures, how it works, atlas rankings." />
+<meta name="twitter:image" content="https://nullphase.net/sa/guide/og-image.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,300;0,400;0,600;0,700;0,800;1,300&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg: #0a0015;
+    --bg-card: rgba(10,5,25,0.55);
+    --text: #ddd;
+    --text-muted: #888;
+    --text-dim: #8b8bab;
+    --accent: #00ffb4;
+    --accent-hover: #7bffce;
+    --accent-math: #7b8fff;
+    --accent-magenta: #ff6eff;
+    --accent-blue: #00b4ff;
+    --border: rgba(0,255,180,0.12);
+    --border-hover: rgba(0,255,180,0.3);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Exo 2', 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+.nav a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.nav a:hover { color: var(--accent-hover); }
+.nav .sep { color: var(--text-dim); }
+.nav .current { color: var(--text-muted); }
+
+/* Page title */
+h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    margin: 0 0 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-math));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Glass cards */
+.card {
+    background: var(--bg-card);
+    padding: 24px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 0 0 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.card p {
+    margin: 0 0 12px;
+    color: #ccc;
+}
+.card p:last-child { margin-bottom: 0; }
+
+/* Metric blocks */
+.metric-block {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    background: rgba(123,143,255,0.03);
+    border: 1px solid rgba(123,143,255,0.08);
+    border-radius: 6px;
+}
+.metric-block:last-child { margin-bottom: 0; }
+
+.metric-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--accent);
+    margin: 0 0 6px;
+    letter-spacing: 0.02em;
+}
+.metric-name::before {
+    content: '›';
+    color: var(--accent-math);
+    margin-right: 7px;
+    font-weight: 300;
+}
+.metric-desc {
+    margin: 0;
+    font-size: 14px;
+    color: #bbb;
+    line-height: 1.7;
+}
+
+/* Inline code */
+code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.88em;
+    color: var(--accent-magenta);
+    background: rgba(255,110,255,0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+/* Metric extreme tables — 2-col grid */
+.extremes-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+.extremes-grid .extremes-table:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    max-width: 50%;
+}
+.extremes-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(123,143,255,0.02);
+    border: 1px solid rgba(123,143,255,0.06);
+    border-radius: 5px;
+    overflow: hidden;
+}
+.extremes-table caption {
+    text-align: left;
+    font-size: 11px;
+    color: var(--accent);
+    padding: 8px 10px 5px;
+    font-weight: 500;
+}
+.extremes-table th {
+    text-align: left;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    padding: 3px 10px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.extremes-table td {
+    padding: 2px 10px;
+    color: #aaa;
+    border-bottom: 1px solid rgba(255,255,255,0.02);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.extremes-table td.val {
+    color: var(--accent);
+    text-align: right;
+    font-weight: 500;
+}
+.extremes-table td.domain {
+    color: var(--text-dim);
+    font-size: 10px;
+}
+.extremes-table a {
+    color: #ccc;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.extremes-table a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.extremes-table .separator td {
+    padding: 1px 10px;
+    border: none;
+    color: var(--text-dim);
+    font-size: 9px;
+}
+@media (max-width: 600px) {
+    .extremes-grid {
+        grid-template-columns: 1fr;
+    }
+    .extremes-grid .extremes-table:last-child:nth-child(odd) {
+        max-width: 100%;
+    }
+}
+
+/* Properties badge row */
+.props {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+.prop-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.prop-badge.highlight {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,255,180,0.06);
+}
+
+/* Index page */
+.geo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+}
+.geo-card {
+    background: var(--bg-card);
+    padding: 18px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    transition: border-color 0.2s, transform 0.15s;
+    text-decoration: none;
+    display: block;
+}
+.geo-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+}
+.geo-card h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+}
+.geo-card .detects {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+}
+.geo-card .badge-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.geo-card .badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    border: 1px solid rgba(123,143,255,0.2);
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.geo-card .badge.ordinal {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Section headers on index */
+.lens-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin: 40px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+.lens-header:first-of-type { margin-top: 0; }
+
+/* Atlas link button */
+.atlas-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    text-decoration: none;
+    padding: 6px 14px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    transition: all 0.2s;
+    margin-top: 8px;
+}
+.atlas-link:hover {
+    background: rgba(0,255,180,0.1);
+    color: var(--accent-hover);
+}
+
+/* Footer */
+.footer {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'JetBrains Mono', monospace;
+}
+.footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.footer a:hover { color: var(--accent-hover); }
+
+/* Strong in descriptions */
+strong { color: #eee; font-weight: 600; }
+
+/* Responsive */
+@media (max-width: 600px) {
+    .container { padding: 24px 16px 60px; }
+    h1 { font-size: 1.4rem; }
+    .geo-grid { grid-template-columns: 1fr; }
+}
+</style>
+<script src="/edgeviz.js?id=NP_CLIENT_DC0AF9577AD33806"></script>
+</head>
+<body>
+<div class="container">
+<nav class="nav"><a href="../index.html">Atlas</a><span class="sep">/</span><span class="current">Guide</span></nav><h1>Geometry Guide</h1>
+<div class="subtitle">53 exotic geometries &mdash; 226 data sources &mdash; 247 metrics</div>
+<div class="card">
+<p>Each geometry is a question asked of data. The answers are gradients from low to high, with specific atlas sources as landmarks. These pages explain what each geometry detects through contrast and atlas examples, not mathematical definitions.</p>
+</div>
+<div class="lens-header">Dynamical Lens</div>
+<div class="geo-grid">
+<a class="geo-card" href="navier-stokes.html"><h3>Navier-Stokes</h3><p class="detects">Turbulence cascade, intermittency, K41/She-Leveque scaling</p><div class="badge-row"><span class="badge">dynamical</span></div></a>
+<a class="geo-card" href="attractor-reconstruction.html"><h3>Attractor Reconstruction</h3><p class="detects">Correlation dimension, Lyapunov exponent, attractor filling</p><div class="badge-row"><span class="badge">dynamical</span></div></a>
+<a class="geo-card" href="boltzmann.html"><h3>Boltzmann</h3><p class="detects">Interaction strength, spin-glass frustration, criticality</p><div class="badge-row"><span class="badge">dynamical</span><span class="badge ordinal">ordinal</span></div></a>
+<a class="geo-card" href="predictability.html"><h3>Predictability</h3><p class="detects">Conditional entropy, memory depth, sample entropy</p><div class="badge-row"><span class="badge">dynamical</span></div></a>
+<a class="geo-card" href="nonstationarity.html"><h3>Nonstationarity</h3><p class="detects">heteroskedasticity, regime switches, geometric non-stationarity</p><div class="badge-row"><span class="badge">dynamical</span></div></a>
+<a class="geo-card" href="spectral-analysis.html"><h3>Spectral Analysis</h3><p class="detects">Dominant frequency, spectral slope, bandwidth, periodicity</p><div class="badge-row"><span class="badge">dynamical</span><span class="badge ordinal">ordinal</span></div></a>
+<a class="geo-card" href="higher-order-statistics.html"><h3>Higher-Order Statistics</h3><p class="detects">Skewness, kurtosis, tail asymmetry, non-Gaussianity</p><div class="badge-row"><span class="badge">dynamical</span></div></a>
+<a class="geo-card" href="recurrence-quantification.html"><h3>Recurrence Quantification</h3><p class="detects">Recurrence rate, determinism, laminarity, trapping time</p><div class="badge-row"><span class="badge">dynamical</span><span class="badge ordinal">ordinal</span></div></a>
+<a class="geo-card" href="multifractal-spectrum.html"><h3>Multifractal Spectrum</h3><p class="detects">Spectrum width, dominant singularity, scaling nonlinearity</p><div class="badge-row"><span class="badge">dynamical</span></div></a>
+<a class="geo-card" href="gottwald-melbourne.html"><h3>Gottwald-Melbourne</h3><p class="detects">Chaos vs regular dynamics, classification confidence</p><div class="badge-row"><span class="badge">dynamical</span></div></a>
+<a class="geo-card" href="ordinal-partition.html"><h3>Ordinal Partition</h3><p class="detects">Transition predictability, time irreversibility, edge-of-chaos complexity</p><div class="badge-row"><span class="badge">dynamical</span><span class="badge ordinal">ordinal</span></div></a>
+</div>
+<div class="lens-header">Topological Lens</div>
+<div class="geo-grid">
+<a class="geo-card" href="zariski.html"><h3>Zariski</h3><p class="detects">Polynomial recurrences, algebraic varieties, non-Boolean pattern lattice</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="cayley.html"><h3>Cayley</h3><p class="detects">Large-scale curvature, intrinsic dimension, graph expansion</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="persistent-homology.html"><h3>Persistent Homology</h3><p class="detects">Holes, loops, connected components, topological persistence</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="hyperbolic-poincare.html"><h3>Hyperbolic (Poincaré)</h3><p class="detects">Hierarchy depth, branching, boundary clustering</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="visibility-graph.html"><h3>Visibility Graph</h3><p class="detects">Graph degree distribution, clustering, small-worldness</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="mostow-rigidity.html"><h3>Mostow Rigidity</h3><p class="detects">Geometric rigidity, volume invariance, Margulis thickness</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="klein-bottle.html"><h3>Klein Bottle</h3><p class="detects">GF(2) linear recurrences, LFSRs, XorShift generators, bit-level linear dependencies</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="fractal-mandelbrot.html"><h3>Fractal (Mandelbrot)</h3><p class="detects">Escape rate, fractal dimension, boundary complexity</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="spectral-graph.html"><h3>Spectral Graph</h3><p class="detects">Diffusion dimensionality, spectral shape, cluster structure</p><div class="badge-row"><span class="badge">topological</span></div></a>
+<a class="geo-card" href="julia-set.html"><h3>Julia Set</h3><p class="detects">Dynamical trapping, basin structure, Julia dimension</p><div class="badge-row"><span class="badge">topological</span></div></a>
+</div>
+<div class="lens-header">Distributional Lens</div>
+<div class="geo-grid">
+<a class="geo-card" href="fisher-information.html"><h3>Fisher Information</h3><p class="detects">Information gradient, statistical curvature, parameter sensitivity</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="wasserstein.html"><h3>Wasserstein</h3><p class="detects">Distribution shape, transport cost, self-similarity</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="zipf-mandelbrot-8-bit.html"><h3>Zipf–Mandelbrot (8-bit)</h3><p class="detects">Zipf exponent, vocabulary richness, frequency decay</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="zipf-mandelbrot-16-bit.html"><h3>Zipf–Mandelbrot (16-bit)</h3><p class="detects">Zipf exponent, vocabulary richness, frequency decay</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="cantor-set.html"><h3>Cantor Set</h3><p class="detects">Gaps, dust fraction, ternary self-similarity</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="2-adic.html"><h3>2-adic</h3><p class="detects">p-adic clustering, divisibility depth, modular structure</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="spherical-s2.html"><h3>Spherical S²</h3><p class="detects">Directional clustering, angular uniformity</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="information-theory.html"><h3>Information Theory</h3><p class="detects">Shannon entropy, complexity, redundancy</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+<a class="geo-card" href="torus-t-2.html"><h3>Torus T^2</h3><p class="detects">Periodicity, cyclic coverage, uniformity</p><div class="badge-row"><span class="badge">distributional</span></div></a>
+</div>
+<div class="lens-header">Symmetry Lens</div>
+<div class="geo-grid">
+<a class="geo-card" href="sl-2-r-thurston.html"><h3>SL(2,ℝ) (Thurston)</h3><p class="detects">Shear flow, geodesic divergence, rotation-shear coupling</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="projective-p2.html"><h3>Projective ℙ²</h3><p class="detects">Scale invariance, cross-ratio stability, projective curvature</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="h2-r-thurston.html"><h3>H² × ℝ (Thurston)</h3><p class="detects">Hyperbolic layering, vertical drift</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="symplectic.html"><h3>Symplectic</h3><p class="detects">Phase space area, trajectory stationarity, recurrence</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="d4-triality.html"><h3>D4 Triality</h3><p class="detects">D4 lattice structure, 4-byte symmetry constraints</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="sol-thurston.html"><h3>Sol (Thurston)</h3><p class="detects">Hyperbolic splitting, exponential divergence</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="g2-root-system.html"><h3>G2 Root System</h3><p class="detects">Hexagonal byte-pair symmetry</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="e8-lattice.html"><h3>E8 Lattice</h3><p class="detects">Lattice alignment, algebraic constraint</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="s2-r-thurston.html"><h3>S² × ℝ (Thurston)</h3><p class="detects">Spherical layering, radial drift</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="h3-icosahedral.html"><h3>H3 Icosahedral</h3><p class="detects">Icosahedral symmetry, 5-fold rotational order</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="h4-600-cell.html"><h3>H4 600-Cell</h3><p class="detects">600-cell alignment, non-crystallographic 4D symmetry</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="tropical.html"><h3>Tropical</h3><p class="detects">Piecewise-linear regimes, slope diversity, envelope structure</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+<a class="geo-card" href="heisenberg-nil-centered.html"><h3>Heisenberg (Nil) (centered)</h3><p class="detects">Correlation twist, phase coupling, area accumulation</p><div class="badge-row"><span class="badge">symmetry</span><span class="badge ordinal">ordinal</span></div></a>
+<a class="geo-card" href="lorentzian.html"><h3>Lorentzian</h3><p class="detects">Causal ordering, lightcone structure, timelike fraction</p><div class="badge-row"><span class="badge">symmetry</span></div></a>
+</div>
+<div class="lens-header">Scale Lens</div>
+<div class="geo-grid">
+<a class="geo-card" href="holder-regularity.html"><h3>Hölder Regularity</h3><p class="detects">Local roughness, regularity spectrum, singularity strength</p><div class="badge-row"><span class="badge">scale</span><span class="badge ordinal">ordinal</span></div></a>
+<a class="geo-card" href="multi-scale-wasserstein.html"><h3>Multi-Scale Wasserstein</h3><p class="detects">Scale coherence, distributional drift, self-similarity</p><div class="badge-row"><span class="badge">scale</span></div></a>
+<a class="geo-card" href="p-variation.html"><h3>p-Variation</h3><p class="detects">Path roughness, variation index, regularity</p><div class="badge-row"><span class="badge">scale</span></div></a>
+<a class="geo-card" href="logarithmic-spiral.html"><h3>Logarithmic Spiral</h3><p class="detects">Growth rate, spiral tightness, radial regularity</p><div class="badge-row"><span class="badge">scale</span></div></a>
+</div>
+<div class="lens-header">Quasicrystal Lens</div>
+<div class="geo-grid">
+<a class="geo-card" href="septagonal-danzer.html"><h3>Septagonal (Danzer)</h3><p class="detects">Sevenfold diffraction symmetry, Danzer tiling order</p><div class="badge-row"><span class="badge">quasicrystal</span></div></a>
+<a class="geo-card" href="dodecagonal-stampfli.html"><h3>Dodecagonal (Stampfli)</h3><p class="detects">Twelvefold diffraction symmetry, square-triangle tiling order</p><div class="badge-row"><span class="badge">quasicrystal</span></div></a>
+<a class="geo-card" href="inflation-substitution.html"><h3>Inflation (Substitution)</h3><p class="detects">Substitution inflation symmetry, linear complexity, bounded discrepancy</p><div class="badge-row"><span class="badge">quasicrystal</span><span class="badge ordinal">ordinal</span></div></a>
+<a class="geo-card" href="penrose-quasicrystal.html"><h3>Penrose (Quasicrystal)</h3><p class="detects">Fivefold diffraction symmetry, Bragg peak contrast, aperiodic order</p><div class="badge-row"><span class="badge">quasicrystal</span></div></a>
+<a class="geo-card" href="ammann-beenker-octagonal.html"><h3>Ammann-Beenker (Octagonal)</h3><p class="detects">Eightfold diffraction symmetry, Bragg peak contrast, cardinal-diagonal anisotropy</p><div class="badge-row"><span class="badge">quasicrystal</span></div></a>
+</div>
+<div class="footer"><p>Structure Atlas &mdash; 226 sources, 247 metrics, 53 geometries &mdash; <a href="../index.html">Open Atlas</a> &middot; <a href="https://github.com/phreakocious/exotic-geometry-framework">GitHub</a></p></div>
+</div>
+</body>
+</html>
