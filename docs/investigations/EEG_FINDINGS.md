@@ -1,8 +1,101 @@
 # EEG Brain State Geometry: Findings
 
-**Date**: 2026-04-03
-**Investigations**: `eeg_deep.py`, `eeg_oiris.py`, `eeg_oiris_polar.py`
-**Framework**: 54 geometries, 278 metrics, 8 parallel workers
+**Dates**: 2026-02-17 (eeg_phi), 2026-04-03 (all others)
+**Investigations**: `eeg_phi.py`, `eeg_deep.py`, `eeg_oiris.py`, `eeg_oiris_polar.py`, `eeg_oiris_rigorous.py`
+
+---
+
+## Prior work: Golden Ratio in EEG Spectral Peaks (eeg_phi.py, 2026-02-17)
+
+Tests the Pletzer-Klimesch-Lacy hypothesis that EEG frequency bands follow
+φⁿ organization anchored at f₀ ≈ 7.5 Hz. The claim: integer n → band
+boundaries (peaks depleted), half-integer n → band attractors (peaks enriched).
+Zero free parameters.
+
+**Data**: PhysioNet eegmmidb, 109 subjects, 64 channels, 160 Hz, eyes-closed
+resting baseline. ~7,000 spectral peaks extracted via median-filter background
+subtraction.
+
+**11 directions**, 1,765 lines. Key results:
+
+![eeg_phi main figure](../figures/eeg_phi.png)
+![eeg_phi D9 noble position](../figures/eeg_phi_d9.png)
+
+### D1: φⁿ lattice enrichment
+Peaks mapped to lattice phase u ∈ [0,1) where u=0 is a boundary and u=0.5
+is an attractor. Enrichment score = (attractor density - boundary density) /
+expected. Tested against phase-rotation permutation null (5,000 iterations)
+that preserves the phase distribution shape while destroying f₀ alignment.
+
+**Result**: Modest positive enrichment, but not significant after phase-rotation
+correction. The raw enrichment is biased by the alpha peak's dominance — when
+you rotate the lattice phase randomly, you get similar enrichment just from the
+non-uniform marginal distribution of peak frequencies.
+
+### D2: Ratio specificity — is φ uniquely preferred?
+Tested 12 named ratios (φ, 2, e, π, √2, silver ratio, √3, 3/2, 5/3, 7/4, √5,
+2+√3) with per-ratio phase-rotation null envelopes.
+
+**Result**: φ is not special. Multiple ratios produce comparable or higher
+excess-over-null enrichment. φ ranks mid-pack among the tested ratios. The
+enrichment pattern is driven by the alpha peak's location, not by the ratio.
+
+### D3: f₀ anchoring — is 7.5 Hz optimal?
+Swept f₀ from 3-15 Hz with null envelope at each point.
+
+**Result**: The best-fit f₀ is NOT 7.5 Hz. The optimal anchor frequency
+depends on the specific metric used, and 7.5 Hz is not consistently at or
+near the peak. The claimed zero-free-parameter anchoring is not confirmed.
+
+### D4: 2D (f₀, r) joint heatmap
+Swept both f₀ (3-15 Hz) and ratio r (1.2-4.0) simultaneously, producing
+the "money plot" — a 2D heatmap of enrichment across the entire parameter
+space. The claimed point (f₀=7.5, r=φ=1.618) should be a global optimum
+if the hypothesis is correct.
+
+**Result**: The (7.5, φ) point is NOT at the global optimum. The heatmap
+shows a complex ridge structure with multiple local maxima. The claimed
+parameters are not distinguished from the surrounding parameter space.
+
+### D5-D8: Additional tests
+- **D5 (per-band)**: Alpha band shows the only hint of enrichment; other bands
+  (theta, beta, gamma) show none. The "universal φⁿ architecture" reduces to
+  "there's an alpha peak."
+- **D6 (per-subject)**: Wide distribution of per-subject enrichment scores
+  centered near zero. No consistent cross-subject signal.
+- **D7 (peak distribution)**: Diagnostic — peaks are overwhelmingly alpha
+  (8-13 Hz), creating a non-uniform baseline that inflates naive enrichment.
+- **D8 (IAAFT surrogates)**: Spectral, not nonlinear.
+
+### D9: Noble-position enrichment (1/φ test)
+A more sophisticated version of the φ claim: peaks should cluster at phase
+u = 1/φ ≈ 0.618 (the "noble" position, maximally irrational). Tested with
+targeted enrichment, phase sweep, width sensitivity, ratio ranking, and
+joint 2D heatmap.
+
+**Result**: u=0.618 is not significantly enriched vs phase-rotation null.
+φ does not rank first among tested ratios for noble-position enrichment.
+
+### D10-D11: Robustness checks
+- **D10**: FOOOF parametric peak extraction (instead of median-filter) produces
+  the same null results. Method-independent.
+- **D11**: Bonn epilepsy dataset (non-motor-imagery, addresses motor cortex
+  objection). Same null results across healthy eyes-closed, eyes-open, and
+  seizure classes.
+
+### Verdict (February 2026)
+
+**The φⁿ frequency organization claim is not supported.** The apparent
+enrichment is an artifact of alpha-peak dominance in the marginal peak
+distribution. When tested against a phase-rotation null that controls for
+this, the signal disappears. φ is not uniquely preferred among mathematical
+ratios. The claimed f₀ = 7.5 Hz is not the empirical optimum. The result
+replicates across extraction methods (median-filter, FOOOF) and datasets
+(eegmmidb, Bonn).
+
+---
+
+## Current work (2026-04-03)
 
 ## Datasets
 
