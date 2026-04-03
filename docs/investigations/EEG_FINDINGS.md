@@ -451,7 +451,7 @@ maintains its own stable dynamics without synchronizing to its neighbors.
 Meditation spectral slopes (n=1,093 windows, 10-second):
 - Mean: 1.975, Median: 1.971, SD: 0.070
 
-| Reference value | Mean |m - ref| |
+| Reference value | Mean distance from ref |
 |:-:|:-:|
 | m = 1.9 | 0.081 |
 | **m = 2.0** | **0.053** (best fit) |
