@@ -23,38 +23,21 @@ Five directions:
   D3: Pairwise discrimination — all 10 pairs among 5 constants (free from D1)
   D4: Ordering dependence — original vs shuffled for each constant
   D5: Delay embedding — delay_embed at τ=1,2,3,5,8, compare vs embedded random
-
-Budget: ~1075 analyzer calls at DATA_SIZE=200 (~0.2s/call) ≈ 4 min total.
 """
 
-import sys
-import os
+import sys, os, time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 import numpy as np
-from collections import defaultdict
-from scipy import stats
-from exotic_geometry_framework import GeometryAnalyzer, delay_embed
+from exotic_geometry_framework import delay_embed
+from tools.investigation_runner import Runner
+
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 N_TRIALS = 25
-DATA_SIZE = 200
-TRIAL_STRIDE = 50
-ALPHA = 0.05
-
-# --- Discover metric names ---
-_analyzer = GeometryAnalyzer().add_all_geometries()
-_dummy = _analyzer.analyze(np.random.default_rng(0).integers(0, 256, 200, dtype=np.uint8))
-METRIC_NAMES = []
-for _r in _dummy.results:
-    for _mn in sorted(_r.metrics.keys()):
-        METRIC_NAMES.append(f"{_r.geometry_name}:{_mn}")
-N_METRICS = len(METRIC_NAMES)
-BONF_ALPHA = ALPHA / N_METRICS
-del _analyzer, _dummy, _r, _mn
-
-print(f"1D metrics: {N_METRICS}, Bonferroni α={BONF_ALPHA:.2e}")
+DATA_SIZE = 2000  # CF coefficients are expensive; 2000 is 10× the original
+N_WORKERS = 8
 
 
 # =========================================================================
@@ -62,62 +45,50 @@ print(f"1D metrics: {N_METRICS}, Bonferroni α={BONF_ALPHA:.2e}")
 # =========================================================================
 
 def compute_cf_coefficients(value_str, n_coeffs):
-    """Compute continued fraction coefficients using mpmath for high precision."""
-    try:
-        from mpmath import mp, mpf, floor as mpfloor
-        mp.dps = max(n_coeffs * 2, 1000)
-        if value_str == 'sqrt2':
-            x = mp.sqrt(2)
-        elif value_str == 'sqrt3':
-            x = mp.sqrt(3)
-        elif value_str == 'e':
-            x = mp.e
-        elif value_str == 'pi':
-            x = mp.pi
-        elif value_str == 'ln2':
-            x = mp.ln(2)
-        else:
-            raise ValueError(f"Unknown constant: {value_str}")
+    """Compute continued fraction coefficients.
 
-        coeffs = []
-        for _ in range(n_coeffs):
-            a = int(mpfloor(x))
-            coeffs.append(a)
-            frac = x - a
-            if frac < mpf('1e-50'):
-                break
-            x = 1 / frac
-        return coeffs
-    except ImportError:
-        # Fallback: known patterns for algebraic constants
-        if value_str == 'sqrt2':
-            return [1] + [2] * (n_coeffs - 1)
-        elif value_str == 'sqrt3':
-            return [1] + [1, 2] * ((n_coeffs - 1) // 2 + 1)
-        elif value_str == 'e':
-            coeffs = [2]
-            k = 1
-            while len(coeffs) < n_coeffs:
-                coeffs.extend([1, 2 * k, 1])
-                k += 1
-            return coeffs[:n_coeffs]
-        elif value_str == 'pi':
-            pi_cf = [3, 7, 15, 1, 292, 1, 1, 1, 2, 1, 3, 1, 14, 2, 1, 1, 2, 2, 2, 2,
-                     1, 84, 2, 1, 1, 15, 3, 13, 1, 4, 2, 6, 6, 99, 1, 2, 2, 6, 3, 5,
-                     1, 1, 6, 8, 1, 7, 1, 2, 3, 7]
-            if n_coeffs > len(pi_cf):
-                print(f"  Warning: Only {len(pi_cf)} π CF coeffs without mpmath")
-            return pi_cf[:n_coeffs]
-        elif value_str == 'ln2':
-            ln2_cf = [0, 1, 2, 3, 1, 6, 3, 1, 1, 2, 1, 1, 1, 1, 3, 10, 1, 1, 1, 2,
-                      1, 1, 3, 2, 4, 2, 1, 3, 2, 1]
-            if n_coeffs > len(ln2_cf):
-                print(f"  Warning: Only {len(ln2_cf)} ln2 CF coeffs without mpmath")
-            return ln2_cf[:n_coeffs]
-        raise
+    Algebraic constants (√2, √3) and e have known CF patterns — generated
+    directly without mpmath. Transcendentals (π, ln2) require mpmath with
+    high precision. The dps requirement is ~1.5× n_coeffs (each CF step
+    consumes roughly log10(a_n) digits; mean a_n under Gauss-Kuzmin is ~3.4,
+    so ~0.5 digits/step plus safety margin).
+    """
+    # Algebraic / patterned constants — exact, no mpmath needed
+    if value_str == 'sqrt2':
+        return [1] + [2] * (n_coeffs - 1)
+    elif value_str == 'sqrt3':
+        return ([1] + [1, 2] * ((n_coeffs - 1) // 2 + 1))[:n_coeffs]
+    elif value_str == 'e':
+        coeffs = [2]
+        k = 1
+        while len(coeffs) < n_coeffs:
+            coeffs.extend([1, 2 * k, 1])
+            k += 1
+        return coeffs[:n_coeffs]
+
+    # Transcendentals — need mpmath
+    from mpmath import mp, mpf, floor as mpfloor
+    mp.dps = max(int(n_coeffs * 1.5) + 500, 1000)
+    if value_str == 'pi':
+        x = mp.pi
+    elif value_str == 'ln2':
+        x = mp.ln(2)
+    else:
+        raise ValueError(f"Unknown constant: {value_str}")
+
+    coeffs = []
+    for _ in range(n_coeffs):
+        a = int(mpfloor(x))
+        coeffs.append(a)
+        frac = x - a
+        if frac < mpf('1e-50'):
+            break
+        x = 1 / frac
+    return coeffs
 
 
-CF_N = 3000  # enough for 25 trials with stride 50 at size 200
+# Need enough coefficients for N_TRIALS non-overlapping windows of DATA_SIZE
+CF_N = N_TRIALS * DATA_SIZE + 1000
 CONSTANTS = ['sqrt2', 'sqrt3', 'e', 'pi', 'ln2']
 CONST_LABELS = {'sqrt2': '√2', 'sqrt3': '√3', 'e': 'e', 'pi': 'π', 'ln2': 'ln 2'}
 
@@ -138,120 +109,55 @@ print("  Spot checks passed")
 
 
 # =========================================================================
-# ENCODING GENERATORS
+# GENERATORS
 # =========================================================================
 
-def gen_cf(name, trial, size=DATA_SIZE):
-    """Generate CF coefficient array for a constant, clipped to uint8."""
-    start = trial * TRIAL_STRIDE
+def make_cf_gen(name):
+    """Return a generator function (rng, size) -> uint8 for a CF constant."""
     coeffs = CF_DATA[name]
-    end = min(start + size, len(coeffs))
-    chunk = coeffs[start:end]
-    if len(chunk) < size:
-        # Wrap around if not enough coefficients
-        n_extra = size - len(chunk)
-        chunk = chunk + coeffs[:n_extra]
-    return np.clip(chunk, 0, 255).astype(np.uint8)
+    max_start = max(1, len(coeffs) - DATA_SIZE)
+    def gen(rng, size):
+        start = int(rng.integers(0, max_start))
+        end = min(start + size, len(coeffs))
+        chunk = coeffs[start:end]
+        if len(chunk) < size:
+            chunk = chunk + coeffs[:size - len(chunk)]
+        return np.clip(chunk, 0, 255).astype(np.uint8)
+    return gen
 
 
-def gen_random(trial, size=DATA_SIZE):
-    """Uniform random uint8 bytes."""
-    return np.random.default_rng(9000 + trial).integers(0, 256, size, dtype=np.uint8)
+def gen_random(rng, size):
+    return rng.integers(0, 256, size, dtype=np.uint8)
 
 
-def gen_gauss_kuzmin(trial, size=DATA_SIZE):
+def gen_gauss_kuzmin(rng, size):
     """IID samples from the Gauss-Kuzmin distribution, clipped to uint8.
     P(a_n = k) = log_2((k+1)^2 / (k*(k+2))) for k = 1, 2, 3, ...
     """
-    rng = np.random.default_rng(7000 + trial)
-    # Precompute CDF up to k=255
     max_k = 255
     probs = np.zeros(max_k)
     for k in range(1, max_k + 1):
         probs[k - 1] = np.log2((k + 1) ** 2 / (k * (k + 2)))
     cdf = np.cumsum(probs)
-    cdf /= cdf[-1]  # normalize (tail probability negligible)
-
+    cdf /= cdf[-1]
     u = rng.random(size)
-    samples = np.searchsorted(cdf, u) + 1  # k starts at 1
+    samples = np.searchsorted(cdf, u) + 1
     return np.clip(samples, 0, 255).astype(np.uint8)
-
-
-# =========================================================================
-# ANALYSIS UTILITIES
-# =========================================================================
-
-def collect_metrics(analyzer, data_arrays):
-    """Run analyzer on list of arrays, collect metrics into dict of lists."""
-    out = {m: [] for m in METRIC_NAMES}
-    for arr in data_arrays:
-        res = analyzer.analyze(arr)
-        for r in res.results:
-            for mn, mv in r.metrics.items():
-                key = f"{r.geometry_name}:{mn}"
-                if key in out and np.isfinite(mv):
-                    out[key].append(mv)
-    return out
-
-
-def cohens_d(a, b):
-    """Compute Cohen's d with degeneracy guard."""
-    na, nb = len(a), len(b)
-    if na < 2 or nb < 2:
-        return 0.0
-    sa, sb = np.std(a, ddof=1), np.std(b, ddof=1)
-    ps = np.sqrt(((na - 1) * sa ** 2 + (nb - 1) * sb ** 2) / (na + nb - 2))
-    if ps < 1e-15:
-        diff = np.mean(a) - np.mean(b)
-        return 0.0 if abs(diff) < 1e-15 else np.sign(diff) * float('inf')
-    return (np.mean(a) - np.mean(b)) / ps
-
-
-def compare(data_a, data_b):
-    """Count significant metrics between two metric dicts."""
-    sig = 0
-    findings = []
-    for m in METRIC_NAMES:
-        a = np.array(data_a.get(m, []))
-        b = np.array(data_b.get(m, []))
-        if len(a) < 3 or len(b) < 3:
-            continue
-        d = cohens_d(a, b)
-        if not np.isfinite(d):
-            continue
-        _, p = stats.ttest_ind(a, b, equal_var=False)
-        if not np.isfinite(p):
-            continue
-        if p < BONF_ALPHA and abs(d) > 0.8:
-            sig += 1
-            findings.append((m, d, p))
-    findings.sort(key=lambda x: -abs(x[1]))
-    return sig, findings
-
-
-def _dark_ax(ax):
-    ax.set_facecolor('#181818')
-    for spine in ax.spines.values():
-        spine.set_color('#444444')
-    ax.tick_params(colors='#cccccc', labelsize=7)
-    return ax
 
 
 # =========================================================================
 # D1: Detection Baseline — each constant vs uniform random
 # =========================================================================
 
-def direction_1(analyzer):
+def direction_1(runner):
     print("\n" + "=" * 78)
     print("D1: DETECTION BASELINE — EACH CONSTANT VS RANDOM")
     print("=" * 78)
-    print(f"  {len(CONSTANTS)} constants × {N_TRIALS} trials + {N_TRIALS} random = "
-          f"{(len(CONSTANTS) + 1) * N_TRIALS} calls")
 
     # Collect random baseline
     print("  random...", end=" ", flush=True)
-    random_arrays = [gen_random(t) for t in range(N_TRIALS)]
-    random_data = collect_metrics(analyzer, random_arrays)
+    random_chunks = [gen_random(rng, DATA_SIZE) for rng in runner.trial_rngs()]
+    random_data = runner.collect(random_chunks)
     print("done")
 
     all_data = {}
@@ -260,19 +166,20 @@ def direction_1(analyzer):
     for name in CONSTANTS:
         label = CONST_LABELS[name]
         print(f"  {label:5s}...", end=" ", flush=True)
-        arrays = [gen_cf(name, t) for t in range(N_TRIALS)]
+        gen = make_cf_gen(name)
+        chunks = [gen(rng, DATA_SIZE) for rng in runner.trial_rngs(offset=100)]
 
-        # Quick stats
-        sample = arrays[0]
+        # Quick stats on first chunk
+        sample = chunks[0]
         n_distinct = len(np.unique(sample))
         ent_vals = np.bincount(sample, minlength=256)
         ent_p = ent_vals[ent_vals > 0] / len(sample)
         entropy = float(-np.sum(ent_p * np.log2(ent_p)))
 
-        data = collect_metrics(analyzer, arrays)
+        data = runner.collect(chunks)
         all_data[name] = data
 
-        n_sig, findings = compare(data, random_data)
+        n_sig, findings = runner.compare(data, random_data)
         d1_results[name] = n_sig
         print(f"{n_sig:3d} sig  (H={entropy:.2f} bits, {n_distinct} distinct)")
         for m, d, p in findings[:3]:
@@ -285,7 +192,7 @@ def direction_1(analyzer):
 # D2: Gauss-Kuzmin Surrogates — THE KEY DIRECTION
 # =========================================================================
 
-def direction_2(analyzer, all_data):
+def direction_2(runner, all_data):
     print("\n" + "=" * 78)
     print("D2: GAUSS-KUZMIN SURROGATES — SEQUENTIAL STRUCTURE TEST")
     print("=" * 78)
@@ -294,16 +201,15 @@ def direction_2(analyzer, all_data):
     print("  sequential correlation beyond the marginal distribution.")
     print(f"  {N_TRIALS} GK surrogate trials")
 
-    # Collect GK surrogates
     print("  GK surrogates...", end=" ", flush=True)
-    gk_arrays = [gen_gauss_kuzmin(t) for t in range(N_TRIALS)]
-    gk_data = collect_metrics(analyzer, gk_arrays)
+    gk_chunks = [gen_gauss_kuzmin(rng, DATA_SIZE) for rng in runner.trial_rngs(offset=200)]
+    gk_data = runner.collect(gk_chunks)
     print("done")
 
     d2_results = {}
     for name in CONSTANTS:
         label = CONST_LABELS[name]
-        n_sig, findings = compare(all_data[name], gk_data)
+        n_sig, findings = runner.compare(all_data[name], gk_data)
         d2_results[name] = n_sig
         print(f"  {label:5s} vs GK: {n_sig:3d} sig", end="")
         if findings:
@@ -314,7 +220,7 @@ def direction_2(analyzer, all_data):
     print(f"\n  Khinchin's constant K ≈ 2.6854...")
     print(f"  Geometric mean of CF coefficients (excluding a₀):")
     for name in CONSTANTS:
-        coeffs = CF_DATA[name][1:min(len(CF_DATA[name]), 2000)]  # skip a₀
+        coeffs = CF_DATA[name][1:min(len(CF_DATA[name]), 2000)]
         arr = np.array(coeffs, dtype=np.float64)
         arr_pos = arr[arr > 0]
         if len(arr_pos) > 0:
@@ -331,7 +237,7 @@ def direction_2(analyzer, all_data):
 # D3: Pairwise Discrimination — all 10 pairs (free from D1)
 # =========================================================================
 
-def direction_3(all_data):
+def direction_3(runner, all_data):
     print("\n" + "=" * 78)
     print("D3: PAIRWISE DISCRIMINATION (0 extra calls)")
     print("=" * 78)
@@ -341,7 +247,7 @@ def direction_3(all_data):
     for i, n1 in enumerate(CONSTANTS):
         for j, n2 in enumerate(CONSTANTS):
             if j > i:
-                n_sig, findings = compare(all_data[n1], all_data[n2])
+                n_sig, findings = runner.compare(all_data[n1], all_data[n2])
                 d3_matrix[(n1, n2)] = n_sig
                 top_str = ""
                 if findings:
@@ -349,7 +255,6 @@ def direction_3(all_data):
                 print(f"  {CONST_LABELS[n1]:5s} vs {CONST_LABELS[n2]:5s}: "
                       f"{n_sig:3d} sig{top_str}")
 
-    # Key questions
     print(f"\n  Key discriminations:")
     for pair, label in [
         (('sqrt2', 'sqrt3'), "algebraic: √2 vs √3"),
@@ -367,7 +272,7 @@ def direction_3(all_data):
 # D4: Ordering Dependence — original vs shuffled
 # =========================================================================
 
-def direction_4(analyzer, all_data):
+def direction_4(runner, all_data):
     print("\n" + "=" * 78)
     print("D4: ORDERING DEPENDENCE — ORIGINAL VS SHUFFLED")
     print("=" * 78)
@@ -379,16 +284,17 @@ def direction_4(analyzer, all_data):
     for name in CONSTANTS:
         label = CONST_LABELS[name]
         print(f"  {label:5s}...", end=" ", flush=True)
-        # Generate shuffled versions
-        shuf_arrays = []
-        for t in range(N_TRIALS):
-            arr = gen_cf(name, t)
-            s = arr.copy()
-            np.random.default_rng(1000 + t).shuffle(s)
-            shuf_arrays.append(s)
-        shuf_data = collect_metrics(analyzer, shuf_arrays)
+        gen = make_cf_gen(name)
+        rngs = runner.trial_rngs(offset=100)
+        orig_chunks = [gen(rng, DATA_SIZE) for rng in rngs]
+        shuf_chunks = []
+        for i, chunk in enumerate(orig_chunks):
+            s = chunk.copy()
+            np.random.default_rng(1000 + i).shuffle(s)
+            shuf_chunks.append(s)
+        shuf_data = runner.collect(shuf_chunks)
 
-        n_sig, findings = compare(all_data[name], shuf_data)
+        n_sig, findings = runner.compare(all_data[name], shuf_data)
         d4_results[name] = n_sig
         note = ""
         if name == 'sqrt2':
@@ -401,16 +307,16 @@ def direction_4(analyzer, all_data):
 
     # Random self-check
     print(f"  random self-check...", end=" ", flush=True)
-    shuf_random = []
-    for t in range(N_TRIALS):
-        arr = gen_random(t)
-        s = arr.copy()
-        np.random.default_rng(2000 + t).shuffle(s)
-        shuf_random.append(s)
-    rand_orig = [gen_random(t) for t in range(N_TRIALS)]
-    rand_orig_data = collect_metrics(analyzer, rand_orig)
-    shuf_rand_data = collect_metrics(analyzer, shuf_random)
-    n_sig_rand, _ = compare(rand_orig_data, shuf_rand_data)
+    rand_rngs = runner.trial_rngs(offset=300)
+    rand_orig = [gen_random(rng, DATA_SIZE) for rng in rand_rngs]
+    rand_shuf = []
+    for i, chunk in enumerate(rand_orig):
+        s = chunk.copy()
+        np.random.default_rng(2000 + i).shuffle(s)
+        rand_shuf.append(s)
+    rand_orig_data = runner.collect(rand_orig)
+    rand_shuf_data = runner.collect(rand_shuf)
+    n_sig_rand, _ = runner.compare(rand_orig_data, rand_shuf_data)
     d4_results['random'] = n_sig_rand
     print(f"{n_sig_rand:3d} sig (expect ≈ 0)")
 
@@ -421,35 +327,31 @@ def direction_4(analyzer, all_data):
 # D5: Delay Embedding — amplify sequential correlations
 # =========================================================================
 
-def direction_5(analyzer):
+def direction_5(runner):
     print("\n" + "=" * 78)
     print("D5: DELAY EMBEDDING — CF × τ")
     print("=" * 78)
     taus = [1, 2, 3, 5, 8]
     print(f"  τ = {taus}, {len(CONSTANTS)} constants + random × {N_TRIALS} trials × {len(taus)} τ")
 
-    d5_results = {}  # d5_results[name][tau] = n_sig
+    d5_results = {}
     extra_size = DATA_SIZE + max(taus) + 10
 
     for name in CONSTANTS:
         label = CONST_LABELS[name]
+        gen = make_cf_gen(name)
         d5_results[name] = {}
         print(f"  {label:5s}:", end="", flush=True)
         for tau in taus:
-            # Embedded constant vs embedded random
-            const_emb_arrays = []
-            rand_emb_arrays = []
-            for t in range(N_TRIALS):
-                raw_const = gen_cf(name, t, size=extra_size)
-                raw_rand = gen_random(t, size=extra_size)
-                emb_const = delay_embed(raw_const, tau)[:DATA_SIZE]
-                emb_rand = delay_embed(raw_rand, tau)[:DATA_SIZE]
-                const_emb_arrays.append(emb_const)
-                rand_emb_arrays.append(emb_rand)
-
-            const_emb_data = collect_metrics(analyzer, const_emb_arrays)
-            rand_emb_data = collect_metrics(analyzer, rand_emb_arrays)
-            n_sig, _ = compare(const_emb_data, rand_emb_data)
+            const_rngs = runner.trial_rngs(offset=400)
+            rand_rngs = runner.trial_rngs(offset=500)
+            const_emb = [delay_embed(gen(rng, extra_size), tau)[:DATA_SIZE]
+                         for rng in const_rngs]
+            rand_emb = [delay_embed(gen_random(rng, extra_size), tau)[:DATA_SIZE]
+                        for rng in rand_rngs]
+            const_data = runner.collect(const_emb)
+            rand_data = runner.collect(rand_emb)
+            n_sig, _ = runner.compare(const_data, rand_data)
             d5_results[name][tau] = n_sig
             print(f"  τ={tau}→{n_sig}", end="", flush=True)
         print()
@@ -458,24 +360,15 @@ def direction_5(analyzer):
 
 
 # =========================================================================
-# FIGURE: 3×2 grid
+# FIGURE: 3×2 grid (D5 spans bottom row)
 # =========================================================================
 
-def make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus):
+def make_figure(runner, d1_results, d2_results, d3_matrix, d4_results, d5_results, taus):
     print("\nGenerating figure...", flush=True)
 
+    runner._apply_dark_theme()
     BG = '#181818'
     FG = '#e0e0e0'
-
-    plt.rcParams.update({
-        'figure.facecolor': BG,
-        'axes.facecolor': BG,
-        'axes.edgecolor': '#444444',
-        'axes.labelcolor': FG,
-        'text.color': FG,
-        'xtick.color': '#cccccc',
-        'ytick.color': '#cccccc',
-    })
 
     fig = plt.figure(figsize=(20, 16), facecolor=BG)
     gs = gridspec.GridSpec(3, 2, figure=fig, hspace=0.35, wspace=0.30)
@@ -483,44 +376,40 @@ def make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus)
     colors = {'sqrt2': '#E91E63', 'sqrt3': '#FF9800', 'e': '#4CAF50',
               'pi': '#2196F3', 'ln2': '#9C27B0'}
 
-    # ── (0,0) D1: Detection bar chart ──
-    ax = _dark_ax(fig.add_subplot(gs[0, 0]))
     names = CONSTANTS
     labels = [CONST_LABELS[n] for n in names]
-    sigs = [d1_results[n] for n in names]
-    bars = ax.bar(range(len(names)), sigs,
-                  color=[colors[n] for n in names], alpha=0.85, edgecolor='#333')
-    ax.set_xticks(range(len(names)))
-    ax.set_xticklabels(labels, fontsize=10)
-    ax.set_ylabel('Sig metrics vs random', fontsize=9, color=FG)
-    ax.set_title('D1: Detection Baseline — CF vs Random', fontsize=11,
-                 fontweight='bold', color=FG)
-    for i, v in enumerate(sigs):
-        ax.text(i, v + 0.5, str(v), ha='center', color=FG, fontsize=9, fontweight='bold')
 
-    # ── (0,1) D2: Real vs GK surrogate ──
-    ax = _dark_ax(fig.add_subplot(gs[0, 1]))
-    gk_sigs = [d2_results[n] for n in names]
-    bars = ax.bar(range(len(names)), gk_sigs,
-                  color=[colors[n] for n in names], alpha=0.85, edgecolor='#333')
+    # (0,0) D1: Detection bar chart
+    ax = runner.dark_ax(fig.add_subplot(gs[0, 0]))
+    sigs = [d1_results[n] for n in names]
+    ax.bar(range(len(names)), sigs,
+           color=[colors[n] for n in names], alpha=0.85, edgecolor='#333')
     ax.set_xticks(range(len(names)))
     ax.set_xticklabels(labels, fontsize=10)
-    ax.set_ylabel('Sig metrics vs Gauss-Kuzmin', fontsize=9, color=FG)
-    ax.set_title('D2: Beyond Gauss-Kuzmin — Sequential Structure',
-                 fontsize=11, fontweight='bold', color=FG)
+    ax.set_ylabel('Sig metrics vs random', fontsize=9)
+    ax.set_title('D1: Detection Baseline — CF vs Random', fontsize=11, fontweight='bold')
+    for i, v in enumerate(sigs):
+        ax.text(i, v + 0.5, str(v), ha='center', fontsize=9, fontweight='bold', color=FG)
+
+    # (0,1) D2: Real vs GK surrogate
+    ax = runner.dark_ax(fig.add_subplot(gs[0, 1]))
+    gk_sigs = [d2_results[n] for n in names]
+    ax.bar(range(len(names)), gk_sigs,
+           color=[colors[n] for n in names], alpha=0.85, edgecolor='#333')
+    ax.set_xticks(range(len(names)))
+    ax.set_xticklabels(labels, fontsize=10)
+    ax.set_ylabel('Sig metrics vs Gauss-Kuzmin', fontsize=9)
+    ax.set_title('D2: Beyond Gauss-Kuzmin — Sequential Structure', fontsize=11, fontweight='bold')
     for i, v in enumerate(gk_sigs):
-        ax.text(i, v + 0.5, str(v), ha='center', color=FG, fontsize=9, fontweight='bold')
-    # Add annotation for key result
-    pi_sig = d2_results['pi']
-    ln2_sig = d2_results['ln2']
+        ax.text(i, v + 0.5, str(v), ha='center', fontsize=9, fontweight='bold', color=FG)
     ax.text(0.98, 0.95,
-            f"π vs GK: {pi_sig}\nln2 vs GK: {ln2_sig}",
+            f"π vs GK: {d2_results['pi']}\nln2 vs GK: {d2_results['ln2']}",
             transform=ax.transAxes, fontsize=8, va='top', ha='right',
             color='#aaa', fontfamily='monospace',
             bbox=dict(boxstyle='round,pad=0.3', facecolor='#222', edgecolor='#444'))
 
-    # ── (1,0) D3: Pairwise heatmap ──
-    ax = _dark_ax(fig.add_subplot(gs[1, 0]))
+    # (1,0) D3: Pairwise heatmap
+    ax = runner.dark_ax(fig.add_subplot(gs[1, 0]))
     n = len(names)
     mat = np.zeros((n, n))
     for i, n1 in enumerate(names):
@@ -541,12 +430,11 @@ def make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus)
                 ax.text(j, i, f'{int(mat[i, j])}', ha='center', va='center',
                         fontsize=9, fontweight='bold',
                         color='white' if mat[i, j] > mat.max() / 2 else '#aaa')
-    ax.set_title('D3: Pairwise Discrimination', fontsize=11,
-                 fontweight='bold', color=FG)
+    ax.set_title('D3: Pairwise Discrimination', fontsize=11, fontweight='bold')
     plt.colorbar(im, ax=ax, shrink=0.8)
 
-    # ── (1,1) D4: Ordering dependence ──
-    ax = _dark_ax(fig.add_subplot(gs[1, 1]))
+    # (1,1) D4: Ordering dependence
+    ax = runner.dark_ax(fig.add_subplot(gs[1, 1]))
     d4_names = CONSTANTS + ['random']
     d4_labels = [CONST_LABELS.get(n, n) for n in d4_names]
     d4_sigs = [d4_results[n] for n in d4_names]
@@ -555,74 +443,69 @@ def make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus)
            color=d4_colors, alpha=0.85, edgecolor='#333')
     ax.set_xticks(range(len(d4_names)))
     ax.set_xticklabels(d4_labels, fontsize=10)
-    ax.set_ylabel('Sig metrics (orig vs shuffled)', fontsize=9, color=FG)
-    ax.set_title('D4: Ordering Dependence', fontsize=11,
-                 fontweight='bold', color=FG)
+    ax.set_ylabel('Sig metrics (orig vs shuffled)', fontsize=9)
+    ax.set_title('D4: Ordering Dependence', fontsize=11, fontweight='bold')
     for i, v in enumerate(d4_sigs):
-        ax.text(i, v + 0.3, str(v), ha='center', color=FG, fontsize=9, fontweight='bold')
+        ax.text(i, v + 0.3, str(v), ha='center', fontsize=9, fontweight='bold', color=FG)
 
-    # ── (2,0) D5: Sig vs τ line plot ──
-    ax = _dark_ax(fig.add_subplot(gs[2, :]))
+    # (2,:) D5: Sig vs τ line plot (spans bottom row)
+    ax = runner.dark_ax(fig.add_subplot(gs[2, :]))
     for name in CONSTANTS:
-        label = CONST_LABELS[name]
         sig_vals = [d5_results[name][tau] for tau in taus]
         ax.plot(range(len(taus)), sig_vals, 'o-', color=colors[name],
-                linewidth=2, markersize=6, alpha=0.85, label=label)
+                linewidth=2, markersize=6, alpha=0.85, label=CONST_LABELS[name])
     ax.set_xticks(range(len(taus)))
-    ax.set_xticklabels([str(t) for t in taus], fontsize=9, color=FG)
-    ax.set_xlabel('Delay τ', fontsize=9, color=FG)
-    ax.set_ylabel('Sig metrics (embedded CF vs embedded random)', fontsize=8, color=FG)
-    ax.set_title('D5: Delay Embedding', fontsize=11, fontweight='bold', color=FG)
-    ax.legend(fontsize=8, facecolor='#222', edgecolor='#444', labelcolor=FG,
-              loc='best')
+    ax.set_xticklabels([str(t) for t in taus], fontsize=9)
+    ax.set_xlabel('Delay τ', fontsize=9)
+    ax.set_ylabel('Sig metrics (embedded CF vs embedded random)', fontsize=8)
+    ax.set_title('D5: Delay Embedding', fontsize=11, fontweight='bold')
+    ax.legend(fontsize=8, facecolor='#222', edgecolor='#444', labelcolor=FG, loc='best')
 
     fig.suptitle('Continued Fraction Geometry: Sequential Structure Beyond Gauss-Kuzmin',
                  fontsize=14, fontweight='bold', color=FG, y=0.995)
 
-    out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            '..', '..', 'figures', 'continued_fractions.png')
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    fig.savefig(out_path, dpi=180, bbox_inches='tight', facecolor=BG)
-    print(f"  Saved continued_fractions.png")
-    plt.close(fig)
+    runner.save(fig, "continued_fractions")
 
 
 # =========================================================================
 # MAIN
 # =========================================================================
 
+def main():
+    t0 = time.time()
+    runner = Runner("Continued Fractions", mode="1d",
+                    n_workers=N_WORKERS, data_size=DATA_SIZE,
+                    n_trials=N_TRIALS)
+
+    print("=" * 78)
+    print("CONTINUED FRACTION GEOMETRY")
+    print("=" * 78)
+
+    try:
+        all_data, random_data, d1_results = direction_1(runner)
+        gk_data, d2_results = direction_2(runner, all_data)
+        d3_matrix = direction_3(runner, all_data)
+        d4_results = direction_4(runner, all_data)
+        d5_results, taus = direction_5(runner)
+
+        make_figure(runner, d1_results, d2_results, d3_matrix, d4_results,
+                    d5_results, taus)
+
+        elapsed = time.time() - t0
+        print(f"\nTotal: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
+
+        runner.print_summary({
+            **{f"D1 {CONST_LABELS[n]}": f"{d1_results[n]} sig vs random"
+               for n in CONSTANTS},
+            **{f"D2 {CONST_LABELS[n]}": f"{d2_results[n]} sig vs GK"
+               for n in CONSTANTS},
+            **{f"D4 {CONST_LABELS[n]}": f"{d4_results[n]} ordering"
+               for n in CONSTANTS},
+            'D4 random': f"{d4_results['random']} self-check",
+        })
+    finally:
+        runner.close()
+
+
 if __name__ == "__main__":
-    analyzer = GeometryAnalyzer().add_all_geometries()
-
-    # D1: Detection baseline (collects all_data for reuse)
-    all_data, random_data, d1_results = direction_1(analyzer)
-
-    # D2: Gauss-Kuzmin surrogates — the key test
-    gk_data, d2_results = direction_2(analyzer, all_data)
-
-    # D3: Pairwise discrimination (free from D1)
-    d3_matrix = direction_3(all_data)
-
-    # D4: Ordering dependence
-    d4_results = direction_4(analyzer, all_data)
-
-    # D5: Delay embedding
-    d5_results, taus = direction_5(analyzer)
-
-    # Figure
-    make_figure(d1_results, d2_results, d3_matrix, d4_results, d5_results, taus)
-
-    # Final summary
-    print(f"\n{'=' * 78}")
-    print("SUMMARY")
-    print(f"{'=' * 78}")
-    for name in CONSTANTS:
-        label = CONST_LABELS[name]
-        d1 = d1_results[name]
-        d2 = d2_results[name]
-        d4 = d4_results[name]
-        peak_tau = max(taus, key=lambda t: d5_results[name][t])
-        d5_peak = d5_results[name][peak_tau]
-        print(f"  {label:5s}: D1={d1:3d} vs rand, D2={d2:3d} vs GK, "
-              f"D4={d4:3d} ordering, D5={d5_peak:3d} (τ={peak_tau})")
-    print(f"  rand:  D4={d4_results['random']:3d} self-check")
+    main()

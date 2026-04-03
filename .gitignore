@@ -58,3 +58,4 @@ NEW_TECHNIQUES.md
 
 # Git worktrees
 .worktrees/
+data/eeg/oiris/

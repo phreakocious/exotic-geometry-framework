@@ -26,8 +26,9 @@ from tools.investigation_runner import Runner
 # ==============================================================
 # CONFIG
 # ==============================================================
-SEED = 42
-np.random.seed(SEED)
+N_TRIALS = 25
+DATA_SIZE = 16384
+N_WORKERS = 8
 
 # ==============================================================
 # DATA GENERATORS
@@ -306,32 +307,35 @@ def make_figure(runner, d1, d2, d3, d4, d5):
 # ==============================================================
 def main():
     t0 = time.time()
-    runner = Runner("Esoteric Code", mode="1d")
+    runner = Runner("Esoteric Code", mode="1d",
+                    n_workers=N_WORKERS, data_size=DATA_SIZE,
+                    n_trials=N_TRIALS)
 
-    print("=" * 60)
+    print("=" * 78)
     print("ESOTERIC CODE: GEOMETRY OF THE BIZARRE")
-    print(f"size={runner.data_size}, trials={runner.n_trials}, "
-          f"metrics={runner.n_metrics}")
-    print("=" * 60)
+    print("=" * 78)
 
-    d1 = direction_1(runner)
-    d2 = direction_2(runner)
-    d3 = direction_3(runner)
-    d4 = direction_4(runner)
-    d5 = direction_5(runner)
+    try:
+        d1 = direction_1(runner)
+        d2 = direction_2(runner)
+        d3 = direction_3(runner)
+        d4 = direction_4(runner)
+        d5 = direction_5(runner)
 
-    make_figure(runner, d1, d2, d3, d4, d5)
+        make_figure(runner, d1, d2, d3, d4, d5)
 
-    elapsed = time.time() - t0
-    print(f"\nTotal: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
+        elapsed = time.time() - t0
+        print(f"\nTotal: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
 
-    runner.print_summary({
-        'D1': f"Taxonomy: {np.mean(d1['matrix'][np.triu_indices_from(d1['matrix'], k=1)]):.1f} avg sig",
-        'D2': f"Malbolge vs Random: {d2['ns']} sig metrics (Is Hell distinguishable?)",
-        'D3': f"Whitespace: {d3['ns']} sig metrics (Structure in the void)",
-        'D4': f"Brainfuck Depth: {d4['ns']} sig metrics (Fractal dimension)",
-        'D5': f"Zalgo Singularity: {d5['ns_list'][-1]} sig at max corruption"
-    })
+        runner.print_summary({
+            'D1': f"Taxonomy: {np.mean(d1['matrix'][np.triu_indices_from(d1['matrix'], k=1)]):.1f} avg sig",
+            'D2': f"Malbolge vs Random: {d2['ns']} sig metrics (Is Hell distinguishable?)",
+            'D3': f"Whitespace: {d3['ns']} sig metrics (Structure in the void)",
+            'D4': f"Brainfuck Depth: {d4['ns']} sig metrics (Fractal dimension)",
+            'D5': f"Zalgo Singularity: {d5['ns_list'][-1]} sig at max corruption"
+        })
+    finally:
+        runner.close()
 
 if __name__ == "__main__":
     main()
