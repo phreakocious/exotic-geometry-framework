@@ -339,7 +339,7 @@ def make_polar_figure(data_by_state):
                  fontsize=16, fontweight='bold', color=FG, y=1.02)
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            '..', '..', 'figures', 'eeg_oiris_polar.png')
+                            '..', '..', 'docs', 'figures', 'eeg_oiris_polar.png')
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     fig.savefig(out_path, dpi=180, facecolor=BG, bbox_inches='tight')
     plt.close(fig)

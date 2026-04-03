@@ -91,16 +91,17 @@ class Runner:
 
     def __init__(self, name, mode='1d', data_size=2000, n_trials=25,
                  alpha=0.05, seed=42, cache=False, n_workers=1,
-                 tier='complete'):
+                 tier='complete', data_mode='bytes'):
         self.name = name
         self.mode = mode
         self.tier = tier
+        self.data_mode = data_mode
         self.data_size = data_size
         self.n_trials = n_trials
         self.alpha = alpha
         self.seed = seed
         self.n_workers = n_workers
-        self.fig_dir = _ROOT / "figures"
+        self.fig_dir = _ROOT / "docs" / "figures"
         self.fig_dir.mkdir(exist_ok=True)
 
         # Cache setup
@@ -113,11 +114,14 @@ class Runner:
         # Setup analyzer and discover metrics
         self.analyzer = GeometryAnalyzer(cache_dir=self.cache_dir)
         if mode == '1d':
-            self.analyzer.add_tier_geometries(tier=tier)
-            dummy = self.analyzer.analyze(
-                np.random.randint(0, 256, data_size, dtype=np.uint8))
+            self.analyzer.add_tier_geometries(tier=tier, data_mode=data_mode)
+            if data_mode == 'bytes':
+                dummy_data = np.random.randint(0, 256, data_size, dtype=np.uint8)
+            else:
+                dummy_data = np.random.rand(data_size)
+            dummy = self.analyzer.analyze(dummy_data)
         elif mode == '2d':
-            self.analyzer.add_spatial_geometries()
+            self.analyzer.add_spatial_geometries(data_mode=data_mode)
             dummy = self.analyzer.analyze(np.random.rand(16, 16))
         else:
             raise ValueError(f"mode must be '1d' or '2d', got '{mode}'")
@@ -370,8 +374,8 @@ class Runner:
         ax.set_title(title, fontsize=11)
         if annotate:
             for xi, yi in zip(x, y):
-                label = f"{yi:.1f}" if isinstance(yi, float) else str(yi)
-                ax.annotate(label, (xi, yi), textcoords="offset points",
+                val_label = f"{yi:.1f}" if isinstance(yi, float) else str(yi)
+                ax.annotate(val_label, (xi, yi), textcoords="offset points",
                             xytext=(0, 10), ha='center', fontsize=9,
                             color='white')
         if label:
