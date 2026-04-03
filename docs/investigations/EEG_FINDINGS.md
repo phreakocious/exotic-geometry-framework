@@ -70,7 +70,7 @@ Rest and sleep have the same temporal dynamics, the same entropy structure, the
 same topological signatures. The spectral slope difference is real but it measures
 frequency content, not structural organization.
 
-**Visual confirmation**: The polar comparison figure (`figures/eeg_oiris_polar.png`)
+**Visual confirmation**: The polar comparison figure (`docs/figures/eeg_oiris_polar.png`)
 shows rest (blue) and sleep (purple) completely interleaved in the EGF panel while
 separated in the O.IRIS panel.
 

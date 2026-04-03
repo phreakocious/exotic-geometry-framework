@@ -1,6 +1,6 @@
 # Investigations
 
-67 self-contained investigation scripts demonstrating the framework across diverse domains.
+74 self-contained investigation scripts demonstrating the framework across diverse domains.
 
 ## Running
 
@@ -22,16 +22,16 @@ python investigations/2d/ecb_penguin.py
 
 Figures are saved to `figures/` (gitignored, generated on demand).
 
-## 1D Investigations (48)
+## 1D Investigations (55)
 
 | Script | Domain | Key Result | Dependencies |
 |--------|--------|------------|-------------|
 | `1d/hashes.py` | Hash functions (MD5, SHA-1, SHA-256, SHA-3, BLAKE2) | 0 significant differences from random. Validates methodology. | hashlib |
 | `1d/prng.py` | PRNGs (RANDU, LCG, MT19937, XorShift) | RANDU d=-19.89, glibc LCG d=-15.00. MT19937 passes. | numpy |
 | `1d/ciphers.py` | Cipher modes (ECB, CTR, CBC) | ECB d=19-146, stream/block CTR invisible. | pycryptodome |
-| `1d/reduced_aes.py` | Reduced-round AES (1-10 rounds) | Sharp cliff at R=4: 40 metrics → 0 metrics. | pycryptodome |
+| `1d/reduced_aes.py` | Reduced-round AES (1-10 rounds) | Cliff R=3→R=4: 29→0 sig. 148 at R=1 (85 marginal, 63 sequential). 15 geometries survive R=3. | pycryptodome |
 | `1d/stego.py` | LSB steganography via bitplane | 1 sig metric (Fisher d=1.06) via LSB correlation. | numpy |
-| `1d/stego_deep.py` | Advanced stego (6 techniques) | PVD: 42 sig raw bytes. Matrix embed: invisible. Bitplane: 0 sig. | numpy, scipy |
+| `1d/stego_deep.py` | Advanced stego (6 techniques) | PVD: 90 sig, SS: 93 sig raw bytes. PVD detectable at 5% rate. Matrix embed: invisible. Bitplane: 0 sig. | numpy, scipy |
 | `1d/chaos.py` | 10 chaotic maps (logistic, Henon, Lorenz, ...) | 10/10 detected, 45/45 pairwise distinguished. | numpy |
 | `1d/dna.py` | DNA sequences (8 organism types) | 291 significant findings. All types distinguishable. | numpy |
 | `1d/nn_weights.py` | Neural network weights | Backdoor detected (d=7.12). Dense vs conv d=11.9. | numpy |
@@ -40,12 +40,12 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/collatz_deep.py` | Deep Collatz I: phase transitions | Sharp k=1→2 boundary (86→35 sig). Tropical slopes match theory. | numpy, scipy |
 | `1d/collatz_deep2.py` | Deep Collatz II: convergence anatomy | 45 convergence-specific metrics. Composition order matters. 37 drift detectors. | numpy, scipy |
 | `1d/primes.py` | Prime number sequences (7 encodings) | 7/7 detected, 21/21 pairwise. Primes vs Cramér model: 55 sig. All ordering-dependent. | numpy, scipy |
-| `1d/primes_deep.py` | Deep prime gaps: what Cramér misses | 52 pure-primality metrics. Sieved Cramér closes gap 54→30. 31 always-sig across scales. | numpy, scipy |
+| `1d/primes_deep.py` | Deep prime gaps: what Cramér misses | 93 pure-primality metrics. 2-adic dominates (d=111). Dist-matched: 52 sequential survivors. 75 always-sig across scales. | numpy, scipy |
 | `1d/number_theory.py` | Arithmetic functions (μ, λ, d, φ, Ω, Mertens, ζ zeros) | 8/8 detected. Mertens vs random walk: 37 sig (beyond RH). All ordering-dependent. | numpy, scipy, mpmath |
 | `1d/continued_fractions.py` | CF coefficients of √2, √3, e, π, ln 2 | π vs Gauss-Kuzmin = 0 sig (passes iid test). π ordering = 0. ln 2 vs GK = 11. | numpy, scipy, mpmath |
-| `1d/rng.py` | RNG quality testing | 10 generators: RANDU=44 sig, Middle-Square=78 | numpy |
+| `1d/rng.py` | RNG quality testing | 10 generators: RANDU=167 sig, Middle-Square=192, XorShift128=1 (Klein Bottle only). MINSTD invisible. 5/5 CRYPTO/GOOD clean. | numpy |
 | `1d/noise_robustness.py` | Noise robustness | 2-4x more noise-tolerant than standard tests | numpy |
-| `1d/noise_deep.py` | Deep noise analysis | IAAFT surrogate decomposition | numpy, scipy |
+| `1d/noise_deep.py` | Deep noise analysis | D4 best at moderate noise (SNR +6dB). Heartbeat stochastic resonance (+18% at noise=0.3). QC geometries 0% survival at noise=0.5. | numpy, scipy |
 | `1d/seti.py` | SETI signal detection | Chaotic modulation at -20dB | numpy |
 | `1d/ai_text.py` | AI text detection | Byte-level text geometry | numpy |
 | `1d/text_geometry.py` | Text structure | Order-2 Markov fools geometry | numpy |
@@ -60,15 +60,21 @@ Figures are saved to `figures/` (gitignored, generated on demand).
 | `1d/primes_deep2.py` | Deep primes II | 14 dist-matched survivors, time-irreversibility | numpy, scipy |
 | `1d/proteins.py` | Protein sequences | Globular vs IDP: 53 sig | numpy |
 | `1d/unsolved.py` | Goldbach's comet | g(2n) vs Hardy-Littlewood: 17 sig beyond HL | numpy, scipy, mpmath |
-| `1d/metric_characterization.py` | Metric analysis | Per-metric sensitivity profiling | numpy |
+| `1d/metric_characterization.py` | Metric analysis | Septagonal most orthogonal (MaxCorr=0.225). 43 dark sensors. 93 needle detectors. | numpy |
 | `1d/structure_vs_chaos.py` | Structure vs chaos | Boundary analysis | numpy |
 | `1d/julia_sweep.py` | Julia set sweep | Parameter space geometry | numpy |
 | `1d/bearing_fault.py` | Bearing faults (CWRU) | 4 conditions, fractal specialization | numpy, scipy |
 | `1d/bearing_fault_baseline.py` | Bearing baseline | Exotic vs standard features | numpy, scipy, scikit-learn |
 | `1d/bearing_fault_ml.py` | Bearing ML | SVM classifier on geometry | numpy, scikit-learn |
-| `1d/structure_atlas.py` | Structure Atlas | 56 sources, 13 domains, 7.7D space | numpy, scipy, h5py |
+| `1d/structure_atlas.py` | Structure Atlas | 202 sources, 16 domains, PR=8.6 (was 7.2) | numpy, scipy, h5py |
 | `1d/math_constants.py` | Math constants | CF taxonomy, representation fingerprints | numpy, mpmath |
 | `1d/mandelbrot_sensor_test.py` | Mandelbrot test | Fractal geometry validation | numpy |
+| `1d/signature_space.py` | Signature space PCA | PR=8.6, 7 PCs interpreted. 18/18 new sources break 7D. Blind spots: heavy tails, space-filling curves. | numpy, scipy |
+| `1d/chaos_deep.py` | Route to chaos (logistic) | Lyapunov tracking: correlation_dimension r=0.923. Byte mode 33% more detections than unit. | numpy, scipy |
+| `1d/number_theory_deep.py` | Additive number theory | σ(n)/n: 222 sig, digit_sum: 224 sig. partition_fn: 8 sig (nearly invisible). | numpy, scipy |
+| `1d/geometry_ablation.py` | Geometry ablation study | D1/D2/D3: do named geometries earn their keep? | numpy, scipy |
+| `1d/per_metric_ablation.py` | Per-metric 2×2 classification | Headline/workhorse/scientific/dead per metric | numpy, scipy |
+| `1d/negative_reeval.py` | Negative result re-evaluation | 3 reclassified positive: Standard Map (44), Arnold Cat (19), GARCH (29) | numpy, scipy |
 
 
 ## 2D Investigations (19)
