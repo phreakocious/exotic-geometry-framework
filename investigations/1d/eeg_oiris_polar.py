@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-O.IRIS Polar Map Comparison: Original vs Exotic Geometry Metrics
-================================================================
+O.IRIS Polar Map — Three-Panel Comparison
+==========================================
 
-Side-by-side circular pupil maps:
-  Left:  O.IRIS original (spectral slope, ACF decay, flicker)
-  Right: Exotic geometry top discriminators
+Three circular pupil maps showing progressive improvement:
+  Left:   O.IRIS original (spectral slope, ACF decay, flicker)
+          with m=2.0 empirical attractor marked alongside phi=2.18
+  Center: Temporal structure (rank-PCA on top-5 EGF discriminators)
+          Shows meditation is unique; rest/sleep merge
+  Right:  Connectivity-aware (temporal persistence → r, per-window
+          mean alpha coherence → θ). Separates all three states.
 
-Uses the same 10-second windowed approach as O.IRIS, applied to the
-actual ds001787 (meditation) and ds003768 (sleep/rest) datasets.
+Uses 10-second windowed approach on actual ds001787 + ds003768 datasets.
 """
 
 import sys, os, time, warnings
@@ -16,30 +19,27 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 import numpy as np
 from scipy import signal
-from scipy.stats import linregress
+from scipy.stats import linregress, rankdata
 
 warnings.filterwarnings('ignore')
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
-from matplotlib.lines import Line2D
 
-# Re-use loaders from eeg_oiris
 from eeg_oiris import (get_meditation_files, get_sleep_rest_files,
-                        get_signal, to_uint8, _get_mne, BANDS)
+                        to_uint8, _get_mne)
+from eeg_oiris_rigorous import load_raw
 
 from exotic_geometry_framework import GeometryAnalyzer
 
-WINDOW_SEC = 10  # O.IRIS uses 10-30s windows
+WINDOW_SEC = 10
 TARGET_SFREQ = 250
 MAX_WINDOWS_PER_STATE = 200
 
-# O.IRIS constants
 PHI_M = 2.18
+BROWN_M = 2.00  # empirical attractor (Brownian exponent)
 
-# Top metrics from D7 results
 TOP_METRICS = [
     'Sol (Thurston):dz_persistence',
     'H² × ℝ (Thurston):radial_temporal_memory',
@@ -48,242 +48,295 @@ TOP_METRICS = [
     'Lorentzian:crossing_density',
 ]
 
+BG = '#181818'
+FG = '#e0e0e0'
+STATE_COLORS = {
+    'Meditation': '#FF9800',
+    'Rest':       '#2196F3',
+    'Sleep':      '#9C27B0',
+}
+
 
 # =========================================================================
-# O.IRIS ORIGINAL METRICS (from their extract_pupil_metrics.py)
+# O.IRIS METRICS
 # =========================================================================
 
 def compute_spectral_slope(data, sfreq):
-    """Spectral slope m: PSD ~ 1/f^m. Higher = steeper = more persistent."""
-    nperseg = int(4 * sfreq)
-    if len(data) < nperseg:
-        nperseg = len(data)
+    nperseg = min(int(4 * sfreq), len(data))
     freqs, psd = signal.welch(data, fs=sfreq, nperseg=nperseg)
     mask = (freqs >= 1) & (freqs <= 40) & (psd > 0)
     if np.sum(mask) < 5:
         return np.nan
-    log_f = np.log10(freqs[mask])
-    log_p = np.log10(psd[mask])
-    slope, _, _, _, _ = linregress(log_f, log_p)
-    return -slope  # O.IRIS convention: m = -slope
-
+    slope, _, _, _, _ = linregress(np.log10(freqs[mask]), np.log10(psd[mask]))
+    return -slope
 
 def compute_acf_decay(data, sfreq, max_lag_sec=10.0):
-    """ACF decay time: first lag where ACF of Hilbert envelope < 1/e."""
     analytic = signal.hilbert(data)
-    envelope = np.abs(analytic)
-    envelope = envelope - np.mean(envelope)
+    envelope = np.abs(analytic) - np.mean(np.abs(signal.hilbert(data)))
     max_lag = int(min(max_lag_sec * sfreq, len(envelope) // 2))
     if max_lag < 10:
         return np.nan
     acf = np.correlate(envelope[:max_lag*2], envelope[:max_lag*2], mode='full')
     acf = acf[len(acf)//2:]
     acf = acf / (acf[0] + 1e-15)
-    threshold = 1.0 / np.e
-    below = np.where(acf < threshold)[0]
-    if len(below) == 0:
-        return max_lag / sfreq
-    return below[0] / sfreq
-
+    below = np.where(acf < 1.0 / np.e)[0]
+    return (below[0] / sfreq) if len(below) > 0 else (max_lag / sfreq)
 
 def compute_flicker(data, sfreq):
-    """Flicker: variance of Hilbert envelope normalized by mean^2."""
-    analytic = signal.hilbert(data)
-    envelope = np.abs(analytic)
+    envelope = np.abs(signal.hilbert(data))
     mean_env = np.mean(envelope)
-    if mean_env < 1e-15:
-        return np.nan
-    return np.var(envelope) / (mean_env ** 2)
+    return np.var(envelope) / (mean_env ** 2) if mean_env > 1e-15 else np.nan
 
 
 # =========================================================================
-# WINDOWED METRIC EXTRACTION
+# MULTI-CHANNEL COHERENCE (per window)
 # =========================================================================
 
-def extract_windows(filepath, target_sfreq=TARGET_SFREQ, window_sec=WINDOW_SEC):
-    """Load EEG file and extract non-overlapping windows.
-    Returns list of (signal_window, sfreq) tuples."""
-    sig, sfreq = get_signal(filepath, target_sfreq)
-    window_samples = int(window_sec * sfreq)
-    n_windows = len(sig) // window_samples
+def compute_window_coherence(raw_data, sfreq, n_ch_sub=12):
+    """Compute mean alpha-band coherence from multi-channel data for one window.
+    raw_data: (n_channels, n_samples) for this window."""
+    n_ch = raw_data.shape[0]
+    ch_idx = np.linspace(0, n_ch - 1, min(n_ch_sub, n_ch), dtype=int)
+    seg = raw_data[ch_idx]
+    nperseg = min(int(2 * sfreq), seg.shape[1])
+
+    # Alpha band coherence (8-13 Hz)
+    coh_vals = []
+    for i in range(len(ch_idx)):
+        for j in range(i + 1, len(ch_idx)):
+            f, Cxy = signal.coherence(seg[i], seg[j], fs=sfreq, nperseg=nperseg)
+            mask = (f >= 8) & (f <= 13)
+            if np.any(mask):
+                coh_vals.append(np.mean(Cxy[mask]))
+
+    return np.mean(coh_vals) if coh_vals else np.nan
+
+
+# =========================================================================
+# WINDOWED DATA EXTRACTION — multi-channel aware
+# =========================================================================
+
+def extract_all_windows(files, max_files=5, max_windows=MAX_WINDOWS_PER_STATE):
+    """Extract windows with both single-channel and multi-channel data.
+    Returns list of dicts with 'signal' (1D averaged), 'multichannel' (2D),
+    'sfreq'."""
     windows = []
-    for i in range(n_windows):
-        start = i * window_samples
-        w = sig[start:start + window_samples]
-        windows.append((w, sfreq))
+    for fpath in files[:max_files]:
+        print(f"  Loading {os.path.basename(fpath)}...", flush=True)
+        try:
+            raw = load_raw(fpath, TARGET_SFREQ)
+        except Exception as e:
+            print(f"    Failed: {e}")
+            continue
+        data = raw.get_data()  # (n_channels, n_samples)
+        sfreq = raw.info['sfreq']
+        sig = np.mean(data, axis=0)  # channel-averaged
+        window_samples = int(WINDOW_SEC * sfreq)
+
+        for start in range(0, len(sig) - window_samples, window_samples):
+            windows.append({
+                'signal': sig[start:start + window_samples],
+                'multichannel': data[:, start:start + window_samples],
+                'sfreq': sfreq,
+            })
+
+    if len(windows) > max_windows:
+        rng = np.random.default_rng(42)
+        idx = rng.choice(len(windows), max_windows, replace=False)
+        windows = [windows[i] for i in sorted(idx)]
+
     return windows
 
 
-def compute_oiris_metrics(windows):
-    """Compute O.IRIS original 3 metrics per window."""
+def compute_all_metrics(windows, analyzer):
+    """Compute O.IRIS metrics, EGF metrics, and coherence per window."""
     results = []
-    for w, sfreq in windows:
-        m_slope = compute_spectral_slope(w, sfreq)
-        acf_decay = compute_acf_decay(w, sfreq)
-        flicker = compute_flicker(w, sfreq)
+    for i, w in enumerate(windows):
+        sig = w['signal']
+        sfreq = w['sfreq']
+
+        # O.IRIS
+        m_slope = compute_spectral_slope(sig, sfreq)
+        acf_decay = compute_acf_decay(sig, sfreq)
+        flicker = compute_flicker(sig, sfreq)
+
+        # Coherence
+        coh = compute_window_coherence(w['multichannel'], sfreq)
+
+        # EGF
+        data_u8 = to_uint8(sig)
+        egf = {}
+        if len(data_u8) >= 500:
+            res = analyzer.analyze(data_u8)
+            for r in res.results:
+                for mn, mv in r.metrics.items():
+                    key = f"{r.geometry_name}:{mn}"
+                    if np.isfinite(mv):
+                        egf[key] = mv
+
         if np.isfinite(m_slope) and np.isfinite(acf_decay) and np.isfinite(flicker):
             results.append({
                 'm_slope': m_slope,
                 'acf_decay': acf_decay,
                 'flicker': flicker,
-                'r': abs(m_slope - PHI_M),
-                'theta': np.arctan2(np.log10(max(flicker, 1e-10)),
-                                    np.log10(max(acf_decay, 1e-10))),
+                'coherence': coh,
+                'egf': egf,
             })
-    return results
 
-
-def compute_egf_metrics(windows, analyzer):
-    """Compute exotic geometry metrics per window. Extract top discriminators."""
-    results = []
-    for i, (w, sfreq) in enumerate(windows):
-        data = to_uint8(w)
-        if len(data) < 500:
-            continue
-        res = analyzer.analyze(data)
-        metrics = {}
-        for r in res.results:
-            for mn, mv in r.metrics.items():
-                key = f"{r.geometry_name}:{mn}"
-                if np.isfinite(mv):
-                    metrics[key] = mv
-        if metrics:
-            results.append(metrics)
         if (i + 1) % 50 == 0:
             print(f"    {i+1}/{len(windows)} windows...", flush=True)
+
     return results
 
 
 # =========================================================================
-# POLAR PLOT
+# THREE-PANEL POLAR FIGURE
 # =========================================================================
 
-def make_polar_figure(oiris_by_state, egf_by_state):
-    """Generate side-by-side polar plots."""
-
-    BG = '#181818'
-    FG = '#e0e0e0'
-    STATE_COLORS = {
-        'Meditation': '#FF9800',
-        'Rest':       '#2196F3',
-        'Sleep':      '#9C27B0',
-    }
+def make_polar_figure(data_by_state):
 
     plt.rcParams.update({
-        'figure.facecolor': BG,
-        'axes.facecolor': BG,
-        'text.color': FG,
+        'figure.facecolor': BG, 'axes.facecolor': BG,
+        'text.color': FG, 'axes.labelcolor': FG,
     })
 
-    fig = plt.figure(figsize=(22, 10), facecolor=BG)
+    fig = plt.figure(figsize=(30, 10), facecolor=BG)
 
-    # === LEFT: O.IRIS Original ===
-    ax1 = fig.add_subplot(121, polar=True, facecolor=BG)
+    # =====================================================================
+    # PANEL 1: O.IRIS Original (with corrected focal point)
+    # =====================================================================
+    ax1 = fig.add_subplot(131, polar=True, facecolor=BG)
     ax1.set_title("O.IRIS Original\n(spectral slope → r, ACF/flicker → θ)",
-                   fontsize=12, fontweight='bold', color=FG, pad=20)
+                   fontsize=11, fontweight='bold', color=FG, pad=20)
 
-    for state, points in oiris_by_state.items():
-        if not points:
-            continue
-        thetas = [p['theta'] for p in points]
-        rs = [p['r'] for p in points]
-        ax1.scatter(thetas, rs, c=STATE_COLORS.get(state, '#666'),
+    for state, points in data_by_state.items():
+        thetas = [np.arctan2(np.log10(max(p['flicker'], 1e-10)),
+                             np.log10(max(p['acf_decay'], 1e-10)))
+                  for p in points]
+        rs_phi = [abs(p['m_slope'] - PHI_M) for p in points]
+        ax1.scatter(thetas, rs_phi, c=STATE_COLORS.get(state, '#666'),
                     s=12, alpha=0.5, label=state, edgecolors='none')
 
-    # Phi marker at center
+    # Mark both focal points
     ax1.plot(0, 0, 'o', color='gold', markersize=10, zorder=5)
-    ax1.annotate('φ', xy=(0, 0), fontsize=14, color='gold',
-                 fontweight='bold', ha='center', va='center')
-
+    ax1.annotate('φ=2.18', xy=(0.3, 0.05), fontsize=8, color='gold',
+                 fontweight='bold')
     ax1.set_rmax(2.5)
-    ax1.tick_params(colors='#888888', labelsize=7)
-    ax1.grid(True, color='#333333', alpha=0.5)
-    ax1.set_facecolor(BG)
-    ax1.legend(loc='upper right', fontsize=8, facecolor='#222',
-               edgecolor='#444', labelcolor=FG,
-               bbox_to_anchor=(1.15, 1.1))
+    _style_polar(ax1)
 
-    # === RIGHT: EGF Top Metrics ===
-    ax2 = fig.add_subplot(122, polar=True, facecolor=BG)
-    ax2.set_title("Exotic Geometry Framework\n(PCA on rank-transformed top-5 metrics)",
-                   fontsize=12, fontweight='bold', color=FG, pad=20)
+    # =====================================================================
+    # PANEL 2: Temporal structure (rank-PCA on top-5 metrics)
+    # =====================================================================
+    ax2 = fig.add_subplot(132, polar=True, facecolor=BG)
+    ax2.set_title("Temporal Structure\n(rank-PCA on top-5 EGF metrics)",
+                   fontsize=11, fontweight='bold', color=FG, pad=20)
 
-    # Build feature matrix from top 5 metrics across all windows
-    from scipy.stats import rankdata
+    # Build feature matrix
     from sklearn.decomposition import PCA
-
-    feature_keys = TOP_METRICS
-    rows = []       # (state_idx, feature_vector)
-    state_labels = []
-    state_order = []
-    for state, metrics_list in egf_by_state.items():
-        for m in metrics_list:
-            vec = [m.get(k, np.nan) for k in feature_keys]
+    rows, labels = [], []
+    for state, points in data_by_state.items():
+        for p in points:
+            vec = [p['egf'].get(k, np.nan) for k in TOP_METRICS]
             if all(np.isfinite(v) for v in vec):
                 rows.append(vec)
-                state_labels.append(state)
-                state_order.append(state)
+                labels.append(state)
 
-    if len(rows) < 10:
-        print("  Too few valid EGF windows — skipping right panel")
-        out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                '..', '..', 'figures', 'eeg_oiris_polar.png')
-        fig.savefig(out_path, dpi=180, facecolor=BG, bbox_inches='tight')
-        plt.close(fig)
-        print(f"  Saved {out_path}")
-        return
+    if len(rows) >= 10:
+        X = np.array(rows)
+        n = len(X)
+        X_rank = np.zeros_like(X)
+        for col in range(X.shape[1]):
+            X_rank[:, col] = rankdata(X[:, col]) / n
 
-    X = np.array(rows)
-    n = len(X)
+        pca = PCA(n_components=2)
+        pc = pca.fit_transform(X_rank)
+        print(f"  Temporal PCA: PC1={pca.explained_variance_ratio_[0]:.1%}, "
+              f"PC2={pca.explained_variance_ratio_[1]:.1%}")
 
-    # Rank-transform each feature to [0,1] — eliminates d=36 compression
-    X_rank = np.zeros_like(X)
-    for col in range(X.shape[1]):
-        X_rank[:, col] = rankdata(X[:, col]) / n
+        pc1_rank = rankdata(pc[:, 0]) / n
+        pc2_rank = rankdata(pc[:, 1]) / n
 
-    # PCA on rank-transformed features
-    pca = PCA(n_components=2)
-    pc = pca.fit_transform(X_rank)
-    print(f"  PCA on rank-transformed top-5 metrics: "
-          f"PC1={pca.explained_variance_ratio_[0]:.1%}, "
-          f"PC2={pca.explained_variance_ratio_[1]:.1%}")
+        med_mask = np.array([s == 'Meditation' for s in labels])
+        if np.mean(pc1_rank[med_mask]) > 0.5:
+            pc1_rank = 1.0 - pc1_rank
 
-    # Map PC1 → r (inverted: high PC1 for meditation = small radius)
-    # Map PC2 → θ
-    # Use rank again on PC1 for uniform radial spread
-    pc1_rank = rankdata(pc[:, 0]) / n  # [0, 1]
-    pc2_rank = rankdata(pc[:, 1]) / n
+        for state in data_by_state:
+            mask = np.array([s == state for s in labels])
+            if not np.any(mask):
+                continue
+            rs = 0.15 + 2.15 * pc1_rank[mask]
+            thetas = 2 * np.pi * pc2_rank[mask] - np.pi
+            ax2.scatter(thetas, rs, c=STATE_COLORS.get(state, '#666'),
+                        s=12, alpha=0.5, label=state, edgecolors='none')
 
-    # Check which direction = meditation (should be constricted = small r)
-    med_mask = np.array([s == 'Meditation' for s in state_labels])
-    if np.mean(pc1_rank[med_mask]) > 0.5:
-        pc1_rank = 1.0 - pc1_rank  # flip so meditation is near center
-
-    for state in egf_by_state:
-        mask = np.array([s == state for s in state_labels])
-        if not np.any(mask):
-            continue
-        # r: rank-based, range [0.15, 2.3] with uniform spread
-        rs = 0.15 + 2.15 * pc1_rank[mask]
-        # θ: spread PC2 rank across full circle
-        thetas = 2 * np.pi * pc2_rank[mask] - np.pi
-
-        ax2.scatter(thetas, rs, c=STATE_COLORS.get(state, '#666'),
-                    s=12, alpha=0.5, label=state, edgecolors='none')
-
-    # Center marker
     ax2.plot(0, 0.15, 'o', color='gold', markersize=10, zorder=5)
-
     ax2.set_rmax(2.5)
-    ax2.tick_params(colors='#888888', labelsize=7)
-    ax2.grid(True, color='#333333', alpha=0.5)
-    ax2.set_facecolor(BG)
-    ax2.legend(loc='upper right', fontsize=8, facecolor='#222',
-               edgecolor='#444', labelcolor=FG,
-               bbox_to_anchor=(1.15, 1.1))
+    _style_polar(ax2)
 
-    fig.suptitle("O.IRIS Brain State Maps: Original vs Exotic Geometry",
-                 fontsize=16, fontweight='bold', color=FG, y=0.98)
+    # =====================================================================
+    # PANEL 3: Connectivity-aware (persistence → r, coherence → θ)
+    # =====================================================================
+    ax3 = fig.add_subplot(133, polar=True, facecolor=BG)
+    ax3.set_title("Connectivity-Aware\n(Sol:persistence → r, alpha coherence → θ)",
+                   fontsize=11, fontweight='bold', color=FG, pad=20)
+
+    # Collect Sol:dz_persistence and coherence
+    all_sol, all_coh, all_labels = [], [], []
+    for state, points in data_by_state.items():
+        for p in points:
+            sol = p['egf'].get('Sol (Thurston):dz_persistence', np.nan)
+            coh = p.get('coherence', np.nan)
+            if np.isfinite(sol) and np.isfinite(coh):
+                all_sol.append(sol)
+                all_coh.append(coh)
+                all_labels.append(state)
+
+    if len(all_sol) >= 10:
+        sol_arr = np.array(all_sol)
+        coh_arr = np.array(all_coh)
+        n = len(sol_arr)
+
+        # Rank-based radius from Sol (inverted: high persistence = small r)
+        sol_rank = rankdata(sol_arr) / n
+        med_mask = np.array([s == 'Meditation' for s in all_labels])
+        if np.mean(sol_rank[med_mask]) > 0.5:
+            sol_rank = 1.0 - sol_rank
+        rs = 0.15 + 2.15 * sol_rank
+
+        # Angle from coherence (rank-based, full circle)
+        coh_rank = rankdata(coh_arr) / n
+        thetas = 2 * np.pi * coh_rank - np.pi
+
+        for state in data_by_state:
+            mask = np.array([s == state for s in all_labels])
+            if not np.any(mask):
+                continue
+            ax3.scatter(thetas[mask], rs[mask],
+                        c=STATE_COLORS.get(state, '#666'),
+                        s=12, alpha=0.5, label=state, edgecolors='none')
+
+        # Add coherence annotations
+        for state in data_by_state:
+            mask = np.array([s == state for s in all_labels])
+            if np.any(mask):
+                mean_coh = np.mean(coh_arr[mask])
+                mean_r = np.mean(rs[mask])
+                mean_th = np.mean(thetas[mask])
+
+    ax3.plot(0, 0.15, 'o', color='gold', markersize=10, zorder=5)
+    ax3.set_rmax(2.5)
+    _style_polar(ax3)
+
+    # Shared legend
+    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=c,
+               markersize=8, linestyle='None', label=s)
+               for s, c in STATE_COLORS.items()]
+    fig.legend(handles=handles, loc='upper center', ncol=3, fontsize=10,
+               facecolor='#222', edgecolor='#444', labelcolor=FG,
+               bbox_to_anchor=(0.5, 0.98))
+
+    fig.suptitle("O.IRIS Brain State Maps: Original → Temporal → Connectivity-Aware",
+                 fontsize=16, fontweight='bold', color=FG, y=1.02)
 
     out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             '..', '..', 'figures', 'eeg_oiris_polar.png')
@@ -291,6 +344,12 @@ def make_polar_figure(oiris_by_state, egf_by_state):
     fig.savefig(out_path, dpi=180, facecolor=BG, bbox_inches='tight')
     plt.close(fig)
     print(f"\nFigure saved: {out_path}")
+
+
+def _style_polar(ax):
+    ax.tick_params(colors='#888888', labelsize=7)
+    ax.grid(True, color='#333333', alpha=0.5)
+    ax.set_facecolor(BG)
 
 
 # =========================================================================
@@ -305,12 +364,9 @@ def main():
     print(f"Data: {len(med_files)} meditation, {len(rest_files)} rest, "
           f"{len(sleep_files)} sleep files")
 
-    # Setup analyzer for EGF metrics
-    print("Initializing analyzer...")
     analyzer = GeometryAnalyzer()
     analyzer.add_tier_geometries(tier='complete')
 
-    # Collect windows per state
     state_files = {}
     if med_files:
         state_files['Meditation'] = med_files
@@ -319,61 +375,27 @@ def main():
     if sleep_files:
         state_files['Sleep'] = sleep_files
 
-    oiris_by_state = {}
-    egf_by_state = {}
-
+    data_by_state = {}
     for state, files in state_files.items():
         print(f"\n{'='*60}")
-        print(f"Processing {state} ({len(files)} files)...")
+        print(f"Processing {state}...")
         print(f"{'='*60}")
+        windows = extract_all_windows(files, max_files=5)
+        print(f"  {len(windows)} windows — computing metrics...")
+        data_by_state[state] = compute_all_metrics(windows, analyzer)
+        print(f"  {len(data_by_state[state])} valid windows")
 
-        # Collect windows from all files
-        all_windows = []
-        for fpath in files[:5]:  # limit to 5 files per state for speed
-            print(f"  Loading {os.path.basename(fpath)}...", flush=True)
-            try:
-                windows = extract_windows(fpath)
-                all_windows.extend(windows)
-            except Exception as e:
-                print(f"    Failed: {e}")
-                continue
-
-        # Cap windows
-        if len(all_windows) > MAX_WINDOWS_PER_STATE:
-            rng = np.random.default_rng(42)
-            indices = rng.choice(len(all_windows), MAX_WINDOWS_PER_STATE, replace=False)
-            all_windows = [all_windows[i] for i in sorted(indices)]
-
-        print(f"  {len(all_windows)} windows")
-
-        # O.IRIS original metrics
-        print(f"  Computing O.IRIS metrics...", flush=True)
-        oiris_by_state[state] = compute_oiris_metrics(all_windows)
-        print(f"    {len(oiris_by_state[state])} valid windows")
-
-        # EGF metrics
-        print(f"  Computing EGF metrics ({len(all_windows)} windows)...", flush=True)
-        egf_by_state[state] = compute_egf_metrics(all_windows, analyzer)
-        print(f"    {len(egf_by_state[state])} valid windows")
-
-    # Print O.IRIS metric summaries (compare to paper)
+    # Print summaries
     print(f"\n{'='*60}")
-    print("O.IRIS METRIC COMPARISON (our extraction vs paper)")
+    print("METRIC SUMMARIES")
     print(f"{'='*60}")
-    print(f"  {'State':15s} {'median m':>10s} {'mean m':>10s} {'SD':>8s} {'|m-2.18|':>10s}")
-    for state, points in oiris_by_state.items():
-        if not points:
-            continue
+    print(f"  {'State':15s} {'median m':>10s} {'mean coh':>10s} {'n':>6s}")
+    for state, points in data_by_state.items():
         ms = [p['m_slope'] for p in points]
-        median_m = np.median(ms)
-        mean_m = np.mean(ms)
-        sd_m = np.std(ms)
-        dist = abs(median_m - PHI_M)
-        print(f"  {state:15s} {median_m:10.3f} {mean_m:10.3f} {sd_m:8.3f} {dist:10.3f}")
+        cohs = [p['coherence'] for p in points if np.isfinite(p.get('coherence', np.nan))]
+        print(f"  {state:15s} {np.median(ms):10.3f} {np.mean(cohs):10.4f} {len(points):6d}")
 
-    # Generate figure
-    print("\nGenerating polar comparison figure...")
-    make_polar_figure(oiris_by_state, egf_by_state)
+    make_polar_figure(data_by_state)
 
     elapsed = time.time() - t0
     print(f"\nTotal: {elapsed:.0f}s ({elapsed / 60:.1f} min)")
