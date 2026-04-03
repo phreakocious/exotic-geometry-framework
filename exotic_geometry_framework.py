@@ -8850,7 +8850,7 @@ class LaplacianGeometry(ExoticGeometry):
     """1D discrete Laplacian analysis.
 
     Applies the discrete Laplacian (second difference) and its iterates to
-    a 1D signal.  Six metrics:
+    a 1D signal.  Eight metrics:
 
     - biharmonic_ratio: ||f''''||² / ||f''||²  — energy cascade from curvature
       to curvature-of-curvature.  Low for smooth signals (energy dies fast),
@@ -8868,6 +8868,12 @@ class LaplacianGeometry(ExoticGeometry):
       curvature regimes that shuffling destroys.
     - cross_scale_curvature_coherence: correlation of |Laplacian| at scale 1
       vs scale 2 (dilated kernel).  Hierarchical curvature consistency.
+    - gradient_curvature_anticorrelation: correlation between monotone-run mask
+      and |f''|, negated.  Measures whether smooth runs coincide with low
+      curvature — structural coupling that shuffling destroys.
+    - laplacian_evolutionary_index: product of curvature_autocorrelation and
+      gradient_curvature_anticorrelation.  Interaction term capturing joint
+      curvature clustering + run/curvature coupling.
     """
 
     def __init__(self, input_scale: float = 255.0):
@@ -8988,6 +8994,29 @@ class LaplacianGeometry(ExoticGeometry):
                 metrics['cross_scale_curvature_coherence'] = 0.0
         else:
             metrics['cross_scale_curvature_coherence'] = 0.0
+
+        # Gradient/Curvature Anti-correlation:
+        # Structured signals tend to have smooth runs (high persistence)
+        # coinciding with low curvature.
+        if len(d1) > 1 and len(d2) > 1:
+            p_mask = (np.sign(d1[:-1]) * np.sign(d1[1:]) > 0).astype(np.float64)
+            # Match lengths for correlation
+            ml_corr = min(len(p_mask), len(abs_d2))
+            pm = p_mask[:ml_corr]
+            ad = abs_d2[:ml_corr]
+            if np.std(pm) > 1e-9 and np.std(ad) > 1e-9:
+                anticorr = np.corrcoef(pm, ad)[0, 1]
+                metrics['gradient_curvature_anticorrelation'] = float(-anticorr if np.isfinite(anticorr) else 0.0)
+            else:
+                metrics['gradient_curvature_anticorrelation'] = 0.0
+        else:
+            metrics['gradient_curvature_anticorrelation'] = 0.0
+
+        # Laplacian Evolutionary Index: Product of autocorrelation and anti-correlation.
+        # This was discovered via genetic evolution to be highly discriminative.
+        metrics['laplacian_evolutionary_index'] = float(
+            metrics['curvature_autocorrelation'] * metrics['gradient_curvature_anticorrelation']
+        )
 
         return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
 
@@ -10668,12 +10697,12 @@ class HodgeLaplacianGeometry(ExoticGeometry):
     Analyzes the field through the lens of the Laplacian operator and its
     iterated applications: the Laplacian Δf (source/sink density), the
     biharmonic Δ²f (curvature of curvature), and the Poisson recovery
-    error (non-periodic boundary content).
+    error (non-periodic boundary content).  Also measures directional
+    anisotropy from the 1D→2D row-major reshape.
 
-    The FFT Poisson solver recovers f from Δf assuming periodic boundaries.
-    The recovery error measures how much structure lives at the boundary
-    (non-periodic content). Stego disrupts fine-scale Laplacian statistics
-    and shifts the energy partition between Dirichlet and biharmonic terms.
+    Eleven metrics including energy statistics, gradient coherence,
+    spectral ratios, and two anisotropy metrics that exploit the V/H
+    asymmetry created by reshaping a 1D byte stream into a square field.
 
     Parameters
     ----------
@@ -10813,6 +10842,30 @@ class HodgeLaplacianGeometry(ExoticGeometry):
         high_e = np.sum(lap_fft[high_mask])
         metrics['laplacian_spectral_ratio'] = float(
             low_e / (high_e + 1e-12)
+        )
+
+        # Spatial anisotropy: log-ratio of vertical vs horizontal curvature
+        # energy.  Row-major reshape makes horizontal neighbors 1 byte apart,
+        # vertical ~side bytes apart.  Structured signals create V/H asymmetry;
+        # shuffling makes the field isotropic.
+        d2y = np.gradient(np.gradient(field, axis=0), axis=0)
+        d2x = np.gradient(np.gradient(field, axis=1), axis=1)
+        ev_sp = np.mean(np.abs(d2y))
+        eh_sp = np.mean(np.abs(d2x))
+        metrics['spatial_anisotropy'] = float(
+            np.log(ev_sp + 1e-12) - np.log(eh_sp + 1e-12)
+        )
+
+        # Spectral anisotropy: same V/H curvature ratio in frequency domain
+        # with k^4 weighting (curvature energy).  Complements spatial version
+        # on sources with concentrated spectral peaks (e.g. Sawtooth).
+        ps = np.abs(np.fft.fft2(field)) ** 2
+        ky = np.fft.fftfreq(H).reshape(-1, 1)
+        kx = np.fft.fftfreq(W).reshape(1, -1)
+        ev_freq = np.sum(ps * (ky ** 4))
+        eh_freq = np.sum(ps * (kx ** 4))
+        metrics['spectral_anisotropy'] = float(
+            np.log(ev_freq + 1e-12) - np.log(eh_freq + 1e-12)
         )
 
         return GeometryResult(geometry_name=self.name, metrics=metrics, raw_data={})
@@ -13415,6 +13468,8 @@ class GeometryAnalyzer:
             NonstationarityGeometry(input_scale=s),
             NavierStokesGeometry(input_scale=s),
             KleinBottleGeometry(input_scale=s),
+            # 2D field analysis (1D→2D reshape exploits directional anisotropy)
+            HodgeLaplacianGeometry(),
         ]
         # Cantor uses bit-extraction: only meaningful for integer/byte data
         if data_mode == 'bytes':

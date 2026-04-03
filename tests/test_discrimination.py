@@ -30,7 +30,7 @@ from exotic_geometry_framework import (
     ProductH2RGeometry, SL2RGeometry,
     # Scale
     SpiralGeometry, HolderRegularityGeometry, PVariationGeometry,
-    MultiScaleWassersteinGeometry, LaplacianGeometry,
+    MultiScaleWassersteinGeometry, LaplacianGeometry, HodgeLaplacianGeometry,
     # Quasicrystal
     PenroseGeometry, AmmannBeenkerGeometry,
     DodecagonalGeometry, SeptagonalGeometry,
@@ -828,12 +828,13 @@ class TestMultiScaleWasserstein:
 
 
 class TestLaplacian:
-    def test_returns_six_metrics(self):
+    def test_returns_eight_metrics(self):
         geom = LaplacianGeometry()
         r = geom.compute_metrics(_white_noise())
         expected = {"biharmonic_ratio", "poisson_recovery_error",
                     "gradient_sign_persistence", "laplacian_spectral_ratio",
-                    "curvature_autocorrelation", "cross_scale_curvature_coherence"}
+                    "curvature_autocorrelation", "cross_scale_curvature_coherence",
+                    "gradient_curvature_anticorrelation", "laplacian_evolutionary_index"}
         assert set(r.metrics.keys()) == expected, \
             f"Expected {expected}, got {set(r.metrics.keys())}"
 
@@ -910,7 +911,9 @@ class TestLaplacian:
         real_vals = {m: [] for m in ["biharmonic_ratio", "gradient_sign_persistence",
                                       "laplacian_spectral_ratio", "poisson_recovery_error",
                                       "curvature_autocorrelation",
-                                      "cross_scale_curvature_coherence"]}
+                                      "cross_scale_curvature_coherence",
+                                      "gradient_curvature_anticorrelation",
+                                      "laplacian_evolutionary_index"]}
         shuf_vals = {m: [] for m in real_vals}
         for _ in range(20):
             data = rng.integers(0, 256, SIZE, dtype=np.uint8)
@@ -926,6 +929,58 @@ class TestLaplacian:
             pooled = np.sqrt((np.var(rv) + np.var(sv)) / 2) + 1e-12
             d = abs((np.mean(rv) - np.mean(sv)) / pooled)
             assert d < 1.5, f"Noise self-discrimination too high for {m}: d={d:.3f}"
+
+
+class TestHodgeLaplacian:
+    def test_returns_eleven_metrics(self):
+        geom = HodgeLaplacianGeometry()
+        r = geom.compute_metrics(_white_noise())
+        expected = {"laplacian_mean", "laplacian_std", "laplacian_energy",
+                    "dirichlet_energy", "biharmonic_energy", "poisson_recovery_error",
+                    "source_fraction", "gradient_coherence", "laplacian_spectral_ratio",
+                    "spatial_anisotropy", "spectral_anisotropy"}
+        assert set(r.metrics.keys()) == expected, \
+            f"Expected {expected}, got {set(r.metrics.keys())}"
+
+    def test_spatial_anisotropy_structured_vs_shuffled(self):
+        """Structured signals create V/H asymmetry in the 2D reshape;
+        shuffling makes the field isotropic (anisotropy → 0)."""
+        geom = HodgeLaplacianGeometry()
+        rng = np.random.default_rng(42)
+        t = np.linspace(0, 20 * np.pi, SIZE)
+        structured = np.uint8(np.clip(128 + 100 * np.sin(t), 0, 255))
+        r_struct = geom.compute_metrics(structured)
+        shuf = structured.copy()
+        rng.shuffle(shuf)
+        r_shuf = geom.compute_metrics(shuf)
+        assert abs(r_struct.metrics["spatial_anisotropy"]) > \
+               abs(r_shuf.metrics["spatial_anisotropy"]) + 0.01, \
+            (f"Structured spatial_anisotropy={r_struct.metrics['spatial_anisotropy']:.4f} "
+             f"should exceed shuffled={r_shuf.metrics['spatial_anisotropy']:.4f}")
+
+    def test_spectral_anisotropy_structured_vs_shuffled(self):
+        """Same directional test in frequency domain."""
+        geom = HodgeLaplacianGeometry()
+        rng = np.random.default_rng(42)
+        t = np.linspace(0, 20 * np.pi, SIZE)
+        structured = np.uint8(np.clip(128 + 100 * np.sin(t), 0, 255))
+        r_struct = geom.compute_metrics(structured)
+        shuf = structured.copy()
+        rng.shuffle(shuf)
+        r_shuf = geom.compute_metrics(shuf)
+        assert abs(r_struct.metrics["spectral_anisotropy"]) > \
+               abs(r_shuf.metrics["spectral_anisotropy"]) + 0.01, \
+            (f"Structured spectral_anisotropy={r_struct.metrics['spectral_anisotropy']:.4f} "
+             f"should exceed shuffled={r_shuf.metrics['spectral_anisotropy']:.4f}")
+
+    def test_noise_anisotropy_near_zero(self):
+        """White noise is isotropic — both anisotropy metrics should be near zero."""
+        geom = HodgeLaplacianGeometry()
+        r = geom.compute_metrics(_white_noise())
+        assert abs(r.metrics["spatial_anisotropy"]) < 0.1, \
+            f"Noise spatial_anisotropy={r.metrics['spatial_anisotropy']:.4f} should be near 0"
+        assert abs(r.metrics["spectral_anisotropy"]) < 0.5, \
+            f"Noise spectral_anisotropy={r.metrics['spectral_anisotropy']:.4f} should be near 0"
 
 
 # ── QUASICRYSTAL LENS ─────────────────────────────────────────────────
