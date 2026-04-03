@@ -163,9 +163,15 @@ Rest and sleep have the same temporal dynamics, the same entropy structure, the
 same topological signatures. The spectral slope difference is real but it measures
 frequency content, not structural organization.
 
-**Visual confirmation**: The polar comparison figure (`docs/figures/eeg_oiris_polar.png`)
-shows rest (blue) and sleep (purple) completely interleaved in the EGF panel while
-separated in the O.IRIS panel.
+**Visual confirmation**:
+
+![O.IRIS polar comparison — Original vs Temporal vs Connectivity-Aware](../figures/eeg_oiris_polar.png)
+
+Three-panel progression: O.IRIS original (left) artificially separates rest/sleep
+via spectral slope. Temporal structure (center) shows the true picture — rest and
+sleep interleaved. Connectivity-aware (right) adds coherence but rest/sleep still
+overlap because the distinction is in the connectivity *pattern* (29 sig), not
+mean coherence level.
 
 **Caveat**: This result is conditional on our encoding (channel-averaged, uint8
 quantized, 250 Hz). Sleep staging information may exist in per-channel or
